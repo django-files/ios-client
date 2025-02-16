@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB502D62372200C0893B /* HTTPTypes */; };
+		4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB522D62372200C0893B /* HTTPTypesFoundation */; };
+		4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		4C5E21012D603C3B009EE83A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +27,34 @@
 			remoteGlobalIDString = 4C5E20EB2D603C3B009EE83A;
 			remoteInfo = "Django Files";
 		};
+		4C82CB872D624E8700C0893B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4C5E20E42D603C3B009EE83A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4C82CB7E2D624E8700C0893B;
+			remoteInfo = UploadAndCopy;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4C82CB672D624E2A00C0893B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		4C5E20EC2D603C3B009EE83A /* Django Files.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Django Files.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C5E21002D603C3B009EE83A /* Django FilesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Django FilesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Django FilesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UploadAndCopy.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +64,13 @@
 				Info.plist,
 			);
 			target = 4C5E20EB2D603C3B009EE83A /* Django Files */;
+		};
+		4C82CB8D2D624E8700C0893B /* Exceptions for "UploadAndCopy" folder in "UploadAndCopy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -58,6 +93,14 @@
 			path = "Django FilesUITests";
 			sourceTree = "<group>";
 		};
+		4C82CB802D624E8700C0893B /* UploadAndCopy */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4C82CB8D2D624E8700C0893B /* Exceptions for "UploadAndCopy" folder in "UploadAndCopy" target */,
+			);
+			path = UploadAndCopy;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +108,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */,
+				4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,6 +127,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4C82CB7C2D624E8700C0893B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -91,6 +143,7 @@
 				4C5E20EE2D603C3B009EE83A /* Django Files */,
 				4C5E21032D603C3B009EE83A /* Django FilesTests */,
 				4C5E210D2D603C3B009EE83A /* Django FilesUITests */,
+				4C82CB802D624E8700C0893B /* UploadAndCopy */,
 				4C5E20ED2D603C3B009EE83A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,6 +154,7 @@
 				4C5E20EC2D603C3B009EE83A /* Django Files.app */,
 				4C5E21002D603C3B009EE83A /* Django FilesTests.xctest */,
 				4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */,
+				4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -115,16 +169,20 @@
 				4C5E20E82D603C3B009EE83A /* Sources */,
 				4C5E20E92D603C3B009EE83A /* Frameworks */,
 				4C5E20EA2D603C3B009EE83A /* Resources */,
+				4C82CB672D624E2A00C0893B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4C82CB882D624E8700C0893B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				4C5E20EE2D603C3B009EE83A /* Django Files */,
 			);
 			name = "Django Files";
 			packageProductDependencies = (
+				4C82CB502D62372200C0893B /* HTTPTypes */,
+				4C82CB522D62372200C0893B /* HTTPTypesFoundation */,
 			);
 			productName = "Django Files";
 			productReference = 4C5E20EC2D603C3B009EE83A /* Django Files.app */;
@@ -176,6 +234,28 @@
 			productReference = 4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		4C82CB7E2D624E8700C0893B /* UploadAndCopy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4C82CB8A2D624E8700C0893B /* Build configuration list for PBXNativeTarget "UploadAndCopy" */;
+			buildPhases = (
+				4C82CB7B2D624E8700C0893B /* Sources */,
+				4C82CB7C2D624E8700C0893B /* Frameworks */,
+				4C82CB7D2D624E8700C0893B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4C82CB802D624E8700C0893B /* UploadAndCopy */,
+			);
+			name = UploadAndCopy;
+			packageProductDependencies = (
+			);
+			productName = UploadAndCopy;
+			productReference = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -197,6 +277,9 @@
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = 4C5E20EB2D603C3B009EE83A;
 					};
+					4C82CB7E2D624E8700C0893B = {
+						CreatedOnToolsVersion = 16.2;
+					};
 				};
 			};
 			buildConfigurationList = 4C5E20E72D603C3B009EE83A /* Build configuration list for PBXProject "Django Files" */;
@@ -208,6 +291,9 @@
 			);
 			mainGroup = 4C5E20E32D603C3B009EE83A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
 			projectDirPath = "";
@@ -216,6 +302,7 @@
 				4C5E20EB2D603C3B009EE83A /* Django Files */,
 				4C5E20FF2D603C3B009EE83A /* Django FilesTests */,
 				4C5E21092D603C3B009EE83A /* Django FilesUITests */,
+				4C82CB7E2D624E8700C0893B /* UploadAndCopy */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +323,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		4C5E21082D603C3B009EE83A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4C82CB7D2D624E8700C0893B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -266,6 +360,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4C82CB7B2D624E8700C0893B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -279,6 +380,11 @@
 			target = 4C5E20EB2D603C3B009EE83A /* Django Files */;
 			targetProxy = 4C5E210B2D603C3B009EE83A /* PBXContainerItemProxy */;
 		};
+		4C82CB882D624E8700C0893B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
+			targetProxy = 4C82CB872D624E8700C0893B /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -291,6 +397,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Django Files/Info.plist";
@@ -321,6 +428,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Django Files/Info.plist";
@@ -529,6 +637,56 @@
 			};
 			name = Release;
 		};
+		4C82CB8B2D624E8700C0893B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UploadAndCopy/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UploadAndCopy;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files.UploadAndCopy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4C82CB8C2D624E8700C0893B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UploadAndCopy/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UploadAndCopy;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files.UploadAndCopy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -568,7 +726,40 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		4C82CB8A2D624E8700C0893B /* Build configuration list for PBXNativeTarget "UploadAndCopy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4C82CB8B2D624E8700C0893B /* Debug */,
+				4C82CB8C2D624E8700C0893B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-http-types.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4C82CB502D62372200C0893B /* HTTPTypes */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
+			productName = HTTPTypes;
+		};
+		4C82CB522D62372200C0893B /* HTTPTypesFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
+			productName = HTTPTypesFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4C5E20E42D603C3B009EE83A /* Project object */;
 }

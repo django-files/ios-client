@@ -10,16 +10,18 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query private var items: [DjangoFilesSession]
+    @State private var showingEditor = false
+    @State private var runningSession = false
 
     var body: some View {
         NavigationSplitView {
             List {
                 ForEach(items) { item in
                     NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                        SessionSelector(session: item)
+                    }label: {
+                        Text(item.url)
                     }
                 }
                 .onDelete(perform: deleteItems)
@@ -29,20 +31,18 @@ struct ContentView: View {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
+                    Button(action: {
+                        self.showingEditor.toggle()
+                    })
+                    {
                         Label("Add Item", systemImage: "plus")
+                    }.sheet(isPresented: $showingEditor){
+                        SessionEditor(session: nil)
                     }
                 }
             }
         } detail: {
             Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
         }
     }
 
@@ -57,5 +57,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: DjangoFilesSession.self, inMemory: true)
 }

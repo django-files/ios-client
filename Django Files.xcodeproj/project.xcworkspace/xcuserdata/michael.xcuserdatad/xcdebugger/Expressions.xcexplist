@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VariablesViewState
+   version = "1.0">
+   <ContextStates>
+      <ContextState
+         contextName = "GLOBAL">
+         <PersistentStrings>
+            <PersistentString
+               value = "container.allKeys">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "DFAPI.makeAPIRequest(path:parameters:method:expectedResponse:):DFAPI.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "self.token">
+            </PersistentString>
+            <PersistentString
+               value = "encodeParametersIntoURL(path: path, parameters: parameters)">
+            </PersistentString>
+            <PersistentString
+               value = "String(decoding: responseBody, as: UTF8.self)">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "DFAPI.encodeParametersIntoURL(path:parameters:):DFAPI.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "url.appending(path: path)">
+            </PersistentString>
+            <PersistentString
+               value = "url.appendingPathComponent(path)">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "DFStatContainer.init(from:):Stats.swift">
+      </ContextState>
+      <ContextState
+         contextName = "DFStatType.init(from:):Stats.swift">
+      </ContextState>
+   </ContextStates>
+</VariablesViewState>
