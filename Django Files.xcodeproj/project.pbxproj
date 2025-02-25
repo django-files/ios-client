@@ -10,6 +10,8 @@
 		4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB502D62372200C0893B /* HTTPTypes */; };
 		4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB522D62372200C0893B /* HTTPTypesFoundation */; };
 		4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */; };
+		4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,18 @@
 			);
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 		};
+		4CA2E47D2D6D22CA006EF3F0 /* Exceptions for "Django Files" folder in "UploadAndCopy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				API/DFAPI.swift,
+				API/Error.swift,
+				API/Short.swift,
+				API/Stats.swift,
+				API/Upload.swift,
+				Models/DjangoFilesSession.swift,
+			);
+			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +93,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				4C5E21122D603C3B009EE83A /* Exceptions for "Django Files" folder in "Django Files" target */,
+				4CA2E47D2D6D22CA006EF3F0 /* Exceptions for "Django Files" folder in "UploadAndCopy" target */,
 			);
 			path = "Django Files";
 			sourceTree = "<group>";
@@ -131,6 +146,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */,
+				4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -144,6 +161,7 @@
 				4C5E21032D603C3B009EE83A /* Django FilesTests */,
 				4C5E210D2D603C3B009EE83A /* Django FilesUITests */,
 				4C82CB802D624E8700C0893B /* UploadAndCopy */,
+				4CA2E4882D6D49D6006EF3F0 /* Frameworks */,
 				4C5E20ED2D603C3B009EE83A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -157,6 +175,13 @@
 				4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4CA2E4882D6D49D6006EF3F0 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -251,6 +276,8 @@
 			);
 			name = UploadAndCopy;
 			packageProductDependencies = (
+				4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */,
+				4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */,
 			);
 			productName = UploadAndCopy;
 			productReference = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */;
@@ -394,13 +421,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Django Files/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Django Files";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -411,8 +441,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files";
+				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -425,13 +456,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Django Files/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Django Files";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -442,8 +476,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files";
+				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -575,10 +610,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-FilesTests";
+				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -593,10 +629,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-FilesTests";
+				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -610,9 +647,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-FilesUITests";
+				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -626,9 +664,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-FilesUITests";
+				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -640,12 +679,13 @@
 		4C82CB8B2D624E8700C0893B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = UploadAndCopy;
+				INFOPLIST_KEY_CFBundleDisplayName = "Upload and Copy";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -653,7 +693,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files.UploadAndCopy";
+				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles.UploadAndCopy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -665,12 +705,13 @@
 		4C82CB8C2D624E8700C0893B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = UploadAndCopy;
+				INFOPLIST_KEY_CFBundleDisplayName = "Upload and Copy";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -678,7 +719,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "blastsoftstudios.Django-Files.UploadAndCopy";
+				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles.UploadAndCopy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -755,6 +796,16 @@
 			productName = HTTPTypes;
 		};
 		4C82CB522D62372200C0893B /* HTTPTypesFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
+			productName = HTTPTypesFoundation;
+		};
+		4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
+			productName = HTTPTypes;
+		};
+		4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
 			productName = HTTPTypesFoundation;

@@ -32,6 +32,11 @@ struct SessionEditor: View {
             session.defaultSession = true
             session.token = token
             modelContext.insert(session)
+            do {
+                try modelContext.save()
+            } catch {
+                
+            }
         }
     }
     

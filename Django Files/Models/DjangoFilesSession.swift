@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class DjangoFilesSession {
+public final class DjangoFilesSession {
     var url: String
     var defaultSession: Bool = false
     var token: String

@@ -55,13 +55,13 @@ struct DFStatField: Codable{
         user = try container.decode(Int.self, forKey: .user)
         stats = try container.decode(DFStatContainer.self, forKey: .stats)
         do{
-            created_at = try container.decode(Date?.self, forKey: .created_at)
+            created_at = try container.decode(Date.self, forKey: .created_at)
         }
         catch{
             created_at = nil
         }
         do{
-            updated_at = try container.decode(Date?.self, forKey: .updated_at)
+            updated_at = try container.decode(Date.self, forKey: .updated_at)
         }
         catch{
             updated_at = nil

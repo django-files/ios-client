@@ -14,7 +14,7 @@ struct Django_FilesApp: App {
         let schema = Schema([
             DjangoFilesSession.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, groupContainer: .identifier("group.blastsoftstudios.djangofiles"))
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {

@@ -81,6 +81,10 @@ struct SessionSelector: View {
             Button("Try Auth"){
                 Task{
                     await tryAuth()
+                    do {
+                        try modelContext.save()
+                    } catch {
+                    }
                 }
             }
         }
