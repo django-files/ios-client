@@ -107,9 +107,3 @@ struct SessionEditor: View {
         }
     }
 }
-
-struct SessionEditor_Preview: PreviewProvider {
-    static var previews: some View {
-        SessionEditor(session: DjangoFilesSession(url: "https://d.luac.es"))
-    }
-}

@@ -80,7 +80,7 @@ struct SessionSelector: View {
             }
             Button("Try Auth"){
                 Task{
-                    await tryAuth()
+                    _ = await tryAuth()
                     do {
                         try modelContext.save()
                     } catch {
@@ -103,14 +103,5 @@ struct SessionSelector: View {
             defaultSession = session.defaultSession
             token = session.token
         }
-    }
-}
-
-
-
-struct SessionSelector_Preview: PreviewProvider {
-    static var previews: some View {
-        let session: DjangoFilesSession = DjangoFilesSession(url: "https://d.luac.es", token: "***REMOVED***")
-        SessionSelector(session: session)
     }
 }

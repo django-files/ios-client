@@ -17,7 +17,7 @@ struct DFErrorResponse: Codable{
     }
 
     init(from decoder: Decoder) throws {
-        var container = try decoder.container(keyedBy: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
         error = try container.decode(String.self, forKey: .error)
         do{
             message = try container.decode(String.self, forKey: .message)
