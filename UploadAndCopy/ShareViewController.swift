@@ -64,39 +64,45 @@ class ShareViewController: UIViewController, UITextFieldDelegate {
 
                 if itemProvider.hasItemConformingToTypeIdentifier("public.image"){
                     itemProvider.loadItem(forTypeIdentifier: "public.image", options: nil, completionHandler: { (item, error) in
-                        self.shortText.isHidden = true
-                        self.shareLabel.text = "Upload Image"
-                        self.shareURL = item as? URL
-                        self.imageView.image = self.downsample(imageAt: item as! URL, to: self.imageView.frame.size)
-                        self.imageView.setNeedsDisplay()
-                        self.activityIndicator.stopAnimating()
-                        self.shareButton.isEnabled = true
+                        DispatchQueue.main.async {
+                            self.shortText.isHidden = true
+                            self.shareLabel.text = "Upload Image"
+                            self.shareURL = item as? URL
+                            self.imageView.image = self.downsample(imageAt: item as! URL, to: self.imageView.frame.size)
+                            self.imageView.setNeedsDisplay()
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
+                        }
                     })
                     loaded = true
                     break
                 }
                 else if itemProvider.hasItemConformingToTypeIdentifier("public.url"){
                     itemProvider.loadItem(forTypeIdentifier: "public.url", options: nil, completionHandler: { (item, error) in
-                        self.shortText.isHidden = false
-                        self.shortTextLabel.isHidden = false
-                        self.shortText.placeholder = self.randomString(length: 5)
-                        self.shareURL = item as? URL
-                        self.shareLabel.text = "Shorten Link"
-                        if self.shareURL!.absoluteString.hasPrefix("http://") || self.shareURL!.absoluteString.hasPrefix("https://"){
-                            self.doShorten = true
+                        DispatchQueue.main.async {
+                            self.shortText.isHidden = false
+                            self.shortTextLabel.isHidden = false
+                            self.shortText.placeholder = self.randomString(length: 5)
+                            self.shareURL = item as? URL
+                            self.shareLabel.text = "Shorten Link"
+                            if self.shareURL!.absoluteString.hasPrefix("http://") || self.shareURL!.absoluteString.hasPrefix("https://"){
+                                self.doShorten = true
+                            }
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
                         }
-                        self.activityIndicator.stopAnimating()
-                        self.shareButton.isEnabled = true
                     })
                     loaded = true
                     break
                 }
                 else {
                     itemProvider.loadItem(forTypeIdentifier: "public.data", options: nil, completionHandler: { (item, error) in
-                        self.shareURL = item as? URL
-                        self.shareLabel.text = "Upload File"
-                        self.activityIndicator.stopAnimating()
-                        self.shareButton.isEnabled = true
+                        DispatchQueue.main.async {
+                            self.shareURL = item as? URL
+                            self.shareLabel.text = "Upload File"
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
+                        }
                     })
                     loaded = true
                     break
@@ -118,11 +124,14 @@ class ShareViewController: UIViewController, UITextFieldDelegate {
         var selectedServer: DjangoFilesSession?
         do{
             let servers = try sharedModelContainer.mainContext.fetch(FetchDescriptor<DjangoFilesSession>())
-            for server in servers {
-                selectedServer = server
-                if server.defaultSession {
-                    break
-                }
+            if servers.count == 0{
+                return nil
+            }
+            selectedServer = servers.first(where: {
+                return $0.defaultSession
+            })
+            if selectedServer == nil{
+                selectedServer = servers[0]
             }
         }
         catch {
