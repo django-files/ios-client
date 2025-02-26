@@ -37,71 +37,80 @@ struct SessionSelector: View {
     }
     
     var body: some View {
-        Form {
-            LabeledContent{
-                Text(url)
-            } label: {
-                Text("URL:")
-            }
-            LabeledContent{
-                TextField("", text: $token)
-                    .disableAutocorrection(true)
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: token){
-                        session.token = token
-                    }
-            } label: {
-                Text("Token:")
-            }
-            Toggle("Default:", isOn: $defaultSession)
-                .onChange(of: defaultSession) {
-                    if defaultSession{
-                        for item in items{
-                            item.defaultSession = false
+        NavigationStack {
+            Form {
+                LabeledContent{
+                    Text(url)
+                } label: {
+                    Text("URL:")
+                }
+                LabeledContent{
+                    SecureField("", text: $token)
+                        .disableAutocorrection(true)
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: token){
+                            session.token = token
                         }
-                        session.defaultSession = true
-                    }
-                    else{
-                        session.defaultSession = false
-                        var any: Bool = false
-                        for item in items{
-                            any = any || item.defaultSession
-                        }
-                        if !any{
+                } label: {
+                    Text("Token:")
+                }
+                Toggle("Default:", isOn: $defaultSession)
+                    .onChange(of: defaultSession) {
+                        if defaultSession{
+                            for item in items{
+                                item.defaultSession = false
+                            }
                             session.defaultSession = true
-                            defaultSession = true
+                        }
+                        else{
+                            session.defaultSession = false
+                            var any: Bool = false
+                            for item in items{
+                                any = any || item.defaultSession
+                            }
+                            if !any{
+                                session.defaultSession = true
+                                defaultSession = true
+                            }
+                        }
+                    }
+                LabeledContent{
+                    Text(session.auth ? "Success" : "Failure")
+                } label: {
+                    Text("Auth Status:")
+                }
+                Button("Try Auth"){
+                    Task{
+                        _ = await tryAuth()
+                        do {
+                            try modelContext.save()
+                        } catch {
                         }
                     }
                 }
-            LabeledContent{
-                Text(session.auth ? "Success" : "Failure")
-            } label: {
-                Text("Auth Status:")
             }
-            Button("Try Auth"){
-                Task{
-                    _ = await tryAuth()
-                    do {
-                        try modelContext.save()
-                    } catch {
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Select Session")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Back") {
+                        dismiss()
                     }
                 }
             }
-        }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Select Session")
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Open In Safari") {
-                    UIApplication.shared.open(URL(string: url)!)
+            .onAppear {
+                url = session.url
+                defaultSession = session.defaultSession
+                token = session.token
+                
+                if token != ""{
+                    Task{
+                        
+                        _ = await tryAuth()
+                    }
                 }
             }
-        }
-        .onAppear {
-            url = session.url
-            defaultSession = session.defaultSession
-            token = session.token
         }
     }
 }

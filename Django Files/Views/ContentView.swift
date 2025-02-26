@@ -10,17 +10,24 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
     @Query private var items: [DjangoFilesSession]
     @State private var showingEditor = false
     @State private var runningSession = false
-
+    @State private var authController: AuthController = AuthController()
+    
+    @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
+    
+    @State private var token: String?
+    
+    @State private var viewingSettings: Bool = false
+    
     var body: some View {
         NavigationSplitView {
-            List {
+            List(selection: $selectedServer) {
                 ForEach(items) { item in
-                    NavigationLink {
-                        SessionSelector(session: item)
-                    }label: {
+                    NavigationLink(value: item) {
                         Text(item.url)
                     }
                 }
@@ -42,7 +49,58 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            Text("Select an item")
+            if items.count == 0{
+                SessionEditor(session: nil)
+                    .onDisappear(){
+                        if items.count > 0{
+                            selectedServer = items[0]
+                        }
+                    }
+            }
+            else if let selectedServer{
+                if viewingSettings{
+                    let temp = selectedServer
+                    SessionSelector(session: selectedServer)
+                        .onDisappear(){
+                            viewingSettings = false
+                            self.selectedServer = temp
+                        }
+                }
+                else if selectedServer.url != "" {
+                    AuthView(authController: authController, httpsUrl: selectedServer.url)
+                        .onLoaded {
+                            guard let temp = authController.getToken() else {
+                                return
+                            }
+                            selectedServer.token = temp
+                            do{
+                                try modelContext.save()
+                            }
+                            catch{}
+                        }
+                        .onCancelled {
+                            dismiss()
+                        }
+                        .toolbar{
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Settings"){
+                                    viewingSettings = true
+                                }
+                            }
+                        }
+                }
+                else{
+                    Text("Loading...")
+                }
+            }
+            else{
+                Text("Select an item")
+            }
+        }
+        .onAppear() {
+            selectedServer = items.first(where: {
+                $0.defaultSession == true
+            })
         }
     }
 

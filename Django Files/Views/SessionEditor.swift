@@ -57,16 +57,6 @@ struct SessionEditor: View {
                 } label: {
                     Text("URL:")
                 }
-                LabeledContent{
-                    TextField("", text: Binding(
-                        get: { token.count == 32 ? token : "" },
-                        set: { token = $0 }
-                    ))
-                        .disableAutocorrection(true)
-                        .textInputAutocapitalization(.never)
-                } label: {
-                    Text("Token:")
-                }
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -92,9 +82,11 @@ struct SessionEditor: View {
                         Alert(title: Text("Invalid URL"))
                     }
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", role: .cancel) {
-                        dismiss()
+                if items.count > 0 {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", role: .cancel) {
+                            dismiss()
+                        }
                     }
                 }
             }
