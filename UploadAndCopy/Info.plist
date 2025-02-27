@@ -14,9 +14,9 @@
                     $extensionItem.attachments,
                     $attachment,
                     (
-                        ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.image&quot;
-                        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.url&quot;
-                        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.data&quot;
+                        ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
+                        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+                        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data"
                     )
                 ).@count == 1
             ).@count == 1</string>

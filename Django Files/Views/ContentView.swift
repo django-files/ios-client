@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var showingEditor = false
     @State private var runningSession = false
     @State private var authController: AuthController = AuthController()
-    
+    @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
     
     @State private var token: String?
@@ -24,7 +24,7 @@ struct ContentView: View {
     @State private var viewingSettings: Bool = false
     
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selectedServer) {
                 ForEach(items) { item in
                     NavigationLink(value: item) {
@@ -43,24 +43,17 @@ struct ContentView: View {
                     })
                     {
                         Label("Add Item", systemImage: "plus")
-                    }.sheet(isPresented: $showingEditor){
-                        SessionEditor(session: nil)
                     }
                 }
             }
         } detail: {
-            if items.count == 0{
-                SessionEditor(session: nil)
-                    .onDisappear(){
-                        if items.count > 0{
-                            selectedServer = items[0]
-                        }
-                    }
-            }
-            else if let selectedServer{
+            if let selectedServer{
                 if viewingSettings{
                     let temp = selectedServer
                     SessionSelector(session: selectedServer)
+                        .onAppear(){
+                            columnVisibility = .automatic
+                        }
                         .onDisappear(){
                             viewingSettings = false
                             self.selectedServer = temp
@@ -81,6 +74,9 @@ struct ContentView: View {
                         .onCancelled {
                             dismiss()
                         }
+                        .onAppear(){
+                            columnVisibility = .automatic
+                        }
                         .toolbar{
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("Settings"){
@@ -91,16 +87,28 @@ struct ContentView: View {
                 }
                 else{
                     Text("Loading...")
+                        .onAppear(){
+                            columnVisibility = .automatic
+                        }
                 }
             }
             else{
                 Text("Select an item")
+                    .onAppear(){
+                        columnVisibility = .automatic
+                    }
             }
+        }
+        .sheet(isPresented: $showingEditor){
+            SessionEditor(session: nil)
         }
         .onAppear() {
             selectedServer = items.first(where: {
                 $0.defaultSession == true
             })
+            if items.count == 0{
+                self.showingEditor.toggle()
+            }
         }
     }
 
