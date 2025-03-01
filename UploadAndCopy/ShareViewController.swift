@@ -34,6 +34,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     @IBOutlet weak var shortText: UITextField!
     @IBOutlet weak var shareLabel: UILabel!
     
+    var isTempFile = false
     var doShorten = false
     var session: DjangoFilesSession = DjangoFilesSession()
     var shareURL: URL?
@@ -74,7 +75,30 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                             self.shortText.isHidden = true
                             self.shareLabel.text = "Upload Image"
                             self.shareURL = item as? URL
-                            self.imageView.image = self.downsample(imageAt: item as! URL, to: self.imageView.frame.size)
+                            self.imageView.image = item as? UIImage
+                            if self.shareURL == nil && self.imageView.image != nil{
+                                let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
+                                let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).png")
+                                do{
+                                    try self.imageView.image!.pngData()?.write(to: targetURL)
+                                    self.isTempFile = true
+                                    self.shareURL = targetURL
+                                }
+                                catch {
+                                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                                }
+                            }
+                            else if self.imageView.image == nil && self.shareURL != nil{
+                                do{
+                                    self.imageView.image = UIImage(data: try Data(contentsOf: self.shareURL!))
+                                }
+                                catch {
+                                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                                }
+                            }
+                            else{
+                                self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                            }
                             self.imageView.setNeedsDisplay()
                             self.activityIndicator.stopAnimating()
                             self.shareButton.isEnabled = true
@@ -247,6 +271,15 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     }
     
     func notifyClipboard() {
+        if self.isTempFile {
+            do{
+                if FileManager.default.fileExists(atPath: self.shareURL!.path(percentEncoded: false)) {
+                    try FileManager.default.removeItem(at: self.shareURL!)
+                }
+            }
+            catch { }
+        }
+        
         let generator = UINotificationFeedbackGenerator()
         generator.prepare()
         generator.notificationOccurred(.success)
@@ -262,34 +295,5 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     {
         let uploadProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
         self.progressBar.progress = uploadProgress
-    }
-
-    
-    func downsample(imageAt imageURL: URL,
-                    to pointSize: CGSize,
-                    scale: CGFloat = UIScreen.main.scale) -> UIImage? {
-
-        // Create an CGImageSource that represent an image
-        let imageSourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let imageSource = CGImageSourceCreateWithURL(imageURL as CFURL, imageSourceOptions) else {
-            return nil
-        }
-        
-        // Calculate the desired dimension
-        let maxDimensionInPixels = max(pointSize.width, pointSize.height) * scale
-        
-        // Perform downsampling
-        let downsampleOptions = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimensionInPixels
-        ] as CFDictionary
-        guard let downsampledImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, downsampleOptions) else {
-            return nil
-        }
-        
-        // Return the downsampled image as UIImage
-        return UIImage(cgImage: downsampledImage)
     }
 }
