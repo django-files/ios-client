@@ -280,7 +280,15 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             }
             catch { }
         }
-        self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+        UIView.animate(withDuration: 0.2, animations: {
+            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
+        }, completion: { finished in
+            if finished{
+                self.dismiss(animated: true, completion: {
+                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
+                })
+            }
+        })
     }
     
     func notifyClipboard() {
@@ -298,6 +306,13 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         generator.notificationOccurred(.success)
         let alert = UIAlertController(title: "Django Files", message: "Link copied to clipboard", preferredStyle: .alert)
         self.present(alert, animated: true, completion: nil)
+        UIView.animate(withDuration: 0.2, animations: {
+            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
+        }, completion: { finished in
+            if finished{
+                self.view.isHidden = true
+            }
+        })
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
             alert.dismiss(animated: true, completion: nil)
             self.extensionContext!.completeRequest(returningItems: [])
@@ -307,9 +322,16 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     func showMessageAndDismiss(message: String){
         let alert = UIAlertController(title: "Django Files", message: message, preferredStyle: .alert)
         self.present(alert, animated: true, completion: nil)
+        UIView.animate(withDuration: 0.2, animations: {
+            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
+        }, completion: { finished in
+            if finished{
+                self.view.isHidden = true
+            }
+        })
         Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false, block: { _ in
             alert.dismiss(animated: true, completion: nil)
-            self.extensionContext!.completeRequest(returningItems: [])
+            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
         } )
     }
     
