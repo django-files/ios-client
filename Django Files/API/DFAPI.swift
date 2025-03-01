@@ -50,7 +50,7 @@ struct DFAPI {
         }
     }
     
-    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:]) async throws -> Data
+    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data
     {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.authorization] = token
@@ -58,7 +58,8 @@ struct DFAPI {
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
-        let (responseBody, response) = try await URLSession.shared.upload(for: request, from: body)
+        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
+        let (responseBody, response) = try await session.upload(for: request, from: body)
         guard response.status == .ok else {
             handleError(response.status, data: responseBody)
             throw URLError(.badServerResponse)
@@ -66,14 +67,16 @@ struct DFAPI {
         return responseBody
     }
     
-    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:]) async throws -> Data {
+    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
-        let (responseBody, response) = try await URLSession.shared.upload(for: request, from: Data())
+        
+        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate ?? nil, delegateQueue: .main)
+        let (responseBody, response) = try await session.upload(for: request, from: Data())
         guard response.status != .created else {
             handleError(response.status, data: responseBody)
             throw URLError(.badServerResponse)
@@ -91,7 +94,7 @@ struct DFAPI {
         }
     }
     
-    public func uploadFile(url: URL, fileName: String? = nil) async -> DFUploadResponse?{
+    public func uploadFile(url: URL, fileName: String? = nil, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
         
@@ -109,7 +112,7 @@ struct DFAPI {
         data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
         do{
-            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [.contentType: "multipart/form-data; boundary=\(boundary)"])
+            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [.contentType: "multipart/form-data; boundary=\(boundary)"], taskDelegate: taskDelegate)
             return try decoder.decode(DFUploadResponse.self, from: responseBody)
         }catch {
             print("Request failed \(error)")
@@ -121,7 +124,7 @@ struct DFAPI {
         let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
         do{
             let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest<DFShortRequest>(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:])
+            let responseBody = try await makeAPIRequest<DFShortRequest>(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
             return try decoder.decode(DFShortResponse.self, from: responseBody)
         }catch {
             print("Request failed \(error)")

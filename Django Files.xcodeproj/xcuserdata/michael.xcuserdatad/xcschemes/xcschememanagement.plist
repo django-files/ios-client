@@ -7,7 +7,7 @@
 		<key>Django Files.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>1</integer>
+			<integer>0</integer>
 		</dict>
 		<key>Share.xcscheme_^#shared#^_</key>
 		<dict>
@@ -22,11 +22,16 @@
 		<key>UploadAndCopy.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>1</integer>
 		</dict>
 	</dict>
 	<key>SuppressBuildableAutocreation</key>
 	<dict>
+		<key>4C24DF762D72735E00E4E8FF</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
 		<key>4C5E20EB2D603C3B009EE83A</key>
 		<dict>
 			<key>primary</key>

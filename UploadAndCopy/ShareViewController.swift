@@ -8,8 +8,9 @@
 import UIKit
 import Social
 import SwiftData
+import CoreHaptics
 
-class ShareViewController: UIViewController, UITextFieldDelegate {
+class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTaskDelegate {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -57,6 +58,11 @@ class ShareViewController: UIViewController, UITextFieldDelegate {
         }
         session = server
         
+        if URL(string: server.url) == nil{
+            return
+        }
+        
+        self.progressBar.isHidden = true
         var loaded: Bool = false
         for extensionItem in extensionItems {
             for ele in extensionItem.attachments! {
@@ -146,33 +152,48 @@ class ShareViewController: UIViewController, UITextFieldDelegate {
     }
     
     func shareFile() async {
-        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        let response = await api.uploadFile(url: shareURL!)
-        self.activityIndicator.stopAnimating()
+        self.progressBar.isHidden = false
+        self.progressBar.progress = 0
         
-        if response == nil{
-            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
-        }
-        else{
-            self.extensionContext!.completeRequest(returningItems: [])
-            UIPasteboard.general.string = response?.url
-            NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
+        Task{
+            let response = await api.uploadFile(url: shareURL!, taskDelegate: self)
+            self.activityIndicator.stopAnimating()
+            
+            if response == nil{
+                DispatchQueue.main.async {
+                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                }
+            }
+            else{
+                DispatchQueue.main.async {
+                    UIPasteboard.general.string = response?.url
+                    NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+                    self.notifyClipboard()
+                }
+            }
         }
     }
     
     func shareLink() async {
         let shortLink: String = (self.shortText.text == nil || self.shortText.text == "") ? randomString(length: 5) : self.shortText.text!
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        let response = await api.createShort(url: shareURL!, short: shortLink)
-        self.activityIndicator.stopAnimating()
-        
-        if response == nil{
-            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
-        }
-        else{
-            self.extensionContext!.completeRequest(returningItems: [])
-            UIPasteboard.general.string = response?.url
-            NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+        Task{
+            let response = await api.createShort(url: shareURL!, short: shortLink)
+            self.activityIndicator.stopAnimating()
+            
+            if response == nil{
+                DispatchQueue.main.async {
+                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                }
+            }
+            else{
+                DispatchQueue.main.async {
+                    UIPasteboard.general.string = response?.url
+                    NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+                    self.notifyClipboard()
+                }
+            }
         }
     }
     
@@ -224,6 +245,25 @@ class ShareViewController: UIViewController, UITextFieldDelegate {
     @IBAction func onCancel(_ sender: Any) {
         self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
     }
+    
+    func notifyClipboard() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+        generator.notificationOccurred(.success)
+        let alert = UIAlertController(title: "Django Files", message: "Link copied to clipboard", preferredStyle: .alert)
+        self.present(alert, animated: true, completion: nil)
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
+            alert.dismiss(animated: true, completion: nil)
+            self.extensionContext!.completeRequest(returningItems: [])
+        } )
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64)
+    {
+        let uploadProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
+        self.progressBar.progress = uploadProgress
+    }
+
     
     func downsample(imageAt imageURL: URL,
                     to pointSize: CGSize,
