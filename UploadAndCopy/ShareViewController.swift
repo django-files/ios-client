@@ -63,6 +63,10 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             self.showMessageAndDismiss(message: "Server '\(server.url)' is invalid.")
             return
         }
+        if URL(string: server.url)?.scheme == nil{
+            self.showMessageAndDismiss(message: "Server '\(server.url)' scheme (http or https) is invalid.")
+            return
+        }
         
         self.progressBar.isHidden = true
         var loaded: Bool = false
@@ -303,7 +307,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     func showMessageAndDismiss(message: String){
         let alert = UIAlertController(title: "Django Files", message: message, preferredStyle: .alert)
         self.present(alert, animated: true, completion: nil)
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
+        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false, block: { _ in
             alert.dismiss(animated: true, completion: nil)
             self.extensionContext!.completeRequest(returningItems: [])
         } )
