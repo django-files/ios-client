@@ -423,7 +423,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
@@ -460,7 +460,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
@@ -685,7 +685,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;
@@ -715,7 +715,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;

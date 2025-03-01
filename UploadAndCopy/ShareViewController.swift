@@ -50,16 +50,17 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
         
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
-            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+            self.showMessageAndDismiss(message: "Nothing to share.")
             return
         }
         guard let server = getDefaultServer() else {
-            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+            self.showMessageAndDismiss(message: "No servers configured.")
             return
         }
         session = server
         
         if URL(string: server.url) == nil{
+            self.showMessageAndDismiss(message: "Server '\(server.url)' is invalid.")
             return
         }
         
@@ -85,7 +86,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                     self.shareURL = targetURL
                                 }
                                 catch {
-                                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                                    self.showMessageAndDismiss(message: "Invalid image.")
                                 }
                             }
                             else if self.imageView.image == nil && self.shareURL != nil{
@@ -93,11 +94,11 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                     self.imageView.image = UIImage(data: try Data(contentsOf: self.shareURL!))
                                 }
                                 catch {
-                                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                                    self.showMessageAndDismiss(message: "Invalid image.")
                                 }
                             }
                             else{
-                                self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                                self.showMessageAndDismiss(message: "Invalid image.")
                             }
                             self.imageView.setNeedsDisplay()
                             self.activityIndicator.stopAnimating()
@@ -186,7 +187,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             
             if response == nil{
                 DispatchQueue.main.async {
-                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                    self.showMessageAndDismiss(message: "Bad server response.")
                 }
             }
             else{
@@ -208,7 +209,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             
             if response == nil{
                 DispatchQueue.main.async {
-                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
+                    self.showMessageAndDismiss(message: "Bad server response.")
                 }
             }
             else{
@@ -267,6 +268,14 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     }
     
     @IBAction func onCancel(_ sender: Any) {
+        if self.isTempFile {
+            do{
+                if FileManager.default.fileExists(atPath: self.shareURL!.path(percentEncoded: false)) {
+                    try FileManager.default.removeItem(at: self.shareURL!)
+                }
+            }
+            catch { }
+        }
         self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0, userInfo: nil))
     }
     
@@ -284,6 +293,15 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         generator.prepare()
         generator.notificationOccurred(.success)
         let alert = UIAlertController(title: "Django Files", message: "Link copied to clipboard", preferredStyle: .alert)
+        self.present(alert, animated: true, completion: nil)
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
+            alert.dismiss(animated: true, completion: nil)
+            self.extensionContext!.completeRequest(returningItems: [])
+        } )
+    }
+    
+    func showMessageAndDismiss(message: String){
+        let alert = UIAlertController(title: "Django Files", message: message, preferredStyle: .alert)
         self.present(alert, animated: true, completion: nil)
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
             alert.dismiss(animated: true, completion: nil)
