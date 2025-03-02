@@ -34,6 +34,8 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     private var reloadState: Bool = false
     private var authError: String? = nil
     
+    private var safeAreaInsets: EdgeInsets = EdgeInsets()
+    
     public func getAuthErrorMessage() -> String? {
         return authError
     }
@@ -102,6 +104,9 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 webView.load(URLRequest(url: url!))
                 reloadState = false
             }
+        }
+        else{
+            updatePageSafeArea()
         }
     }
     
@@ -186,6 +191,18 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         catch{}
     }
     
+    public func setSafeAreaInsets(_ insets: EdgeInsets){
+        safeAreaInsets = insets
+    }
+    
+    public func updatePageSafeArea(){
+        if webView.url?.host() == url?.host(){
+            webView.evaluateJavaScript("document.body.getElementsByClassName(\"navbar\")[0].style.paddingTop = \"\(safeAreaInsets.top)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
+            webView.evaluateJavaScript("document.body.getElementsByClassName(\"flex-grow-1\")[0].style.paddingLeft = \"\(safeAreaInsets.trailing)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
+            webView.evaluateJavaScript("document.body.getElementsByClassName(\"flex-grow-1\")[0].style.paddingRight = \"\(safeAreaInsets.leading)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
+        }
+    }
+    
     public func reset(){
         authError = nil
         clearToken()
@@ -199,7 +216,9 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         reloadState = true
         webView.isHidden = true
         webView.load(URLRequest(url: URL(string: "about:blank")!))
-        onStartedLoadingAction?()
+        Task{
+            onStartedLoadingAction?()
+        }
     }
 }
 
@@ -240,14 +259,17 @@ struct AuthView: UIViewRepresentable {
             authController.reset()
         }
         else{
-            authController.onAuthAction?()
-            authController.onLoadedAction?()
+            Task{
+                authController.onAuthAction?()
+                authController.onLoadedAction?()
+            }
         }
         
         return authController.webView
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        authController.updatePageSafeArea()
     }
 }
 

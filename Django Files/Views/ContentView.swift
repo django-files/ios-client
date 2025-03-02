@@ -108,100 +108,109 @@ public struct AuthViewContainer: View {
     @State private var authError: Bool = false
     
     @State private var authController: AuthController = AuthController()
-
+    
     var backButton : some View { Button(action: {
         self.presentationMode.wrappedValue.dismiss()
-        }) {
-            HStack {
-                if !UIDevice.current.localizedModel.contains("iPad") {
-                    Image("backImage")
-                        .aspectRatio(contentMode: .fit)
-                        .foregroundColor(.white)
-                    Text("Server List")
-                }
+    }) {
+        HStack {
+            if !UIDevice.current.localizedModel.contains("iPad") {
+                Image("backImage")
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundColor(.white)
+                Text("Server List")
             }
         }
     }
+    }
     public var body: some View {
-        if selectedServer.wrappedValue != nil{
-            if viewingSettings.wrappedValue{
-                SessionSelector(session: selectedServer.wrappedValue!, viewingSelect: viewingSettings)
-                    .onAppear(){
-                        columnVisibility.wrappedValue = .automatic
-                    }
-            }
-            else if selectedServer.wrappedValue!.url != "" {
-                ZStack{
-                    Color.djangoFilesBackground.ignoresSafeArea()
-                    LoadingView().frame(width: 100, height: 100)
-                    AuthView(authController: authController, httpsUrl: selectedServer.wrappedValue!.url, doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth)
-                        .onAuth {
-                            toolbarHidden = true
-                            guard let temp = authController.getToken() else {
-                                return
-                            }
-                            selectedServer.wrappedValue!.token = temp
-                            do{
-                                try modelContext.save()
-                            }
-                            catch{}
-                        }
-                        .onStartedLoading {
-                            toolbarHidden = false
-                        }
-                        .onCancelled {
-                            dismiss()
-                            toolbarHidden = false
-                            authError = true
-                        }
-                        .onSchemeRedirect {
-                            guard let resolve = authController.schemeURL else{
-                                return
-                            }
-                            switch resolve{
-                            case "serverlist":
-                                self.presentationMode.wrappedValue.dismiss()
-                                break
-                            case "serversettings":
-                                viewingSettings.wrappedValue = true
-                                break
-                            default:
-                                return
-                            }
-                        }
+        GeometryReader { geometry in
+            if selectedServer.wrappedValue != nil{
+                if viewingSettings.wrappedValue{
+                    SessionSelector(session: selectedServer.wrappedValue!, viewingSelect: viewingSettings)
                         .onAppear(){
                             columnVisibility.wrappedValue = .automatic
                         }
-                        .toolbar(toolbarHidden ? .hidden : .visible)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Server Info"){
+                }
+                else if selectedServer.wrappedValue!.url != "" {
+                    ZStack{
+                        Color.djangoFilesBackground.ignoresSafeArea()
+                        LoadingView().frame(width: 100, height: 100)
+                        AuthView(authController: authController, httpsUrl: selectedServer.wrappedValue!.url, doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth)
+                            .onAuth {
+                                toolbarHidden = true
+                                guard let temp = authController.getToken() else {
+                                    return
+                                }
+                                selectedServer.wrappedValue!.token = temp
+                                do{
+                                    try modelContext.save()
+                                }
+                                catch{}
+                            }
+                            .onStartedLoading {
+                                toolbarHidden = false
+                            }
+                            .onCancelled {
+                                dismiss()
+                                toolbarHidden = false
+                                authError = true
+                            }
+                            .onSchemeRedirect {
+                                guard let resolve = authController.schemeURL else{
+                                    return
+                                }
+                                switch resolve{
+                                case "serverlist":
+                                    self.presentationMode.wrappedValue.dismiss()
+                                    break
+                                case "serversettings":
                                     viewingSettings.wrappedValue = true
+                                    break
+                                default:
+                                    return
                                 }
                             }
-                        }
-                        .navigationTitle(Text(""))
-                        .navigationBarBackButtonHidden(true)
-                        .navigationBarItems(leading: backButton)
-                        .alert(isPresented: $authError){
-                            Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
+                            .onAppear(){
+                                authController.setSafeAreaInsets(geometry.safeAreaInsets)
+                                columnVisibility.wrappedValue = .automatic
+                            }
+                            .onChange(of: geometry.safeAreaInsets){
+                                authController.setSafeAreaInsets(geometry.safeAreaInsets)
+                                authController.updatePageSafeArea()
+                            }
+                            .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
+                            .toolbar {
+                                if !(UIDevice.current.userInterfaceIdiom == .pad && toolbarHidden){
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button("Server Info"){
+                                            viewingSettings.wrappedValue = true
+                                        }
+                                    }
+                                }
+                            }
+                            .navigationTitle(Text(""))
+                            .navigationBarBackButtonHidden(true)
+                            .navigationBarItems(leading: backButton)
+                            .alert(isPresented: $authError){
+                                Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
+                            }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .edgesIgnoringSafeArea(.all)
+                }
+                else{
+                    Text("Loading...")
+                        .onAppear(){
+                            columnVisibility.wrappedValue = .automatic
                         }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .edgesIgnoringSafeArea(.all)
             }
             else{
-                Text("Loading...")
+                Text("Select an item")
                     .onAppear(){
                         columnVisibility.wrappedValue = .automatic
                     }
             }
-        }
-        else{
-            Text("Select an item")
-                .onAppear(){
-                    columnVisibility.wrappedValue = .automatic
-                }
         }
     }
 }
