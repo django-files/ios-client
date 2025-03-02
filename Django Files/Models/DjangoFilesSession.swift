@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-public final class DjangoFilesSession {
+public final class DjangoFilesSession: Equatable {
     var url: String
     var defaultSession: Bool = false
     var token: String
@@ -30,5 +30,9 @@ public final class DjangoFilesSession {
     
     func checkSession() -> Bool {
         return true
+    }
+    
+    public static func == (lhs: DjangoFilesSession, rhs: DjangoFilesSession) -> Bool{
+        return lhs.url == rhs.url
     }
 }

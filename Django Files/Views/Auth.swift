@@ -10,32 +10,41 @@ import SwiftUI
 import AuthenticationServices
 import Foundation
 
-class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate {
+class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScrollViewDelegate {
     let tempTokenFileName: String = "token.txt"
     
-    var webView: WKWebView!
-    var url: URL!
-
-    var authComplete: Bool = false
-    var gettingToken: Bool = false
-    var isLoaded: Bool = false
+    var url: URL?
     
+    let webView: WKWebView = WKWebView()
+
+    private var authComplete: Bool = false
+    private var gettingToken: Bool = false
+    public var isLoaded: Bool = false
+    private var reloadState: Bool = false
+    
+    var onAuthAction: (() -> Void)?
     var onLoadedAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
+    var onScrolledToTop: (() -> Void)?
+    var onScrolled: (() -> Void)?
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
+        webView.isHidden = false
+        onLoadedAction?()
+        
         if authComplete{
             decisionHandler(.allow)
+            onScrolled?()
             return
         }
         
-        if navigationResponse.response.url?.absoluteString == url.appendingPathComponent("/").absoluteString {
+        if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/").absoluteString {
             let code = (navigationResponse.response as! HTTPURLResponse).statusCode
             switch code{
             case 200:
                 decisionHandler(.cancel)
                 Task{
-                    webView.load(URLRequest(url: url.appending(path: "/api/token")))
+                    webView.load(URLRequest(url: url!.appending(path: "/api/token")))
                 }
                 break
             case 302:
@@ -48,7 +57,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate {
             }
             return
         }
-        else if navigationResponse.response.url?.absoluteString == url.appendingPathComponent("/api/token/").absoluteString{
+        else if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/api/token/").absoluteString{
             let response = navigationResponse.response as! HTTPURLResponse
             if response.statusCode == 200{
                 gettingToken = true
@@ -60,6 +69,15 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate {
         }
         else{
             decisionHandler(.allow)
+        }
+    }
+    
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if reloadState{
+            Task{
+                webView.load(URLRequest(url: url!))
+                reloadState = false
+            }
         }
     }
     
@@ -84,10 +102,10 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate {
     
     func downloadDidFinish(_ download: WKDownload) {
         isLoaded = true
-        onLoadedAction?()
+        onAuthAction?()
         
         Task{
-            webView.load(URLRequest(url: url))
+            webView.load(URLRequest(url: url!))
         }
     }
     
@@ -119,42 +137,65 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate {
         catch{}
     }
     
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView.contentOffset.y <= 0{
+            onScrolledToTop?()
+        }
+        else{
+            onScrolled?()
+        }
+    }
+    
     public func reset(){
         clearToken()
         authComplete = false
         isLoaded = false
         gettingToken = false
+        loadHomepage()
+    }
+    
+    private func loadHomepage(){
+        reloadState = true
+        webView.isHidden = true
+        webView.load(URLRequest(url: URL(string: "about:blank")!))
     }
 }
 
 struct AuthView: UIViewRepresentable {
-    var authController: AuthController
-    @State var httpsUrl: String
     @Environment(\.dismiss) private var dismiss
     
-    @State var isLoadedHandled: Bool = false
+    let authController: AuthController
+    var httpsUrl: String
+    let doReset: Bool
     
     var onLoadedAction: (() -> Void)?
+    var onAuthAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
+    var onScrolledToTopAction: (() -> Void)?
+    var onScrolledAction: (() -> Void)?
 
     func makeUIView(context: Context) -> WKWebView {
         guard let url = URL(string: httpsUrl) else {
             return WKWebView()
         }
         
-        let request = URLRequest(url: url)
-        let webView = WKWebView()
+        if doReset{
+            authController.url = url
+            authController.onLoadedAction = onLoadedAction
+            authController.onCancelledAction = onCancelledAction
+            
+            authController.onScrolled = onScrolledAction
+            authController.onScrolledToTop = onScrolledToTopAction
+            
+            authController.webView.navigationDelegate = authController
+            authController.webView.scrollView.delegate = authController
+            authController.webView.scrollView.maximumZoomScale = 1
+            authController.webView.scrollView.minimumZoomScale = 1
+            
+            authController.reset()
+        }
         
-        authController.reset()
-        authController.url = url
-        authController.webView = webView
-        authController.onLoadedAction = onLoadedAction
-        authController.onCancelledAction = onCancelledAction
-        
-        webView.navigationDelegate = authController
-        webView.load(request)
-        
-        return webView
+        return authController.webView
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
@@ -162,6 +203,11 @@ struct AuthView: UIViewRepresentable {
 }
 
 extension AuthView {
+    func onAuth(_ handler: @escaping () -> Void) -> AuthView {
+        var new = self
+        new.onAuthAction = handler
+        return new
+    }
     func onLoaded(_ handler: @escaping () -> Void) -> AuthView {
         var new = self
         new.onLoadedAction = handler
@@ -170,6 +216,16 @@ extension AuthView {
     func onCancelled(_ handler: @escaping () -> Void) -> AuthView {
         var new = self
         new.onCancelledAction = handler
+        return new
+    }
+    func onScrolledToTop(_ handler: @escaping () -> Void) -> AuthView {
+        var new = self
+        new.onScrolledToTopAction = handler
+        return new
+    }
+    func onScrolled(_ handler: @escaping () -> Void) -> AuthView {
+        var new = self
+        new.onScrolledAction = handler
         return new
     }
 }

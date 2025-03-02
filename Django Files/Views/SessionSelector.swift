@@ -21,6 +21,9 @@ struct SessionSelector: View {
     @State private var sessionStarted = false
     @State private var defaultSession = false
     
+    @State private var showTokenCopiedAlert = false
+    @State private var showURLCopiedAlert = false
+    
     private func tryAuth() async -> Bool{
         guard let dfUrl = URL(string: url) else {
             return false
@@ -41,6 +44,22 @@ struct SessionSelector: View {
             Form {
                 LabeledContent{
                     Text(url)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                                Button(action: {
+                                    UIPasteboard.general.string = token
+                                }) {
+                                    Text("Copy to clipboard")
+                                    Image(systemName: "doc.on.doc")
+                                }
+                             }
+                        .onTapGesture {
+                            UIPasteboard.general.string = token
+                            showURLCopiedAlert = true
+                        }
+                        .alert(isPresented: $showURLCopiedAlert){
+                            Alert(title: Text("URL Copied"), message: Text("Server URL copied to clipboard"))
+                        }
                 } label: {
                     Text("URL:")
                 }
@@ -48,8 +67,22 @@ struct SessionSelector: View {
                     SecureField("", text: $token)
                         .disableAutocorrection(true)
                         .textInputAutocapitalization(.never)
-                        .onChange(of: token){
-                            session.token = token
+                        .disabled(true)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                                Button(action: {
+                                    UIPasteboard.general.string = token
+                                }) {
+                                    Text("Copy to clipboard")
+                                    Image(systemName: "doc.on.doc")
+                                }
+                             }
+                        .onTapGesture {
+                            UIPasteboard.general.string = token
+                            showTokenCopiedAlert = true
+                        }
+                        .alert(isPresented: $showTokenCopiedAlert){
+                            Alert(title: Text("Token Copied"), message: Text("Token copied to clipboard"))
                         }
                 } label: {
                     Text("Token:")
@@ -79,19 +112,11 @@ struct SessionSelector: View {
                 } label: {
                     Text("Auth Status:")
                 }
-                Button("Try Auth"){
-                    Task{
-                        _ = await tryAuth()
-                        do {
-                            try modelContext.save()
-                        } catch {
-                        }
-                    }
-                }
             }
+            .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Select Session")
+                    Text("Server Options")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Back") {
