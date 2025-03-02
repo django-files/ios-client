@@ -103,18 +103,20 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 reloadState = false
             }
         }
-        else{
+        else if webView.url?.host() == url?.host(){
             webView.evaluateJavaScript(serverButtonJavascript, completionHandler: { (jsonRaw: Any?, error: Error?) in
             })
         }
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
+        webView.scrollView.zoomScale = 0
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
+            loadHomepage()
             return .cancel
         }
         else{
@@ -125,7 +127,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
         download.delegate = self
     }
-        
+    
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         download.delegate = self
     }
@@ -223,18 +225,22 @@ struct AuthView: UIViewRepresentable {
             authController.onSchemeRedirectAction = onSchemeRedirectAction
             
             authController.webView.navigationDelegate = authController
+            authController.webView.scrollView.delegate = authController
             authController.webView.scrollView.maximumZoomScale = 1
             authController.webView.scrollView.minimumZoomScale = 1
             authController.webView.isOpaque = false
             
             authController.reset()
         }
+        else{
+            authController.onAuthAction?()
+            authController.onLoadedAction?()
+        }
         
         return authController.webView
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        
     }
 }
 
