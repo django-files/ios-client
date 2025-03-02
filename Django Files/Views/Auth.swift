@@ -21,7 +21,6 @@ extension Bundle {
 
 class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScrollViewDelegate {
     let tempTokenFileName: String = "token.txt"
-    var serverButtonJavascript: String = ""
     
     var url: URL?
     
@@ -49,12 +48,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     override init(){
         super.init()
-        do{
-            serverButtonJavascript = String(data: try Data(contentsOf: URL(fileURLWithPath: Bundle.main.resourcePath! + "/DFMenu.js")), encoding: .utf8)!
-        }
-        catch{
-            serverButtonJavascript = ""
-        }
         self.webView.customUserAgent = customUserAgent
     }
     
@@ -109,10 +102,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 webView.load(URLRequest(url: url!))
                 reloadState = false
             }
-        }
-        else if webView.url?.host() == url?.host(){
-            webView.evaluateJavaScript(serverButtonJavascript, completionHandler: { (jsonRaw: Any?, error: Error?) in
-            })
         }
     }
     
