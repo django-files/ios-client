@@ -423,7 +423,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
@@ -439,7 +439,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -460,7 +460,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Django Files/Django_Files.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Django Files/Preview Content\"";
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				ENABLE_PREVIEWS = YES;
@@ -476,7 +476,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -685,7 +685,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;
@@ -697,9 +697,13 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles.UploadAndCopy;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.UploadAndCopy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -711,7 +715,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = UploadAndCopy/UploadAndCopy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = ZY6BPTGK47;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UploadAndCopy/Info.plist;
@@ -723,9 +727,13 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blastsoftstudios.djangofiles.UploadAndCopy;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.UploadAndCopy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
