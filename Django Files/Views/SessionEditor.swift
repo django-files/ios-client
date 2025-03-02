@@ -23,6 +23,7 @@ struct SessionEditor: View {
         if let session {
             session.url = url?.absoluteString ?? ""
             session.token = token
+            session.auth = false
         } else {
             let session = DjangoFilesSession ()
             session.url = url?.absoluteString ?? ""
@@ -31,6 +32,7 @@ struct SessionEditor: View {
             }
             session.defaultSession = true
             session.token = token
+            session.auth = false
             modelContext.insert(session)
             do {
                 try modelContext.save()

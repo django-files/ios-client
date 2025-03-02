@@ -30,8 +30,7 @@ struct ContentView: View {
                         Text(item.url)
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
+                .onDelete(perform: deleteItems)            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
@@ -46,22 +45,47 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility)
+            AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor)
         }
         .sheet(isPresented: $showingEditor){
             SessionEditor(session: nil)
         }
         .onAppear() {
-            selectedServer = items.first(where: {
-                $0.defaultSession == true
-            }) ?? DjangoFilesSession()
-            if items.count == 0{
-                self.showingEditor.toggle()
+            setDefaultServer()
+            if items.count > 0{
+                selectedServer = items.first(where: {
+                    $0.defaultSession == true
+                })
+                if selectedServer == nil{
+                    selectedServer = items.first
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .edgesIgnoringSafeArea(.all)
     }
 
+    private func setDefaultServer(){
+        if items.count > 0{
+            var server = items.first(where: {
+                $0.defaultSession == true
+            })
+            if server == nil {
+                server = items.first(where: {
+                    $0.auth
+                })
+                if server != nil{
+                    server?.defaultSession = true
+                }
+            }
+        }
+        if items.count == 0{
+            self.showingEditor.toggle()
+        }
+    }
+    
     private func deleteItems(offsets: IndexSet) {
+        setDefaultServer()
         withAnimation {
             for index in offsets {
                 modelContext.delete(items[index])
@@ -78,8 +102,8 @@ public struct AuthViewContainer: View {
     var viewingSettings: Binding<Bool>
     var selectedServer: Binding<DjangoFilesSession?>
     var columnVisibility: Binding<NavigationSplitViewVisibility>
+    var showingEditor: Binding<Bool>
     @State private var toolbarHidden: Bool = false
-    @State private var loadingAngle: Angle = Angle(degrees: 360)
     
     @State private var authController: AuthController = AuthController()
 
@@ -99,21 +123,18 @@ public struct AuthViewContainer: View {
     public var body: some View {
         if selectedServer.wrappedValue != nil{
             if viewingSettings.wrappedValue{
-                let temp = selectedServer.wrappedValue
-                SessionSelector(session: selectedServer.wrappedValue!)
+                SessionSelector(session: selectedServer.wrappedValue!, viewingSelect: viewingSettings)
                     .onAppear(){
                         columnVisibility.wrappedValue = .automatic
-                    }
-                    .onDisappear(){
-                        viewingSettings.wrappedValue = false
-                        self.selectedServer.wrappedValue = temp
                     }
             }
             else if selectedServer.wrappedValue!.url != "" {
                 ZStack{
+                    Color.djangoFilesBackground.ignoresSafeArea()
                     LoadingView().frame(width: 100, height: 100)
-                    AuthView(authController: authController, httpsUrl: selectedServer.wrappedValue!.url, doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url)
+                    AuthView(authController: authController, httpsUrl: selectedServer.wrappedValue!.url, doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth)
                         .onAuth {
+                            toolbarHidden = true
                             guard let temp = authController.getToken() else {
                                 return
                             }
@@ -123,17 +144,26 @@ public struct AuthViewContainer: View {
                             }
                             catch{}
                         }
+                        .onStartedLoading {
+                            toolbarHidden = false
+                        }
                         .onCancelled {
                             dismiss()
+                            toolbarHidden = false
                         }
-                        .onScrolledToTop{
-                            withAnimation(.smooth(duration: 0.2)) {
-                                toolbarHidden = false
+                        .onSchemeRedirect {
+                            guard let resolve = authController.schemeURL else{
+                                return
                             }
-                        }
-                        .onScrolled{
-                            withAnimation(.smooth(duration: 0.2)) {
-                                toolbarHidden = true
+                            switch resolve{
+                            case "serverlist":
+                                self.presentationMode.wrappedValue.dismiss()
+                                break
+                            case "serversettings":
+                                viewingSettings.wrappedValue = true
+                                break
+                            default:
+                                return
                             }
                         }
                         .onAppear(){
@@ -147,8 +177,12 @@ public struct AuthViewContainer: View {
                                 }
                             }
                         }
+                        .navigationTitle(Text(""))
                         .navigationBarBackButtonHidden(true)
-                        .navigationBarItems(leading: backButton)                }
+                        .navigationBarItems(leading: backButton)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .edgesIgnoringSafeArea(.all)
             }
             else{
                 Text("Loading...")
@@ -174,17 +208,25 @@ struct LoadingView: View {
             .trim(from: 0, to: 0.8)
             .stroke(Color.launchScreenBackground, lineWidth: 5)
             .rotationEffect(Angle(degrees: isLoading ? 360 : 0))
-            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: isLoading)
             .opacity(firstAppear ? 1 : 0)
-            .animation(.easeInOut(duration: 0.25), value: firstAppear)
             .onAppear(){
-                if isLoading == false{
-                    isLoading.toggle()
+                DispatchQueue.main.async {
+                    if isLoading == false{
+                        withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)){
+                            isLoading.toggle()
+                        }
+                    }
+                    withAnimation(.easeInOut(duration: 0.25)){
+                        firstAppear = true
+                    }
                 }
-                firstAppear = true
             }
             .onDisappear(){
-                firstAppear = false
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.25)){
+                        firstAppear = true
+                    }
+                }
             }
     }
 }

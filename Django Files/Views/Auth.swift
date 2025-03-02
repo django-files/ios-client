@@ -12,21 +12,34 @@ import Foundation
 
 class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScrollViewDelegate {
     let tempTokenFileName: String = "token.txt"
+    var serverButtonJavascript: String = ""
     
     var url: URL?
     
-    let webView: WKWebView = WKWebView()
+    let webView: WKWebView = FullScreenWebView()
 
     private var authComplete: Bool = false
     private var gettingToken: Bool = false
     public var isLoaded: Bool = false
     private var reloadState: Bool = false
     
+    public var schemeURL: String?
+    
     var onAuthAction: (() -> Void)?
     var onLoadedAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
-    var onScrolledToTop: (() -> Void)?
-    var onScrolled: (() -> Void)?
+    var onStartedLoadingAction: (() -> Void)?
+    var onSchemeRedirectAction: (() -> Void)?
+    
+    override init(){
+        super.init()
+        do{
+            serverButtonJavascript = String(data: try Data(contentsOf: URL(fileURLWithPath: Bundle.main.resourcePath! + "/DFMenu.js")), encoding: .utf8)!
+        }
+        catch{
+            serverButtonJavascript = ""
+        }
+    }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
         webView.isHidden = false
@@ -34,7 +47,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         
         if authComplete{
             decisionHandler(.allow)
-            onScrolled?()
             return
         }
         
@@ -78,6 +90,23 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 webView.load(URLRequest(url: url!))
                 reloadState = false
             }
+        }
+        else{
+            webView.evaluateJavaScript(serverButtonJavascript, completionHandler: { (jsonRaw: Any?, error: Error?) in
+            })
+        }
+    }
+    
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
+        if navigationAction.request.url?.scheme == "djangofiles"{
+            var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
+            schemeRemove.scheme = nil
+            schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
+            onSchemeRedirectAction?()
+            return .cancel
+        }
+        else{
+            return .allow
         }
     }
     
@@ -137,15 +166,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         catch{}
     }
     
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        if scrollView.contentOffset.y <= 0{
-            onScrolledToTop?()
-        }
-        else{
-            onScrolled?()
-        }
-    }
-    
     public func reset(){
         clearToken()
         authComplete = false
@@ -158,6 +178,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         reloadState = true
         webView.isHidden = true
         webView.load(URLRequest(url: URL(string: "about:blank")!))
+        onStartedLoadingAction?()
     }
 }
 
@@ -170,27 +191,29 @@ struct AuthView: UIViewRepresentable {
     
     var onLoadedAction: (() -> Void)?
     var onAuthAction: (() -> Void)?
+    var onSchemeRedirectAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
-    var onScrolledToTopAction: (() -> Void)?
-    var onScrolledAction: (() -> Void)?
+    var onStartedLoadingAction: (() -> Void)?
 
     func makeUIView(context: Context) -> WKWebView {
         guard let url = URL(string: httpsUrl) else {
-            return WKWebView()
+            return FullScreenWebView()
         }
         
         if doReset{
             authController.url = url
+            
             authController.onLoadedAction = onLoadedAction
             authController.onCancelledAction = onCancelledAction
             
-            authController.onScrolled = onScrolledAction
-            authController.onScrolledToTop = onScrolledToTopAction
+            authController.onAuthAction = onAuthAction
+            authController.onStartedLoadingAction = onStartedLoadingAction
+            authController.onSchemeRedirectAction = onSchemeRedirectAction
             
             authController.webView.navigationDelegate = authController
-            authController.webView.scrollView.delegate = authController
             authController.webView.scrollView.maximumZoomScale = 1
             authController.webView.scrollView.minimumZoomScale = 1
+            authController.webView.isOpaque = false
             
             authController.reset()
         }
@@ -199,8 +222,16 @@ struct AuthView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        
     }
 }
+
+class FullScreenWebView: WKWebView {
+    override var safeAreaInsets: UIEdgeInsets {
+        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+}
+
 
 extension AuthView {
     func onAuth(_ handler: @escaping () -> Void) -> AuthView {
@@ -213,19 +244,19 @@ extension AuthView {
         new.onLoadedAction = handler
         return new
     }
+    func onSchemeRedirect(_ handler: @escaping () -> Void) -> AuthView {
+        var new = self
+        new.onSchemeRedirectAction = handler
+        return new
+    }
     func onCancelled(_ handler: @escaping () -> Void) -> AuthView {
         var new = self
         new.onCancelledAction = handler
         return new
     }
-    func onScrolledToTop(_ handler: @escaping () -> Void) -> AuthView {
+    func onStartedLoading(_ handler: @escaping () -> Void) -> AuthView {
         var new = self
-        new.onScrolledToTopAction = handler
-        return new
-    }
-    func onScrolled(_ handler: @escaping () -> Void) -> AuthView {
-        var new = self
-        new.onScrolledAction = handler
+        new.onStartedLoadingAction = handler
         return new
     }
 }
