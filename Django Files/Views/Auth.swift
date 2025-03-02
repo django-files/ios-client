@@ -98,11 +98,13 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
+        webView.scrollView.zoomScale = 0
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
+            loadHomepage()
             return .cancel
         }
         else{
@@ -136,10 +138,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         Task{
             webView.load(URLRequest(url: url!))
         }
-    }
-    
-    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
-        scrollView.pinchGestureRecognizer?.isEnabled = false
     }
     
     public func getToken() -> String?{
@@ -218,17 +216,19 @@ struct AuthView: UIViewRepresentable {
             authController.webView.scrollView.delegate = authController
             authController.webView.scrollView.maximumZoomScale = 1
             authController.webView.scrollView.minimumZoomScale = 1
-            authController.webView.scrollView.zoomScale = 1
             authController.webView.isOpaque = false
             
             authController.reset()
+        }
+        else{
+            authController.onAuthAction?()
+            authController.onLoadedAction?()
         }
         
         return authController.webView
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        
     }
 }
 
