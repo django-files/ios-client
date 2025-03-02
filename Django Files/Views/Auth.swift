@@ -33,6 +33,11 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     private var gettingToken: Bool = false
     public var isLoaded: Bool = false
     private var reloadState: Bool = false
+    private var authError: String? = nil
+    
+    public func getAuthErrorMessage() -> String? {
+        return authError
+    }
     
     public var schemeURL: String?
     
@@ -77,6 +82,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
             default:
                 decisionHandler(.cancel)
                 onCancelledAction?()
+                authError = "Authorization failed. Status code: \(code)"
                 return
             }
             return
@@ -89,6 +95,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
             }
             else{
                 onCancelledAction?()
+                authError = "Server did not respond to token API request properly. Make sure the URL is correct."
             }
         }
         else{
@@ -111,12 +118,22 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
         webView.scrollView.zoomScale = 0
+        
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
             loadHomepage()
+            return .cancel
+        }
+        else if navigationAction.request.url?.absoluteString == "about:blank"{
+            return .allow
+        }
+        else if url?.scheme == "https" && navigationAction.request.url?.scheme != "https" {
+            onCancelledAction?()
+            reset()
+            authError = "Blocked attempt to navigate to non-HTTPS URL while using HTTPS."
             return .cancel
         }
         else{
@@ -181,6 +198,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     }
     
     public func reset(){
+        authError = nil
         clearToken()
         authComplete = false
         isLoaded = false

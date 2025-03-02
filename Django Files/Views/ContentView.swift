@@ -105,6 +105,7 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     @State private var toolbarHidden: Bool = false
+    @State private var authError: Bool = false
     
     @State private var authController: AuthController = AuthController()
 
@@ -151,6 +152,7 @@ public struct AuthViewContainer: View {
                         .onCancelled {
                             dismiss()
                             toolbarHidden = false
+                            authError = true
                         }
                         .onSchemeRedirect {
                             guard let resolve = authController.schemeURL else{
@@ -181,6 +183,9 @@ public struct AuthViewContainer: View {
                         .navigationTitle(Text(""))
                         .navigationBarBackButtonHidden(true)
                         .navigationBarItems(leading: backButton)
+                        .alert(isPresented: $authError){
+                            Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
+                        }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
