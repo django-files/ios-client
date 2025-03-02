@@ -10,6 +10,15 @@ import SwiftUI
 import AuthenticationServices
 import Foundation
 
+extension Bundle {
+    var releaseVersionNumber: String? {
+        return infoDictionary?["CFBundleShortVersionString"] as? String
+    }
+    var buildVersionNumber: String? {
+        return infoDictionary?["CFBundleVersion"] as? String
+    }
+}
+
 class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScrollViewDelegate {
     let tempTokenFileName: String = "token.txt"
     var serverButtonJavascript: String = ""
@@ -17,7 +26,9 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     var url: URL?
     
     let webView: WKWebView = FullScreenWebView()
-    
+
+    let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
+
     private var authComplete: Bool = false
     private var gettingToken: Bool = false
     public var isLoaded: Bool = false
@@ -39,6 +50,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         catch{
             serverButtonJavascript = ""
         }
+        self.webView.customUserAgent = customUserAgent
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
