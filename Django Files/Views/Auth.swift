@@ -91,7 +91,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 reloadState = false
             }
         }
-        else{
+        else if webView.url?.host() == url?.host(){
             webView.evaluateJavaScript(serverButtonJavascript, completionHandler: { (jsonRaw: Any?, error: Error?) in
             })
         }
