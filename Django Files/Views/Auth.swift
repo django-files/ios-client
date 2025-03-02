@@ -17,7 +17,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     var url: URL?
     
     let webView: WKWebView = FullScreenWebView()
-
+    
     private var authComplete: Bool = false
     private var gettingToken: Bool = false
     public var isLoaded: Bool = false
@@ -113,7 +113,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
         download.delegate = self
     }
-        
+    
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         download.delegate = self
     }
@@ -136,6 +136,10 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         Task{
             webView.load(URLRequest(url: url!))
         }
+    }
+    
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        scrollView.pinchGestureRecognizer?.isEnabled = false
     }
     
     public func getToken() -> String?{
@@ -211,8 +215,10 @@ struct AuthView: UIViewRepresentable {
             authController.onSchemeRedirectAction = onSchemeRedirectAction
             
             authController.webView.navigationDelegate = authController
+            authController.webView.scrollView.delegate = authController
             authController.webView.scrollView.maximumZoomScale = 1
             authController.webView.scrollView.minimumZoomScale = 1
+            authController.webView.scrollView.zoomScale = 1
             authController.webView.isOpaque = false
             
             authController.reset()

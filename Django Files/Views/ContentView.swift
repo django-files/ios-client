@@ -46,6 +46,7 @@ struct ContentView: View {
             }
         } detail: {
             AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor)
+                .navigationViewStyle(StackNavigationViewStyle())
         }
         .sheet(isPresented: $showingEditor){
             SessionEditor(session: nil)
