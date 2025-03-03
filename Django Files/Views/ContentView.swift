@@ -67,7 +67,7 @@ struct ContentView: View {
             SessionEditor(session: nil) // New session case
         }
         .sheet(item: $selectedSession) { session in
-                    SessionSelector(session: session)
+            SessionSelector(session: session)
         }
         .onAppear() {
             setDefaultServer()
