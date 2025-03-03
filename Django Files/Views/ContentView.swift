@@ -87,11 +87,11 @@ struct ContentView: View {
     private func setDefaultServer(){
         if items.count > 0{
             var server = items.first(where: {
-                $0.defaultSession == true
+                return $0.defaultSession == true
             })
             if server == nil {
                 server = items.first(where: {
-                    $0.auth
+                    return $0.auth
                 })
                 if server != nil{
                     server?.defaultSession = true
@@ -117,6 +117,7 @@ public struct AuthViewContainer: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.presentationMode) private var presentationMode: Binding<PresentationMode>
+    @Query private var items: [DjangoFilesSession]
     
     var viewingSettings: Binding<Bool>
     var selectedServer: Binding<DjangoFilesSession?>
@@ -164,6 +165,7 @@ public struct AuthViewContainer: View {
                                     try modelContext.save()
                                 }
                                 catch{}
+                                setDefaultServer()
                             }
                             .onStartedLoading {
                                 toolbarHidden = false
@@ -197,15 +199,6 @@ public struct AuthViewContainer: View {
                                 authController.updatePageSafeArea()
                             }
                             .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
-                            .toolbar {
-                                if !(UIDevice.current.userInterfaceIdiom == .pad && toolbarHidden){
-                                    ToolbarItem(placement: .confirmationAction) {
-                                        Button("Server Info"){
-                                            viewingSettings.wrappedValue = true
-                                        }
-                                    }
-                                }
-                            }
                             .navigationTitle(Text(""))
                             .navigationBarBackButtonHidden(true)
                             .navigationBarItems(leading: backButton)
@@ -228,6 +221,22 @@ public struct AuthViewContainer: View {
                     .onAppear(){
                         columnVisibility.wrappedValue = .automatic
                     }
+            }
+        }
+    }
+    
+    private func setDefaultServer(){
+        if items.count > 0{
+            var server = items.first(where: {
+                return $0.defaultSession == true
+            })
+            if server == nil {
+                server = items.first(where: {
+                    return $0.auth
+                })
+                if server != nil{
+                    server?.defaultSession = true
+                }
             }
         }
     }
