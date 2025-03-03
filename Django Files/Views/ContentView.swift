@@ -17,9 +17,11 @@ struct ContentView: View {
     @State private var runningSession = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
+    @State private var selectedSession: DjangoFilesSession? // Track session for settings
+    @State private var showingSelector = false // Show SessionSelector
     
     @State private var token: String?
-    
+        
     @State private var viewingSettings: Bool = false
     
     var body: some View {
@@ -28,6 +30,19 @@ struct ContentView: View {
                 ForEach(items) { item in
                     NavigationLink(value: item) {
                         Text(item.url)
+                            .swipeActions() {
+                                Button(role: .destructive) {
+                                    deleteItems(offsets: [items.firstIndex(of: item)!])
+                                } label: {
+                                    Label("Delete", systemImage: "trash.fill")
+                                }
+                                Button {
+                                    selectedSession = item
+                                } label: {
+                                    Label("Settings", systemImage: "gear")
+                                }
+                                .tint(.indigo)
+                        }
                     }
                 }
                 .onDelete(perform: deleteItems)            }
@@ -49,7 +64,10 @@ struct ContentView: View {
                 .navigationViewStyle(StackNavigationViewStyle())
         }
         .sheet(isPresented: $showingEditor){
-            SessionEditor(session: nil)
+            SessionEditor(session: nil) // New session case
+        }
+        .sheet(item: $selectedSession) { session in
+            SessionSelector(session: session)
         }
         .onAppear() {
             setDefaultServer()
