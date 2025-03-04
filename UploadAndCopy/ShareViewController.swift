@@ -94,12 +94,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                 }
                             }
                             else if self.imageView.image == nil && self.shareURL != nil{
-                                do{
-                                    self.imageView.image = UIImage(data: try Data(contentsOf: self.shareURL!))
-                                }
-                                catch {
-                                    self.showMessageAndDismiss(message: "Invalid image.")
-                                }
+                                self.imageView.image = self.downsample(imageAt: self.shareURL!, to: self.imageView.bounds.size)
                             }
                             else{
                                 self.showMessageAndDismiss(message: "Invalid image.")
@@ -339,5 +334,33 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     {
         let uploadProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
         self.progressBar.progress = uploadProgress
+    }
+    
+    func downsample(imageAt imageURL: URL,
+                    to pointSize: CGSize,
+                    scale: CGFloat = UIScreen.main.scale) -> UIImage? {
+
+        // Create an CGImageSource that represent an image
+        let imageSourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let imageSource = CGImageSourceCreateWithURL(imageURL as CFURL, imageSourceOptions) else {
+            return nil
+        }
+        
+        // Calculate the desired dimension
+        let maxDimensionInPixels = max(pointSize.width, pointSize.height) * scale
+        
+        // Perform downsampling
+        let downsampleOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxDimensionInPixels
+        ] as CFDictionary
+        guard let downsampledImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, downsampleOptions) else {
+            return nil
+        }
+        
+        // Return the downsampled image as UIImage
+        return UIImage(cgImage: downsampledImage)
     }
 }
