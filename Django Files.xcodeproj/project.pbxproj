@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4C2A27632D7941E400C1A51F /* Fastlane in Frameworks */ = {isa = PBXBuildFile; productRef = 4C2A27622D7941E400C1A51F /* Fastlane */; };
 		4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB502D62372200C0893B /* HTTPTypes */; };
 		4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4C82CB522D62372200C0893B /* HTTPTypesFoundation */; };
 		4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -139,6 +140,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C2A27632D7941E400C1A51F /* Fastlane in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,6 +256,7 @@
 			);
 			name = "Django FilesUITests";
 			packageProductDependencies = (
+				4C2A27622D7941E400C1A51F /* Fastlane */,
 			);
 			productName = "Django FilesUITests";
 			productReference = 4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */;
@@ -320,6 +323,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
+				4C2A27612D7941E400C1A51F /* XCRemoteSwiftPackageReference "fastlane" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -797,6 +801,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		4C2A27612D7941E400C1A51F /* XCRemoteSwiftPackageReference "fastlane" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/fastlane/fastlane";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.226.0;
+			};
+		};
 		4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-http-types.git";
@@ -808,6 +820,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4C2A27622D7941E400C1A51F /* Fastlane */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C2A27612D7941E400C1A51F /* XCRemoteSwiftPackageReference "fastlane" */;
+			productName = Fastlane;
+		};
 		4C82CB502D62372200C0893B /* HTTPTypes */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
