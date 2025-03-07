@@ -23,3 +23,6 @@ jobs:
           MATCH_URL: git@github.com:django-files/ios-match-certs.git
           CI: false
           APPLE_ID: ${{ secrets.APPLE_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_ID: ${{ secrets.ASC_API_ID }}
