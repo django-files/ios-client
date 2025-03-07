@@ -19,5 +19,5 @@ jobs:
       - run: fastlane beta
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_URL: ${{ env.MATCH_URL }}
+          MATCH_URL: git@github.com:django-files/ios-match-certs.git
           CI: false
