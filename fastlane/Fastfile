@@ -32,6 +32,6 @@ platform :ios do
     )
     build_app()
     pilot
-    upload_to_testflight(skip_waiting_for_build_processing: true, username: ENV['APPLE_ID'])
+    # upload_to_testflight(skip_waiting_for_build_processing: true, username: ENV['APPLE_ID'])
   end
 end
