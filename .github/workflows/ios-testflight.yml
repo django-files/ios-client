@@ -26,3 +26,4 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
           ASC_API_ID: ${{ secrets.ASC_API_ID }}
+          BUILD_NUMBER: ${{ github.run_number }}
