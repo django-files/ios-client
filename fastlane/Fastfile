@@ -28,9 +28,12 @@ platform :ios do
       in_house: false # optional but may be required if using match/sigh
     )
     increment_build_number(
-      build_number: latest_testflight_build_number(api_key: api_key) + 1,
-      skip_info_plist: true,
-      app_identifier: 'com.djangofiles.app')
+      build_number: latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: 'com.djangofiles.app'
+      ) + 1,
+      skip_info_plist: true
+    )
     pilot
     upload_to_testflight(skip_waiting_for_build_processing: true, username: ENV['APPLE_ID'])
   end
