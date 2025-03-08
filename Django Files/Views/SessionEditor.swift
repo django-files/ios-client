@@ -46,10 +46,8 @@ struct SessionEditor: View {
     @State private var token: String = ""
     @State private var badURL = false
     @State private var insecureURL = false
-    @State private var insecureAlertShown = false
     
-    @State private var urlValid: Bool = false
-
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -65,24 +63,27 @@ struct SessionEditor: View {
                             let temp = URL(string: $0)
                             if temp?.scheme != nil && temp?.scheme != ""{
                                 url = temp
-                                if (url?.absoluteString.starts(with: /[a-zA-Z]+:$/))! && !(url?.absoluteString.starts(with: /https:$/))! && !insecureAlertShown{
+                                if (url?.scheme?.lowercased()) == ("http"){
                                     insecureURL = true
+                                } else {
+                                    insecureURL = false
                                 }
                             }
                         }
                     ))
                         .disableAutocorrection(true)
                         .textInputAutocapitalization(.never)
-                        .alert(isPresented: $insecureURL){
-                            Alert(title: Text("Insecure URL"), message: Text("We strongly recommend using HTTPS for security reasons. Press OK to continue."))
-                        }
-                        .onChange(of: insecureURL){
-                            if insecureURL{
-                                insecureAlertShown = true
-                            }
-                        }
                 } label: {
                     Text("URL:")
+                }
+                if insecureURL {
+                    let warningMessage = "⚠️ We strongly recommend using HTTPS."
+                    TextField("", text: Binding(
+                            get: { warningMessage },
+                            set: { _ in } // Prevents user from modifying the text
+                        ))
+                        .disabled(true) // Prevents user input
+                        .foregroundColor(.red)
                 }
             }
             .toolbar {
