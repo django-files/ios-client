@@ -12,6 +12,7 @@
 		4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */; };
 		4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */; };
+		4CE57E8B2D7C9F440073CFC1 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 		4C5E21002D603C3B009EE83A /* Django FilesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Django FilesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Django FilesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UploadAndCopy.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnapshotHelper.swift; path = fastlane/SnapshotHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -157,6 +159,7 @@
 		4C5E20E32D603C3B009EE83A = {
 			isa = PBXGroup;
 			children = (
+				4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */,
 				4C5E20EE2D603C3B009EE83A /* Django Files */,
 				4C5E21032D603C3B009EE83A /* Django FilesTests */,
 				4C5E210D2D603C3B009EE83A /* Django FilesUITests */,
@@ -320,7 +323,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
-				A2CB164D2D7C9CBC000EEE5D /* XCRemoteSwiftPackageReference "fastlane" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -385,6 +387,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4CE57E8B2D7C9F440073CFC1 /* SnapshotHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -669,6 +672,10 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -686,6 +693,10 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = blastsoftstudios.djangofilesUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -820,14 +831,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.3.1;
-			};
-		};
-		A2CB164D2D7C9CBC000EEE5D /* XCRemoteSwiftPackageReference "fastlane" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/fastlane/fastlane";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.226.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
