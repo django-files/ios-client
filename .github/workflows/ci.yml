@@ -1,11 +1,11 @@
-name: build-ios-app
+name: "Django Files iOS CI"
 on:
   push:
     branches:
       - '**'
 jobs:
   build:
-    name: "Django Files iOS CI"
+    name: "CI"
     runs-on: macos-15
     steps:
       - name: "Add Match Repo SSH Key"
