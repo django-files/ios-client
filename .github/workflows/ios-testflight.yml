@@ -2,8 +2,7 @@ name: build-ios-app
 on:
   push:
     branches:
-      - 'master'
-      - 'fastlane'
+      - 'main'
 jobs:
   build:
     runs-on: macos-15
