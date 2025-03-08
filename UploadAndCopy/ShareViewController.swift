@@ -181,12 +181,14 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         Task{
-            let response = await api.uploadFile(url: shareURL!, taskDelegate: self)
+            let task = await api.uploadFileStreamed(url: shareURL!, taskDelegate: self)
+            let response = await task?.waitForComplete()
+            
             self.activityIndicator.stopAnimating()
             
             if response == nil{
                 DispatchQueue.main.async {
-                    self.showMessageAndDismiss(message: "Bad server response.")
+                    self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
                 }
             }
             else{
@@ -325,8 +327,10 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             }
         })
         Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false, block: { _ in
-            alert.dismiss(animated: true, completion: nil)
-            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
+            DispatchQueue.main.async {
+                alert.dismiss(animated: true, completion: nil)
+                self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
+            }
         } )
     }
     
