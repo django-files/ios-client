@@ -37,9 +37,10 @@ platform :ios do
 
 
   lane :tests do
-    run_tests(workspace: "Django\ Files.xcodeproj/project.xcworkspace",
-              devices: ["iPhone 16 Pro Max", "iPhone 16", "iPad Pro 13-inch", "iPhone SE (3rd generation)"],
-              scheme: "Django Files")
+    scan
+    # run_tests(workspace: "Django\ Files.xcodeproj/project.xcworkspace",
+    #           devices: ["iPhone 16 Pro Max", "iPhone 16", "iPad Pro 13-inch", "iPhone SE (3rd generation)"],
+    #           scheme: "Django Files")
   end
 
   lane :ci do
