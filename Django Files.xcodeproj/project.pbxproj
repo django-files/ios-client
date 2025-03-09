@@ -323,7 +323,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
-				4CE57E892D7C9EB70073CFC1 /* XCRemoteSwiftPackageReference "fastlane" */,
+				A206546D2D7D57350033FA05 /* XCRemoteSwiftPackageReference "fastlane" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -834,7 +834,7 @@
 				minimumVersion = 1.3.1;
 			};
 		};
-		4CE57E892D7C9EB70073CFC1 /* XCRemoteSwiftPackageReference "fastlane" */ = {
+		A206546D2D7D57350033FA05 /* XCRemoteSwiftPackageReference "fastlane" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/fastlane/fastlane";
 			requirement = {

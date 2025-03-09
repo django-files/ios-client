@@ -13,4 +13,4 @@ xcuserdata/
 *.dSYM
 
 .build/
-Django Files.xcodeproj/project.xcworkspace/xcuserdata/
+fastlane/
