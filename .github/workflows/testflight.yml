@@ -1,19 +1,19 @@
 name: build-ios-app
 on:
-  push:
-    branches:
-      - 'main'
+  release:
+    types: [published]
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   build:
+    if: github.event.release.prerelease == true
     runs-on: runs-on: ['self-hosted', 'macOS', 'ARM64']
     steps:
-      - name: "Debug"
-        run: |
-          fastlane env
-          /usr/bin/xcodebuild -version
+      # - name: "Debug"
+      #   run: |
+      #     fastlane env
+      #     /usr/bin/xcodebuild -version
       - name: "Add SSH Key"
         uses: webfactory/ssh-agent@v0.9.0
         with:

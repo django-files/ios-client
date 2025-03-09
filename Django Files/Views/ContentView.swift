@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
     @State private var selectedSession: DjangoFilesSession? // Track session for settings
     @State private var showingSelector = false // Show SessionSelector
+    @State private var needsRefresh = false  // Added to handle refresh after adding server
     
     @State private var token: String?
         
@@ -42,14 +43,12 @@ struct ContentView: View {
                                     Label("Settings", systemImage: "gear")
                                 }
                                 .tint(.indigo)
-                        }
+                            }
                     }
                 }
-                .onDelete(perform: deleteItems)            }
+                .onDelete(perform: deleteItems)
+            }
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
                 ToolbarItem {
                     Button(action: {
                         self.showingEditor.toggle()
@@ -60,24 +59,26 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor)
+            AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
                 .navigationViewStyle(StackNavigationViewStyle())
         }
         .sheet(isPresented: $showingEditor){
-            SessionEditor(session: nil) // New session case
+            SessionEditor(session: nil)
+                .onDisappear {
+                    // When editor is dismissed, trigger a refresh and select the new server
+                    if items.count > 0 {
+                        needsRefresh = true
+                        selectedServer = items.last
+                    }
+                }
         }
         .sheet(item: $selectedSession) { session in
             SessionSelector(session: session)
         }
         .onAppear() {
             setDefaultServer()
-            if items.count > 0{
-                selectedServer = items.first(where: {
-                    $0.defaultSession == true
-                })
-                if selectedServer == nil{
-                    selectedServer = items.first
-                }
+            if items.count > 0 {
+                selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -123,9 +124,10 @@ public struct AuthViewContainer: View {
     var selectedServer: Binding<DjangoFilesSession?>
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
+    var needsRefresh: Binding<Bool>
+
     @State private var toolbarHidden: Bool = false
     @State private var authError: Bool = false
-    
     @State private var authController: AuthController = AuthController()
     
     var backButton : some View { Button(action: {
@@ -193,23 +195,27 @@ public struct AuthViewContainer: View {
                             .onAppear(){
                                 authController.setSafeAreaInsets(geometry.safeAreaInsets)
                                 columnVisibility.wrappedValue = .automatic
+                                if needsRefresh.wrappedValue {
+                                    authController.reset()
+                                    needsRefresh.wrappedValue = false
+                                }
                             }
                             .onChange(of: geometry.safeAreaInsets){
                                 authController.setSafeAreaInsets(geometry.safeAreaInsets)
                                 authController.updatePageSafeArea()
                             }
-                            .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
-                            .navigationTitle(Text(""))
-                            .navigationBarBackButtonHidden(true)
-                            .navigationBarItems(leading: backButton)
-                            .alert(isPresented: $authError){
-                                Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
-                            }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .edgesIgnoringSafeArea(.all)
+                    .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
+                    .navigationTitle(Text(""))
+                    .navigationBarBackButtonHidden(true)
+                    .navigationBarItems(leading: backButton)
+                    .alert(isPresented: $authError){
+                        Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
+                    }
                 }
-                else{
+                else {
                     Text("Loading...")
                         .onAppear(){
                             columnVisibility.wrappedValue = .automatic
@@ -217,7 +223,7 @@ public struct AuthViewContainer: View {
                 }
             }
             else{
-                Text("Select an item")
+                Text("Select a Server")
                     .onAppear(){
                         columnVisibility.wrappedValue = .automatic
                     }

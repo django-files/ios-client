@@ -1,5 +1,5 @@
 //
-//  SessionEditor.swift
+//  SessionSelector.swift
 //  Django Files
 //
 //  Created by Michael on 2/15/25.
