@@ -9,7 +9,7 @@ concurrency:
 jobs:
   build:
     name: "CI"
-    runs-on: macos-15
+    runs-on: runs-on: selfhosted-macos-15
     steps:
       - name: "Add Match Repo SSH Key"
         uses: webfactory/ssh-agent@v0.9.0
