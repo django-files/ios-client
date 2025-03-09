@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: runs-on: ['selfhosted', 'macOS', 'ARM64']
+    runs-on: runs-on: ['self-hosted', 'macOS', 'ARM64']
     steps:
       - name: "Debug"
         run: |
