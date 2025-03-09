@@ -1,0 +1,33 @@
+name: "Django Files iOS CI"
+on:
+  push:
+    branches:
+      - '**'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: "CI"
+    runs-on: macos-15
+    steps:
+      - name: "Add Match Repo SSH Key"
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+      - uses: actions/checkout@v4
+      - name: "Fastlane Tests"
+        run: fastlane tests
+        env:
+          CI: true
+      # - name: "Fastlane CI"
+      #   run: fastlane ci
+      #   env:
+      #     MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      #     MATCH_URL: git@github.com:django-files/ios-match-certs.git
+      #     CI: true
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      #     ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+      #     ASC_API_ID: ${{ secrets.ASC_API_ID }}
+      #     BUILD_NUMBER: ${{ github.run_number }}
