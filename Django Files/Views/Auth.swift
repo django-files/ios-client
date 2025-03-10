@@ -24,7 +24,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     var url: URL?
     
-    let webView: WKWebView = FullScreenWebView()
+    let webView: WKWebView = WKWebView()
 
     let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
 
@@ -228,7 +228,7 @@ struct AuthView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         guard let url = URL(string: httpsUrl) else {
-            return FullScreenWebView()
+            return WKWebView()
         }
         
         if doReset{
@@ -261,12 +261,6 @@ struct AuthView: UIViewRepresentable {
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
     }
-}
-
-class FullScreenWebView: WKWebView {
-//    override var safeAreaInsets: UIEdgeInsets {
-//        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-//    }
 }
 
 
