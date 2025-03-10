@@ -13,4 +13,7 @@ xcuserdata/
 *.dSYM
 
 .build/
-fastlane/
+.DS_Store
+report.xml
+report.html
+report.junit
