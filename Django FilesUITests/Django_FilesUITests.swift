@@ -23,10 +23,17 @@ final class Django_FilesUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
+    func testNewServer() throws {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
+        app.launchArguments = ["--DeleteAllData"]
+        app.launchEnvironment = ["RESET_STATE": "YES"]
         app.launch()
+        let textField = app.textFields["urlTextField"]
+        textField.tap()
+        textField.typeText("https://df.cssnr.com")
+        let submitButton = app.buttons["serverSubmitButton"]
+        submitButton.tap()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }

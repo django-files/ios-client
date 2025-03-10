@@ -25,7 +25,7 @@ struct SessionEditor: View {
             session.token = token
             session.auth = false
         } else {
-            let session = DjangoFilesSession ()
+            let session = DjangoFilesSession()
             session.url = url?.absoluteString ?? ""
             for item in items{
                 item.defaultSession = false
@@ -37,7 +37,7 @@ struct SessionEditor: View {
             do {
                 try modelContext.save()
             } catch {
-                
+                print("Error saving session: \(error)")
             }
         }
     }
@@ -73,6 +73,7 @@ struct SessionEditor: View {
                     ))
                         .disableAutocorrection(true)
                         .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("urlTextField")
                 } label: {
                     Text("URL:")
                 }
@@ -104,8 +105,9 @@ struct SessionEditor: View {
                         }
                     })
                     {
-                        Text("Add Session")
+                        Text(editorTitle)
                     }
+                    .accessibilityIdentifier("serverSubmitButton")
                     .alert(isPresented: $badURL){
                         Alert(title: Text("Invalid URL"), message: Text("Invalid URL format or scheme (http or https).\nExample: https://df.myserver.com"))
                     }

@@ -24,7 +24,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     var url: URL?
     
-    let webView: WKWebView = FullScreenWebView()
+    let webView: WKWebView = WKWebView()
 
     let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
 
@@ -55,13 +55,15 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
         webView.isHidden = false
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         onLoadedAction?()
         
         if authComplete{
             decisionHandler(.allow)
             return
         }
-        
+
+
         if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/").absoluteString {
             let code = (navigationResponse.response as! HTTPURLResponse).statusCode
             switch code{
@@ -104,9 +106,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
                 webView.load(URLRequest(url: url!))
                 reloadState = false
             }
-        }
-        else{
-            updatePageSafeArea()
         }
     }
     
@@ -195,14 +194,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         safeAreaInsets = insets
     }
     
-    public func updatePageSafeArea(){
-        if webView.url?.host() == url?.host(){
-            webView.evaluateJavaScript("document.body.getElementsByClassName(\"navbar\")[0].style.paddingTop = \"\(safeAreaInsets.top)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
-            webView.evaluateJavaScript("document.body.getElementsByClassName(\"flex-grow-1\")[0].style.paddingLeft = \"\(safeAreaInsets.trailing)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
-            webView.evaluateJavaScript("document.body.getElementsByClassName(\"flex-grow-1\")[0].style.paddingRight = \"\(safeAreaInsets.leading)px\";", completionHandler: { (jsonRaw: Any?, error: Error?) in })
-        }
-    }
-    
     public func reset(){
         authError = nil
         clearToken()
@@ -237,7 +228,7 @@ struct AuthView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         guard let url = URL(string: httpsUrl) else {
-            return FullScreenWebView()
+            return WKWebView()
         }
         
         if doReset{
@@ -269,13 +260,6 @@ struct AuthView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        authController.updatePageSafeArea()
-    }
-}
-
-class FullScreenWebView: WKWebView {
-    override var safeAreaInsets: UIEdgeInsets {
-        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
     }
 }
 
