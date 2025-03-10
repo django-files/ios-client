@@ -202,7 +202,6 @@ public struct AuthViewContainer: View {
                             }
                             .onChange(of: geometry.safeAreaInsets){
                                 authController.setSafeAreaInsets(geometry.safeAreaInsets)
-                                authController.updatePageSafeArea()
                             }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
