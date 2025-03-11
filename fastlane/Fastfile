@@ -35,7 +35,7 @@ platform :ios do
       xcodeproj: "./Django\ Files.xcodeproj/"
     )
     build_app()
-    pilot
+    pilot(skip_submission: true)
     # upload_to_testflight(skip_waiting_for_build_processing: true, username: ENV['APPLE_ID'])
   end
 
