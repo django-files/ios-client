@@ -36,8 +36,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     private var safeAreaInsets: EdgeInsets = EdgeInsets()
     
-    private var authorizationToken: String?
-    
     public func getAuthErrorMessage() -> String? {
         return authError
     }
@@ -64,10 +62,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         // Configure the webView after super.init()
         self.webView.customUserAgent = customUserAgent
         self.webView.navigationDelegate = self
-    }
-    
-    public func setAuthorizationToken(_ token: String?) {
-        self.authorizationToken = token
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
@@ -128,16 +122,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
         webView.scrollView.zoomScale = 0
-        
-        // if let token = authorizationToken,
-        //    let url = navigationAction.request.url {
-        //     var modifiedRequest = navigationAction.request
-        //     modifiedRequest.setValue(token, forHTTPHeaderField: "Authorization")
-        //     Task {
-        //         await webView.load(modifiedRequest)
-        //     }
-        //     return .cancel
-        // }
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!

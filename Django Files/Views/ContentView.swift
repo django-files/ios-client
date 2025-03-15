@@ -62,7 +62,7 @@ struct ContentView: View {
         } detail: {
             if let server = selectedServer {
                 if server.auth {  // Use the unwrapped 'server' instead of selectedServer
-                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh, authorizationToken: $selectedServer.wrappedValue!.token)
+                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
                 } else {
                     LoginView(
                         dfapi: DFAPI(
@@ -143,7 +143,6 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
-    var authorizationToken: String
     
     @State private var toolbarHidden: Bool = true
     @State private var authError: Bool = false
@@ -222,6 +221,46 @@ public struct AuthViewContainer: View {
                                 if needsRefresh.wrappedValue {
                                     authController.reset()
                                     needsRefresh.wrappedValue = false
+                                }
+                                
+                                // Set up handlers directly on the controller
+                                authController.onAuthAction = {
+                                    toolbarHidden = true
+                                    guard let temp = authController.getToken() else {
+                                        return
+                                    }
+                                    selectedServer.wrappedValue!.token = temp
+                                    do{
+                                        try modelContext.save()
+                                    }
+                                    catch{}
+                                    setDefaultServer()
+                                }
+                                
+                                authController.onStartedLoadingAction = {
+                                    toolbarHidden = false
+                                }
+                                
+                                authController.onCancelledAction = {
+                                    dismiss()
+                                    toolbarHidden = false
+                                    authError = true
+                                }
+                                
+                                authController.onSchemeRedirectAction = {
+                                    guard let resolve = authController.schemeURL else{
+                                        return
+                                    }
+                                    switch resolve{
+                                    case "serverlist":
+                                        self.presentationMode.wrappedValue.dismiss()
+                                        break
+                                    case "serversettings":
+                                        viewingSettings.wrappedValue = true
+                                        break
+                                    default:
+                                        return
+                                    }
                                 }
                             }
                             .onChange(of: geometry.safeAreaInsets){
