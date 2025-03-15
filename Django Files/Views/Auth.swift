@@ -48,32 +48,34 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     var onStartedLoadingAction: (() -> Void)?
     var onSchemeRedirectAction: (() -> Void)?
     
-    override init() {
+    override init(){
         super.init()
         self.webView.customUserAgent = customUserAgent
     }
-
     
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
-        print("Navigation response for URL: \(navigationResponse.response.url?.absoluteString ?? "nil")")
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
+        webView.isHidden = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         onLoadedAction?()
         
-        if authComplete {
+        if authComplete{
             decisionHandler(.allow)
             return
         }
 
+
         if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/").absoluteString {
             let code = (navigationResponse.response as! HTTPURLResponse).statusCode
-            switch code {
+            switch code{
             case 200:
                 decisionHandler(.cancel)
-                Task {
+                Task{
                     webView.load(URLRequest(url: url!.appending(path: "/api/token")))
                 }
+                break
             case 302:
                 decisionHandler(.allow)
+                break
             default:
                 decisionHandler(.cancel)
                 onCancelledAction?()
@@ -82,35 +84,35 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
             }
             return
         }
-        else if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/api/token/").absoluteString {
+        else if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/api/token/").absoluteString{
             let response = navigationResponse.response as! HTTPURLResponse
-            if response.statusCode == 200 {
+            if response.statusCode == 200{
                 gettingToken = true
                 decisionHandler(.download)
             }
-            else {
+            else{
                 onCancelledAction?()
                 authError = "Server did not respond to token API request properly. Make sure the URL is correct."
-                decisionHandler(.cancel)
             }
         }
-        else {
+        else{
             decisionHandler(.allow)
         }
     }
     
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if reloadState {
-            Task {
+        if reloadState{
+            Task{
                 webView.load(URLRequest(url: url!))
                 reloadState = false
             }
         }
     }
     
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
         webView.scrollView.zoomScale = 0
-        if navigationAction.request.url?.scheme == "djangofiles" {
+        
+        if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
@@ -118,7 +120,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
             loadHomepage()
             return .cancel
         }
-        else if navigationAction.request.url?.absoluteString == "about:blank" {
+        else if navigationAction.request.url?.absoluteString == "about:blank"{
             return .allow
         }
         else if url?.scheme == "https" && navigationAction.request.url?.scheme != "https" {
@@ -127,7 +129,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
             authError = "Blocked attempt to navigate to non-HTTPS URL while using HTTPS."
             return .cancel
         }
-        else {
+        else{
             return .allow
         }
     }
@@ -192,8 +194,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         safeAreaInsets = insets
     }
     
-    public func reset() {
-        print("Resetting AuthController")
+    public func reset(){
         authError = nil
         clearToken()
         authComplete = false
@@ -202,32 +203,12 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         loadHomepage()
     }
     
-    private func loadHomepage() {
+    private func loadHomepage(){
         reloadState = true
+        webView.isHidden = true
         webView.load(URLRequest(url: URL(string: "about:blank")!))
-        Task {
+        Task{
             onStartedLoadingAction?()
-        }
-    }
-
-    public func loadInitialURL() {
-        guard let url = url else {
-            print("No URL set for AuthController")
-            return
-        }
-        print("Loading initial URL: \(url.absoluteString)")
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        request.allowsConstrainedNetworkAccess = true
-        request.allowsExpensiveNetworkAccess = true
-        
-        // Clear all cookies and website data before loading
-        WKWebsiteDataStore.default().removeData(
-            ofTypes: [WKWebsiteDataTypeCookies, WKWebsiteDataTypeLocalStorage],
-            modifiedSince: Date(timeIntervalSince1970: 0)
-        ) {
-            self.webView.load(request)
-            self.onStartedLoadingAction?()
         }
     }
 }
@@ -246,17 +227,16 @@ struct AuthView: UIViewRepresentable {
     var onStartedLoadingAction: (() -> Void)?
 
     func makeUIView(context: Context) -> WKWebView {
-        print("Making AuthView with URL: \(httpsUrl)")
         guard let url = URL(string: httpsUrl) else {
-            print("Failed to create URL from: \(httpsUrl)")
             return WKWebView()
         }
         
-        if doReset {
+        if doReset{
             authController.url = url
             
             authController.onLoadedAction = onLoadedAction
             authController.onCancelledAction = onCancelledAction
+            
             authController.onAuthAction = onAuthAction
             authController.onStartedLoadingAction = onStartedLoadingAction
             authController.onSchemeRedirectAction = onSchemeRedirectAction
@@ -265,15 +245,12 @@ struct AuthView: UIViewRepresentable {
             authController.webView.scrollView.delegate = authController
             authController.webView.scrollView.maximumZoomScale = 1
             authController.webView.scrollView.minimumZoomScale = 1
-            
-            // Configure WebView for OAuth
             authController.webView.isOpaque = false
             
-            // Reset and load the initial URL
             authController.reset()
-            authController.loadInitialURL()
-        } else {
-            Task {
+        }
+        else{
+            Task{
                 authController.onAuthAction?()
                 authController.onLoadedAction?()
             }
