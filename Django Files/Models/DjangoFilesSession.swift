@@ -14,6 +14,7 @@ public final class DjangoFilesSession: Equatable {
     var defaultSession: Bool = false
     var token: String
     var auth: Bool = false
+    @Transient var cookies: [HTTPCookie] = []
     
     init() {
         self.url = ""

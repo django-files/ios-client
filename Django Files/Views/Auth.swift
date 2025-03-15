@@ -24,7 +24,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     var url: URL?
     
-    let webView: WKWebView = WKWebView()
+    var webView: WKWebView
 
     let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
 
@@ -35,6 +35,8 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     private var authError: String? = nil
     
     private var safeAreaInsets: EdgeInsets = EdgeInsets()
+    
+    private var authorizationToken: String?
     
     public func getAuthErrorMessage() -> String? {
         return authError
@@ -48,9 +50,24 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     var onStartedLoadingAction: (() -> Void)?
     var onSchemeRedirectAction: (() -> Void)?
     
-    override init(){
+    override init() {
+        // Configure WebView to use persistent cookie storage
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default() // Use persistent storage instead of ephemeral
+        
+        // Create WebView with configuration
+        let newWebView = WKWebView(frame: .zero, configuration: configuration)
+        self.webView = newWebView
+        
         super.init()
+        
+        // Configure the webView after super.init()
         self.webView.customUserAgent = customUserAgent
+        self.webView.navigationDelegate = self
+    }
+    
+    public func setAuthorizationToken(_ token: String?) {
+        self.authorizationToken = token
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
@@ -111,6 +128,16 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
         webView.scrollView.zoomScale = 0
+        
+        // if let token = authorizationToken,
+        //    let url = navigationAction.request.url {
+        //     var modifiedRequest = navigationAction.request
+        //     modifiedRequest.setValue(token, forHTTPHeaderField: "Authorization")
+        //     Task {
+        //         await webView.load(modifiedRequest)
+        //     }
+        //     return .cancel
+        // }
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
@@ -203,6 +230,16 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         loadHomepage()
     }
     
+    public func applyCookies(from session: DjangoFilesSession) {
+        guard let baseURL = URL(string: session.url) else { return }
+        
+        // Apply cookies to the WebView's data store
+        let dataStore = webView.configuration.websiteDataStore
+        for cookie in session.cookies {
+            dataStore.httpCookieStore.setCookie(cookie)
+        }
+    }
+    
     private func loadHomepage(){
         reloadState = true
         webView.isHidden = true
@@ -219,6 +256,7 @@ struct AuthView: UIViewRepresentable {
     let authController: AuthController
     var httpsUrl: String
     let doReset: Bool
+    let session: DjangoFilesSession?
     
     var onLoadedAction: (() -> Void)?
     var onAuthAction: (() -> Void)?
@@ -231,29 +269,15 @@ struct AuthView: UIViewRepresentable {
             return WKWebView()
         }
         
-        if doReset{
-            authController.url = url
-            
-            authController.onLoadedAction = onLoadedAction
-            authController.onCancelledAction = onCancelledAction
-            
-            authController.onAuthAction = onAuthAction
-            authController.onStartedLoadingAction = onStartedLoadingAction
-            authController.onSchemeRedirectAction = onSchemeRedirectAction
-            
-            authController.webView.navigationDelegate = authController
-            authController.webView.scrollView.delegate = authController
-            authController.webView.scrollView.maximumZoomScale = 1
-            authController.webView.scrollView.minimumZoomScale = 1
-            authController.webView.isOpaque = false
-            
+        if doReset {
             authController.reset()
         }
-        else{
-            Task{
-                authController.onAuthAction?()
-                authController.onLoadedAction?()
-            }
+        
+        authController.url = url
+        
+        // Apply cookies from the session if available
+        if let session = session {
+            authController.applyCookies(from: session)
         }
         
         return authController.webView

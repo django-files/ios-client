@@ -62,11 +62,7 @@ struct ContentView: View {
         } detail: {
             if let server = selectedServer {
                 if server.auth {  // Use the unwrapped 'server' instead of selectedServer
-                    AuthViewContainer(viewingSettings: $viewingSettings,
-                                    selectedServer: $selectedServer,
-                                    columnVisibility: $columnVisibility,
-                                    showingEditor: $showingEditor,
-                                    needsRefresh: $needsRefresh)
+                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh, authorizationToken: $selectedServer.wrappedValue!.token)
                 } else {
                     LoginView(
                         dfapi: DFAPI(
@@ -76,6 +72,7 @@ struct ContentView: View {
                         selectedServer: server,
                         onLoginSuccess: {
                             print("Login success")
+                            needsRefresh = true
                         }
                     )
                 }
@@ -146,8 +143,9 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
+    var authorizationToken: String
     
-    @State private var toolbarHidden: Bool = false
+    @State private var toolbarHidden: Bool = true
     @State private var authError: Bool = false
     @State private var authController: AuthController = AuthController()
     
@@ -177,7 +175,12 @@ public struct AuthViewContainer: View {
                     ZStack{
                         Color.djangoFilesBackground.ignoresSafeArea()
                         LoadingView().frame(width: 100, height: 100)
-                        AuthView(authController: authController, httpsUrl: selectedServer.wrappedValue!.url, doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth)
+                        AuthView(
+                            authController: authController,
+                            httpsUrl: selectedServer.wrappedValue!.url,
+                            doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth,
+                            session: selectedServer.wrappedValue
+                        )
                             .onAuth {
                                 toolbarHidden = true
                                 guard let temp = authController.getToken() else {

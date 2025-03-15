@@ -187,15 +187,36 @@ struct DFAPI {
         let request = DFLocalLoginRequest(username: username, password: password)
         do {
             let json = try JSONEncoder().encode(request)
-            let response = try await makeAPIRequest(
-                body: json,
-                path: getAPIPath(.login),
-                parameters: [:],
-                method: .post,
-                expectedResponse: .ok,
-                headerFields: [.contentType: "application/json"]
-            )
-            let userToken = try JSONDecoder().decode(UserToken.self, from: response)
+            
+            // Create URL request manually to access response headers
+            var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:]))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = json
+            
+            // Use default session configuration which persists cookies
+            let configuration = URLSessionConfiguration.default
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            
+            // Extract cookies from response
+            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
+                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
+                // Store cookies in the shared cookie storage
+                cookies.forEach { cookie in
+                    HTTPCookieStorage.shared.setCookie(cookie)
+                }
+                await MainActor.run {
+                    selectedServer.cookies = cookies
+                }
+            }
+            
+            let userToken = try JSONDecoder().decode(UserToken.self, from: data)
             
             // Update the token in the server object
             await MainActor.run {

@@ -25,7 +25,6 @@ struct LoginView: View {
     
     private func fetchAuthMethods() async {
         isLoading = true
-        print("test")
         if let response = await dfapi.getAuthMethods() {
             authMethods = response.authMethods
         } else {
@@ -140,6 +139,7 @@ struct LoginView: View {
                     authController: AuthController(),
                     httpsUrl: url,
                     doReset: true,
+                    session: nil,
                     onLoadedAction: nil,
                     onAuthAction: {
                         showWebView = false
