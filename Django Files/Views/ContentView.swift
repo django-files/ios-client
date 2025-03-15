@@ -14,6 +14,7 @@ struct ContentView: View {
     
     @Query private var items: [DjangoFilesSession]
     @State private var showingEditor = false
+    @State private var showingLogin = false
     @State private var runningSession = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
@@ -59,8 +60,28 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
-                .navigationViewStyle(StackNavigationViewStyle())
+            if let server = selectedServer {
+                if server.auth {  // Use the unwrapped 'server' instead of selectedServer
+                    AuthViewContainer(viewingSettings: $viewingSettings,
+                                    selectedServer: $selectedServer,
+                                    columnVisibility: $columnVisibility,
+                                    showingEditor: $showingEditor,
+                                    needsRefresh: $needsRefresh)
+                } else {
+                    LoginView(
+                        dfapi: DFAPI(
+                            url: URL(string: server.url) ?? URL(string: "https://fallback-url.local")!,
+                            token: server.token
+                        ),
+                        selectedServer: server,
+                        onLoginSuccess: {
+                            print("Login success")
+                        }
+                    )
+                }
+            } else {
+                Text("No server selected")
+            }
         }
         .sheet(isPresented: $showingEditor){
             SessionEditor(session: nil)
@@ -125,7 +146,7 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
-
+    
     @State private var toolbarHidden: Bool = false
     @State private var authError: Bool = false
     @State private var authController: AuthController = AuthController()

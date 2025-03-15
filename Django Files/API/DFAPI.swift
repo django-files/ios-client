@@ -14,8 +14,10 @@ struct DFAPI {
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
-        case upload = "upload"
+        case upload = "upload/"
         case short = "shorten/"
+        case auth_methods = "auth/methods/"
+        case login = "auth/token/"
     }
     
     let url: URL
@@ -154,6 +156,55 @@ struct DFAPI {
         }catch {
             print("Request failed \(error)")
             return nil;
+        }
+    }
+    
+    public func getAuthMethods() async -> DFAuthMethodsResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.auth_methods),
+                parameters: [:],
+                method: .get
+            )
+            //log response body content
+            return try decoder.decode(DFAuthMethodsResponse.self, from: responseBody)
+        } catch {
+            print("Request failed \(error)")
+            return nil
+        }
+    }
+
+    struct DFLocalLoginRequest: Codable {
+        let username: String
+        let password: String
+    }
+    
+    struct UserToken: Codable {
+        let token: String
+    }
+
+    public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {
+        let request = DFLocalLoginRequest(username: username, password: password)
+        do {
+            let json = try JSONEncoder().encode(request)
+            let response = try await makeAPIRequest(
+                body: json,
+                path: getAPIPath(.login),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: [.contentType: "application/json"]
+            )
+            let userToken = try JSONDecoder().decode(UserToken.self, from: response)
+            
+            // Update the token in the server object
+            await MainActor.run {
+                selectedServer.token = userToken.token
+            }
+            return true
+        } catch {
+            print("Local login request failed \(error)")
+            return false
         }
     }
 }
@@ -470,4 +521,13 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
             }
         }
     }
+}
+
+struct DFAuthMethod: Codable {
+    let name: String
+    let url: String
+}
+
+struct DFAuthMethodsResponse: Codable {
+    let authMethods: [DFAuthMethod]
 }

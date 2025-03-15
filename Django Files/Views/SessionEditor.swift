@@ -14,6 +14,7 @@ struct SessionEditor: View {
     @Query private var items: [DjangoFilesSession]
     
     let session: DjangoFilesSession?
+    var onSessionCreated: ((DjangoFilesSession) -> Void)?
     
     private var editorTitle: String {
         session == nil ? "Add Server" : "Edit Server"
@@ -25,17 +26,18 @@ struct SessionEditor: View {
             session.token = token
             session.auth = false
         } else {
-            let session = DjangoFilesSession()
-            session.url = url?.absoluteString ?? ""
-            for item in items{
+            let newSession = DjangoFilesSession()
+            newSession.url = url?.absoluteString ?? ""
+            for item in items {
                 item.defaultSession = false
             }
-            session.defaultSession = true
-            session.token = token
-            session.auth = false
-            modelContext.insert(session)
+            newSession.defaultSession = true
+            newSession.token = token
+            newSession.auth = false
+            modelContext.insert(newSession)
             do {
                 try modelContext.save()
+                onSessionCreated?(newSession)
             } catch {
                 print("Error saving session: \(error)")
             }
