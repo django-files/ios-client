@@ -13,13 +13,13 @@ struct OAuthWebView: View {
     }
     
     private func startAuthentication() {
-        guard let authURL = URL(string: url) else {
-            print("Failed to create URL from string: '\(url)'")
-            onComplete(nil)
-            dismiss()
-            return
-        }
-        
+       guard let authURL = URL(string: url) else {
+           print("Failed to create URL from string: '\(url)'")
+           onComplete(nil)
+           dismiss()
+           return
+       }
+    
         // Create the auth session
         let session = ASWebAuthenticationSession(
             url: authURL,
@@ -49,7 +49,7 @@ struct OAuthWebView: View {
         
         // Present the authentication session
         session.presentationContextProvider = WindowProvider.shared
-        session.prefersEphemeralWebBrowserSession = true
+        session.prefersEphemeralWebBrowserSession = false
         
         if !session.start() {
             print("Failed to start authentication session")
@@ -64,7 +64,8 @@ class WindowProvider: NSObject, ASWebAuthenticationPresentationContextProviding 
     static let shared = WindowProvider()
     
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        guard let window = UIApplication.shared.windows.first else {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first else {
             fatalError("No window found")
         }
         return window
