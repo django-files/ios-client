@@ -8,12 +8,13 @@ struct LoginView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var authMethods: [DFAuthMethod] = []
+    @State private var siteName: String = ""
     @State private var isLoading: Bool = true
     @State private var error: String? = nil
-    @State private var showWebView: Bool = false
-    @State private var selectedOAuthURL: String? = nil
+    @State private var oauthSheetURL: OAuthURL? = nil
     @State private var isLoggingIn: Bool = false
     
+
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
     
@@ -27,6 +28,7 @@ struct LoginView: View {
         isLoading = true
         if let response = await dfapi.getAuthMethods() {
             authMethods = response.authMethods
+            siteName = response.siteName
         } else {
             error = "Failed to fetch authentication methods, is this a Django Files server?"
         }
@@ -50,10 +52,12 @@ struct LoginView: View {
     }
     
     private func handleOAuthLogin(url: String) {
-        if let oauthUrl = URL(string: url) {
-            selectedOAuthURL = oauthUrl.absoluteString
-            showWebView = true
+        print("handleOAuthLogin received URL string: '\(url)'")
+        if URL(string: url) != nil {
+            print("Valid OAuth URL, showing web view")
+            oauthSheetURL = OAuthURL(url: url)
         } else {
+            print("Failed to create OAuth URL from: '\(url)'")
             error = "Invalid OAuth URL"
         }
     }
@@ -72,58 +76,65 @@ struct LoginView: View {
                     }
                 }
             } else {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Local login form
-                        if authMethods.contains(where: { $0.name == "local" }) {
-                            VStack(spacing: 15) {
-                                TextField("Username", text: $username)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .autocapitalization(.none)
-                                    .disabled(isLoggingIn)
-                                
-                                SecureField("Password", text: $password)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .disabled(isLoggingIn)
-                                
-                                Button() {
-                                    Task {
-                                        await handleLocalLogin()
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack() {
+                            // Local login form
+                            Text(siteName).font(.title)
+                            Text("Login to Django Files at \(dfapi.url)")
+                            if authMethods.contains(where: { $0.name == "local" }) {
+                                VStack(spacing: 15) {
+                                    TextField("Username", text: $username)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .autocapitalization(.none)
+                                        .disabled(isLoggingIn)
+                                    
+                                    SecureField("Password", text: $password)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .disabled(isLoggingIn)
+                                    
+                                    Button() {
+                                        Task {
+                                            await handleLocalLogin()
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Text(isLoggingIn ? "Logging in..." : "Login")
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.accentColor)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
                                     }
+                                    .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
+                                }
+                                .padding()
+                                Divider()
+                            }
+
+                            // OAuth methods
+                            ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
+                                Button {
+                                    handleOAuthLogin(url: method.url)
                                 } label: {
                                     HStack {
-                                        Text(isLoggingIn ? "Logging in..." : "Login")
+                                        Text("Continue with \(method.name.capitalized)")
+                                        Image(systemName: "arrow.right.circle.fill")
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding()
-                                    .background(Color.gray)
+                                    .background(Color.blue)
                                     .foregroundColor(.white)
                                     .cornerRadius(10)
                                 }
-                                .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
-                            }
-                            .padding()
-                            
-                            Divider()
-                        }
-                        
-                        // OAuth methods
-                        ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
-                            Button {
-                                handleOAuthLogin(url: method.url)
-                            } label: {
-                                HStack {
-                                    Text("Continue with \(method.name.capitalized)")
-                                    Image(systemName: "arrow.right.circle.fill")
-                                }
-                                .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
                             }
-                            .padding(.horizontal)
                         }
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: geometry.size.height
+                        )
                     }
                 }
             }
@@ -133,32 +144,34 @@ struct LoginView: View {
                 await fetchAuthMethods()
             }
         }
-        .sheet(isPresented: $showWebView) {
-            if let url = selectedOAuthURL {
-                AuthView(
-                    authController: AuthController(),
-                    httpsUrl: url,
-                    doReset: true,
-                    session: nil,
-                    onLoadedAction: nil,
-                    onAuthAction: {
-                        showWebView = false
+        .sheet(item: $oauthSheetURL) { oauthURL in
+            OAuthWebView(url: oauthURL.url, onComplete: { token in
+                Task {
+                    if let token = token {
+                        await MainActor.run {
+                            selectedServer.token = token
+                            selectedServer.auth = true
+                            try? modelContext.save()
+                            oauthSheetURL = nil
+                        }
                         onLoginSuccess()
-                    },
-                    onSchemeRedirectAction: nil,
-                    onCancelledAction: {
-                        showWebView = false
-                        error = "Authentication cancelled"
-                    },
-                    onStartedLoadingAction: nil
-                )
-            }
+                    } else {
+                        error = "Failed to get OAuth token"
+                        oauthSheetURL = nil
+                    }
+                }
+            })
         }
     }
 }
 
+struct OAuthURL: Identifiable {
+    let id = UUID()
+    let url: String
+}
+
 #Preview {
-    LoginView(dfapi: DFAPI(url: URL(string: "https://example.com")!, token: ""), selectedServer: DjangoFilesSession(), onLoginSuccess: {
+    LoginView(dfapi: DFAPI(url: URL(string: "http://localhost")!, token: ""), selectedServer: DjangoFilesSession(), onLoginSuccess: {
         print("Login success")
     })
 } 

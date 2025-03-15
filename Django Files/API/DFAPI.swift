@@ -551,4 +551,5 @@ struct DFAuthMethod: Codable {
 
 struct DFAuthMethodsResponse: Codable {
     let authMethods: [DFAuthMethod]
+    let siteName: String
 }
