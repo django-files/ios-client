@@ -14,7 +14,6 @@ struct OAuthWebView: View {
     
     private func startAuthentication() {
         print("Starting authentication...")
-        let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
         guard let authURL = URL(string: url) else {
             print("Failed to create URL from string: '\(url)'")
             onComplete(nil)
@@ -27,17 +26,13 @@ struct OAuthWebView: View {
         let session = ASWebAuthenticationSession(
             url: authURL,
             callbackURLScheme: "djangofiles",
-            completionHandler: { callbackURL, error in
-                print("Completion handler called")  // Debug print
-                
+            completionHandler: { callbackURL, error in          
                 if let error = error {
                     print("Authentication failed: \(error.localizedDescription)")
                     onComplete(nil)
                     dismiss()
                     return
                 }
-                
-                print("Callback URL received: \(String(describing: callbackURL))")  // Debug print
                 
                 guard let callbackURL = callbackURL,
                       let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
@@ -48,14 +43,11 @@ struct OAuthWebView: View {
                     return
                 }
                 
-                print("Token extracted: \(token)")  // Debug print
                 onComplete(token)
                 dismiss()
             }
         )
 
-        session.additionalHeaderFields = ["X-Client-Identifier": "iOS"]
-        
         // Present the authentication session
         session.presentationContextProvider = WindowProvider.shared
         session.prefersEphemeralWebBrowserSession = false
