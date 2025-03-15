@@ -148,13 +148,18 @@ struct LoginView: View {
             OAuthWebView(url: oauthURL.url, onComplete: { token in
                 Task {
                     if let token = token {
-                        await MainActor.run {
-                            selectedServer.token = token
-                            selectedServer.auth = true
-                            try? modelContext.save()
-                            oauthSheetURL = nil
+                        // Get cookies from shared storage
+                        if let url = URL(string: selectedServer.url) {
+                            let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
+                            await MainActor.run {
+                                selectedServer.token = token
+                                selectedServer.cookies = cookies
+                                selectedServer.auth = true
+                                try? modelContext.save()
+                                oauthSheetURL = nil
+                            }
+                            onLoginSuccess()
                         }
-                        onLoginSuccess()
                     } else {
                         error = "Failed to get OAuth token"
                         oauthSheetURL = nil

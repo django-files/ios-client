@@ -13,18 +13,23 @@ struct OAuthWebView: View {
     }
     
     private func startAuthentication() {
-       guard let authURL = URL(string: url) else {
-           print("Failed to create URL from string: '\(url)'")
-           onComplete(nil)
-           dismiss()
-           return
-       }
+        print("Starting authentication...")
+        let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
+        guard let authURL = URL(string: url) else {
+            print("Failed to create URL from string: '\(url)'")
+            onComplete(nil)
+            dismiss()
+            return
+        }
+        print("Auth URL created: \(authURL)")
     
         // Create the auth session
         let session = ASWebAuthenticationSession(
             url: authURL,
-            callbackURLScheme: "djangofiles", // You'll need to configure this in your app
+            callbackURLScheme: "djangofiles",
             completionHandler: { callbackURL, error in
+                print("Completion handler called")  // Debug print
+                
                 if let error = error {
                     print("Authentication failed: \(error.localizedDescription)")
                     onComplete(nil)
@@ -32,26 +37,33 @@ struct OAuthWebView: View {
                     return
                 }
                 
-                guard let callbackURL = callbackURL else {
-                    print("No callback URL received")
+                print("Callback URL received: \(String(describing: callbackURL))")  // Debug print
+                
+                guard let callbackURL = callbackURL,
+                      let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                      let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {
+                    print("No callback URL or token received")
                     onComplete(nil)
                     dismiss()
                     return
                 }
                 
-                // Extract token from callback URL
-                let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
-                let token = components?.queryItems?.first(where: { $0.name == "token" })?.value
+                print("Token extracted: \(token)")  // Debug print
                 onComplete(token)
                 dismiss()
             }
         )
+
+        session.additionalHeaderFields = ["X-Client-Identifier": "iOS"]
         
         // Present the authentication session
         session.presentationContextProvider = WindowProvider.shared
         session.prefersEphemeralWebBrowserSession = false
         
-        if !session.start() {
+        let started = session.start()
+        print("Session started: \(started)")  // Debug print
+        
+        if !started {
             print("Failed to start authentication session")
             onComplete(nil)
             dismiss()
