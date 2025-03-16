@@ -13,6 +13,7 @@ struct LoginView: View {
     @State private var error: String? = nil
     @State private var oauthSheetURL: OAuthURL? = nil
     @State private var isLoggingIn: Bool = false
+    @State private var showErrorBanner: Bool = false
     
 
     let dfapi: DFAPI
@@ -63,107 +64,130 @@ struct LoginView: View {
     }
     
     var body: some View {
-        VStack {
-            if isLoading {
-                ProgressView("Loading authentication methods...")
-            } else if let error = error {
-                Text(error)
-                    .foregroundColor(.red)
-                    .padding()
-                Button("Retry") {
-                    Task {
-                        await fetchAuthMethods()
+        ZStack {
+            VStack {
+                if isLoading {
+                    ProgressView("Loading authentication methods...")
+                } else if let error = error {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .padding()
+                    Button("Retry") {
+                        Task {
+                            await fetchAuthMethods()
+                        }
                     }
-                }
-            } else {
-                GeometryReader { geometry in
-                    ScrollView {
-                        VStack() {
-                            // Local login form
-                            Text(siteName).font(.title)
-                            Text("Login to Django Files at \(dfapi.url)")
-                            if authMethods.contains(where: { $0.name == "local" }) {
-                                VStack(spacing: 15) {
-                                    TextField("Username", text: $username)
-                                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                                        .autocapitalization(.none)
-                                        .disabled(isLoggingIn)
-                                    
-                                    SecureField("Password", text: $password)
-                                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                                        .disabled(isLoggingIn)
-                                    
-                                    Button() {
-                                        Task {
-                                            await handleLocalLogin()
+                } else {
+                    GeometryReader { geometry in
+                        ScrollView {
+                            VStack() {
+                                // Local login form
+                                Text(siteName).font(.title)
+                                Text("Login to Django Files at \(dfapi.url)")
+                                if authMethods.contains(where: { $0.name == "local" }) {
+                                    VStack(spacing: 15) {
+                                        TextField("Username", text: $username)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                            .autocapitalization(.none)
+                                            .disabled(isLoggingIn)
+                                        
+                                        SecureField("Password", text: $password)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                            .disabled(isLoggingIn)
+                                        
+                                        Button() {
+                                            Task {
+                                                await handleLocalLogin()
+                                            }
+                                        } label: {
+                                            HStack {
+                                                Text(isLoggingIn ? "Logging in..." : "Login")
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                            .padding()
+                                            .background(Color.accentColor)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(10)
                                         }
+                                        .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
+                                    }
+                                    .padding()
+                                    Divider()
+                                }
+
+                                // OAuth methods
+                                ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
+                                    Button {
+                                        handleOAuthLogin(url: method.url)
                                     } label: {
                                         HStack {
-                                            Text(isLoggingIn ? "Logging in..." : "Login")
+                                            Text("Continue with \(method.name.capitalized)")
+                                            Image(systemName: "arrow.right.circle.fill")
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding()
-                                        .background(Color.accentColor)
+                                        .background(Color.blue)
                                         .foregroundColor(.white)
                                         .cornerRadius(10)
                                     }
-                                    .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
-                                }
-                                .padding()
-                                Divider()
-                            }
-
-                            // OAuth methods
-                            ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
-                                Button {
-                                    handleOAuthLogin(url: method.url)
-                                } label: {
-                                    HStack {
-                                        Text("Continue with \(method.name.capitalized)")
-                                        Image(systemName: "arrow.right.circle.fill")
-                                    }
-                                    .frame(maxWidth: .infinity)
                                     .padding()
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
                                 }
-                                .padding()
+                            }
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: geometry.size.height
+                            )
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                Task {
+                    await fetchAuthMethods()
+                }
+            }
+            .sheet(item: $oauthSheetURL) { oauthURL in
+                OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey in
+                    Task {
+                        if let token = token, let sessionKey = sessionKey {
+                            let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
+                            print("\(sessionKey) : \(token)")
+                            print(selectedServer.cookies)
+                            if status {
+                                selectedServer.auth = true
+                                print("oauth login cookie success")
+                            } else {
+                                print("oauth login cookie failure")
+                            }
+                            onLoginSuccess()
+                        } else {
+                            showErrorBanner = true
+                            oauthSheetURL = nil
+                            // Automatically hide the banner after 3 seconds
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation {
+                                    showErrorBanner = false
+                                }
                             }
                         }
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: geometry.size.height
-                        )
                     }
-                }
+                })
             }
-        }
-        .onAppear {
-            Task {
-                await fetchAuthMethods()
-            }
-        }
-        .sheet(item: $oauthSheetURL) { oauthURL in
-            OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey in
-                Task {
-                    if let token = token, let sessionKey = sessionKey {
-                        let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
-                        print("\(sessionKey) : \(token)")
-                        print(selectedServer.cookies)
-                        if status {
-                            selectedServer.auth = true
-                            print("oauth login cookie success")
-                        } else {
-                            print("oauth login cookie failure")
-                        }
-                        onLoginSuccess()
-                    } else {
-                        error = "Failed to get OAuth token or session key"
-                        oauthSheetURL = nil
-                    }
+            
+            // Error banner overlay
+            if showErrorBanner {
+                VStack {
+                    Spacer()
+                    Text("Authentication failed. Please try again.")
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.red.opacity(0.8))
+                        .cornerRadius(8)
+                        .padding(.bottom, 20)
                 }
-            })
+                .transition(.move(edge: .bottom))
+                .animation(.easeInOut, value: showErrorBanner)
+            }
         }
     }
 }
