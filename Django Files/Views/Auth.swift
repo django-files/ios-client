@@ -20,7 +20,6 @@ extension Bundle {
 }
 
 class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
-//    let tempTokenFileName: String = "token.txt"
     
     var url: URL?
     
@@ -58,6 +57,8 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         // Configure the webView after super.init()
         self.webView.customUserAgent = customUserAgent
         self.webView.navigationDelegate = self
+        self.webView.isOpaque = false
+        self.webView.backgroundColor = .systemGray6
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
