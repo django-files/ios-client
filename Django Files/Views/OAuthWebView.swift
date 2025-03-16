@@ -43,8 +43,6 @@ struct OAuthWebView: View {
                             dismiss()
                             return
                         }
-                     
-                
                 
                 onComplete(token, sessionKey)
                 dismiss()

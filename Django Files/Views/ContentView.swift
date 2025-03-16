@@ -17,7 +17,7 @@ struct ContentView: View {
     @State private var showingLogin = false
     @State private var runningSession = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
-    @State private var selectedServer: DjangoFilesSession? = DjangoFilesSession()
+    @State private var selectedServer: DjangoFilesSession?
     @State private var selectedSession: DjangoFilesSession? // Track session for settings
     @State private var showingSelector = false // Show SessionSelector
     @State private var needsRefresh = false  // Added to handle refresh after adding server
@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var token: String?
         
     @State private var viewingSettings: Bool = false
+    
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -61,14 +62,10 @@ struct ContentView: View {
             }
         } detail: {
             if let server = selectedServer {
-                if server.auth {  // Use the unwrapped 'server' instead of selectedServer
-                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: $selectedServer, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
+                if server.auth {
+                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: server, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
                 } else {
                     LoginView(
-                        dfapi: DFAPI(
-                            url: URL(string: server.url) ?? URL(string: "https://fallback-url.local")!,
-                            token: server.token
-                        ),
                         selectedServer: server,
                         onLoginSuccess: {
                             print("Login success")
@@ -76,14 +73,11 @@ struct ContentView: View {
                         }
                     )
                 }
-            } else {
-                Text("No server selected")
             }
         }
         .sheet(isPresented: $showingEditor){
             SessionEditor(session: nil)
                 .onDisappear {
-                    // When editor is dismissed, trigger a refresh and select the new server
                     if items.count > 0 {
                         needsRefresh = true
                         selectedServer = items.last
@@ -94,10 +88,8 @@ struct ContentView: View {
             SessionSelector(session: session)
         }
         .onAppear() {
+            selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
             setDefaultServer()
-            if items.count > 0 {
-                selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
@@ -139,68 +131,89 @@ public struct AuthViewContainer: View {
     @Query private var items: [DjangoFilesSession]
     
     var viewingSettings: Binding<Bool>
-    var selectedServer: Binding<DjangoFilesSession?>
+    let selectedServer: DjangoFilesSession
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
     
-    @State private var toolbarHidden: Bool = true
+    @State private var toolbarHidden: Bool = false
     @State private var authError: Bool = false
     @State private var authController: AuthController = AuthController()
     
     var backButton : some View { Button(action: {
         self.presentationMode.wrappedValue.dismiss()
-    }) {
-        HStack {
-            if !UIDevice.current.localizedModel.contains("iPad") {
-                Image("backImage")
-                    .aspectRatio(contentMode: .fit)
-                    .foregroundColor(.white)
-                Text("Server List")
+        }) {
+            HStack {
+                if !UIDevice.current.localizedModel.contains("iPad") {
+//                    Image("backImage")
+//                        .aspectRatio(contentMode: .fit)
+//                        .foregroundColor(.white)
+                    Text("Server List")
+                }
             }
         }
     }
-    }
     public var body: some View {
         GeometryReader { geometry in
-            if selectedServer.wrappedValue != nil{
-                if viewingSettings.wrappedValue{
-                    SessionSelector(session: selectedServer.wrappedValue!, viewingSelect: viewingSettings)
-                        .onAppear(){
-                            columnVisibility.wrappedValue = .automatic
+            if viewingSettings.wrappedValue{
+                SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
+                    .onAppear(){
+                        columnVisibility.wrappedValue = .automatic
+                    }
+            }
+            else if selectedServer.url != "" {
+                ZStack{
+                    Color.djangoFilesBackground.ignoresSafeArea()
+                    LoadingView().frame(width: 100, height: 100)
+                    AuthView(
+                        authController: authController,
+                        httpsUrl: selectedServer.url,
+                        doReset: authController.url?.absoluteString ?? "" != selectedServer.url || !selectedServer.auth,
+                        session: selectedServer
+                    )
+                        .onStartedLoading {
+                            toolbarHidden = false
                         }
-                }
-                else if selectedServer.wrappedValue!.url != "" {
-                    ZStack{
-                        Color.djangoFilesBackground.ignoresSafeArea()
-                        LoadingView().frame(width: 100, height: 100)
-                        AuthView(
-                            authController: authController,
-                            httpsUrl: selectedServer.wrappedValue!.url,
-                            doReset: authController.url?.absoluteString ?? "" != selectedServer.wrappedValue!.url || !selectedServer.wrappedValue!.auth,
-                            session: selectedServer.wrappedValue
-                        )
-                            .onAuth {
+                        .onCancelled {
+                            dismiss()
+                            toolbarHidden = false
+                            authError = true
+                        }
+                        .onSchemeRedirect {
+                            guard let resolve = authController.schemeURL else{
+                                return
+                            }
+                            switch resolve{
+                            case "serverlist":
+                                self.presentationMode.wrappedValue.dismiss()
+                                break
+                            case "serversettings":
+                                viewingSettings.wrappedValue = true
+                                break
+                            default:
+                                return
+                            }
+                        }
+                        .onAppear(){
+                            toolbarHidden = true
+                            authController.setSafeAreaInsets(geometry.safeAreaInsets)
+                            columnVisibility.wrappedValue = .automatic
+                            if needsRefresh.wrappedValue {
+                                authController.reset()
+                                needsRefresh.wrappedValue = false
+                            }
+                            
+                            authController.onStartedLoadingAction = {
                                 toolbarHidden = true
-                                guard let temp = authController.getToken() else {
-                                    return
-                                }
-                                selectedServer.wrappedValue!.token = temp
-                                do{
-                                    try modelContext.save()
-                                }
-                                catch{}
-                                setDefaultServer()
                             }
-                            .onStartedLoading {
-                                toolbarHidden = false
-                            }
-                            .onCancelled {
+                            
+                            authController.onCancelledAction = {
                                 dismiss()
                                 toolbarHidden = false
                                 authError = true
                             }
-                            .onSchemeRedirect {
+                            
+                            authController.onSchemeRedirectAction = {
                                 guard let resolve = authController.schemeURL else{
                                     return
                                 }
@@ -215,77 +228,23 @@ public struct AuthViewContainer: View {
                                     return
                                 }
                             }
-                            .onAppear(){
-                                authController.setSafeAreaInsets(geometry.safeAreaInsets)
-                                columnVisibility.wrappedValue = .automatic
-                                if needsRefresh.wrappedValue {
-                                    authController.reset()
-                                    needsRefresh.wrappedValue = false
-                                }
-                                
-                                // Set up handlers directly on the controller
-                                authController.onAuthAction = {
-                                    toolbarHidden = true
-                                    guard let temp = authController.getToken() else {
-                                        return
-                                    }
-                                    selectedServer.wrappedValue!.token = temp
-                                    do{
-                                        try modelContext.save()
-                                    }
-                                    catch{}
-                                    setDefaultServer()
-                                }
-                                
-                                authController.onStartedLoadingAction = {
-                                    toolbarHidden = false
-                                }
-                                
-                                authController.onCancelledAction = {
-                                    dismiss()
-                                    toolbarHidden = false
-                                    authError = true
-                                }
-                                
-                                authController.onSchemeRedirectAction = {
-                                    guard let resolve = authController.schemeURL else{
-                                        return
-                                    }
-                                    switch resolve{
-                                    case "serverlist":
-                                        self.presentationMode.wrappedValue.dismiss()
-                                        break
-                                    case "serversettings":
-                                        viewingSettings.wrappedValue = true
-                                        break
-                                    default:
-                                        return
-                                    }
-                                }
-                            }
-                            .onChange(of: geometry.safeAreaInsets){
-                                authController.setSafeAreaInsets(geometry.safeAreaInsets)
-                            }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .edgesIgnoringSafeArea(.all)
-                    .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
-                    .navigationTitle(Text(""))
-                    .navigationBarBackButtonHidden(true)
-                    .navigationBarItems(leading: backButton)
-                    .alert(isPresented: $authError){
-                        Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
-                    }
-                }
-                else {
-                    Text("Loading...")
-                        .onAppear(){
-                            columnVisibility.wrappedValue = .automatic
+                        }
+                        .onChange(of: geometry.safeAreaInsets){
+                            authController.setSafeAreaInsets(geometry.safeAreaInsets)
                         }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .edgesIgnoringSafeArea(.all)
+                .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
+                .navigationTitle(Text(""))
+                .navigationBarBackButtonHidden(true)
+                .navigationBarItems(leading: backButton)
+                .alert(isPresented: $authError){
+                    Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
+                }
             }
-            else{
-                Text("Select a Server")
+            else {
+                Text("Loading...")
                     .onAppear(){
                         columnVisibility.wrappedValue = .automatic
                     }

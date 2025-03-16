@@ -19,8 +19,8 @@ extension Bundle {
     }
 }
 
-class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScrollViewDelegate {
-    let tempTokenFileName: String = "token.txt"
+class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
+//    let tempTokenFileName: String = "token.txt"
     
     var url: URL?
     
@@ -28,8 +28,6 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
 
     let customUserAgent = "DjangoFiles iOS \(String(describing: Bundle.main.releaseVersionNumber ?? "Unknown"))(\(String(describing: Bundle.main.buildVersionNumber ?? "-")))"
 
-    private var authComplete: Bool = false
-    private var gettingToken: Bool = false
     public var isLoaded: Bool = false
     private var reloadState: Bool = false
     private var authError: String? = nil
@@ -53,9 +51,7 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Use persistent storage instead of ephemeral
         
-        // Create WebView with configuration
-        let newWebView = WKWebView(frame: .zero, configuration: configuration)
-        self.webView = newWebView
+        self.webView = WKWebView(frame: .zero, configuration: configuration)
         
         super.init()
         
@@ -68,47 +64,8 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         webView.isHidden = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         onLoadedAction?()
-        
-        if authComplete{
-            decisionHandler(.allow)
-            return
-        }
-
-
-        if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/").absoluteString {
-            let code = (navigationResponse.response as! HTTPURLResponse).statusCode
-            switch code{
-            case 200:
-                decisionHandler(.cancel)
-                Task{
-                    webView.load(URLRequest(url: url!.appending(path: "/api/token")))
-                }
-                break
-            case 302:
-                decisionHandler(.allow)
-                break
-            default:
-                decisionHandler(.cancel)
-                onCancelledAction?()
-                authError = "Authorization failed. Status code: \(code)"
-                return
-            }
-            return
-        }
-        else if navigationResponse.response.url?.absoluteString == url!.appendingPathComponent("/api/token/").absoluteString{
-            let response = navigationResponse.response as! HTTPURLResponse
-            if response.statusCode == 200{
-                gettingToken = true
-                decisionHandler(.download)
-            }
-            else{
-                onCancelledAction?()
-                authError = "Server did not respond to token API request properly. Make sure the URL is correct."
-            }
-        }
-        else{
-            decisionHandler(.allow)
-        }
+        decisionHandler(.allow)
+        return
     }
     
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -145,77 +102,18 @@ class AuthController: NSObject, WKNavigationDelegate, WKDownloadDelegate, UIScro
         }
     }
     
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = self
-    }
-    
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
-    }
-    
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
-        let targetURL = tempDirectoryURL.appendingPathComponent(tempTokenFileName)
-        completionHandler(targetURL)
-        authComplete = true
-        
-        if download.progress.fractionCompleted == 1{
-            downloadDidFinish(download)
-        }
-    }
-    
-    func downloadDidFinish(_ download: WKDownload) {
-        isLoaded = true
-        onAuthAction?()
-        
-        Task{
-            webView.load(URLRequest(url: url!))
-        }
-    }
-    
-    public func getToken() -> String?{
-        if !isLoaded{
-            return nil
-        }
-        let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
-        let targetURL = tempDirectoryURL.appendingPathComponent(tempTokenFileName)
-        do{
-            let data = try Data(contentsOf: targetURL)
-            isLoaded = true
-            clearToken()
-            return String(data: data, encoding: .utf8)!
-        }
-        catch{
-            return nil
-        }
-    }
-    
-    public func clearToken(){
-        let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
-        let targetURL = tempDirectoryURL.appendingPathComponent(tempTokenFileName)
-        do{
-            if FileManager.default.fileExists(atPath: targetURL.path(percentEncoded: false)) {
-                try FileManager.default.removeItem(at: targetURL)
-            }
-        }
-        catch{}
-    }
-    
     public func setSafeAreaInsets(_ insets: EdgeInsets){
         safeAreaInsets = insets
     }
     
     public func reset(){
         authError = nil
-        clearToken()
-        authComplete = false
         isLoaded = false
-        gettingToken = false
         loadHomepage()
     }
     
     public func applyCookies(from session: DjangoFilesSession) {
-        guard let baseURL = URL(string: session.url) else { return }
+        if URL(string: session.url) != nil {} else { return }
         
         // Apply cookies to the WebView's data store
         let dataStore = webView.configuration.websiteDataStore
@@ -243,7 +141,6 @@ struct AuthView: UIViewRepresentable {
     let session: DjangoFilesSession?
     
     var onLoadedAction: (() -> Void)?
-    var onAuthAction: (() -> Void)?
     var onSchemeRedirectAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
     var onStartedLoadingAction: (() -> Void)?
@@ -273,11 +170,6 @@ struct AuthView: UIViewRepresentable {
 
 
 extension AuthView {
-    func onAuth(_ handler: @escaping () -> Void) -> AuthView {
-        var new = self
-        new.onAuthAction = handler
-        return new
-    }
     func onLoaded(_ handler: @escaping () -> Void) -> AuthView {
         var new = self
         new.onLoadedAction = handler

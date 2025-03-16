@@ -20,12 +20,21 @@ struct SessionEditor: View {
         session == nil ? "Add Server" : "Edit Server"
     }
     
+    @State private var showDuplicateAlert = false
+    
     private func save() {
         if let session {
             session.url = url?.absoluteString ?? ""
             session.token = token
             session.auth = false
         } else {
+            // Check for duplicate URL
+            if items.contains(where: { $0.url == url?.absoluteString }) {
+                // Set the alert state to true to show the alert
+                showDuplicateAlert = true
+                return
+            }
+            
             let newSession = DjangoFilesSession()
             newSession.url = url?.absoluteString ?? ""
             for item in items {
@@ -38,6 +47,7 @@ struct SessionEditor: View {
             do {
                 try modelContext.save()
                 onSessionCreated?(newSession)
+                dismiss() // Dismiss the editor only after successful save
             } catch {
                 print("Error saving session: \(error)")
             }
@@ -99,7 +109,6 @@ struct SessionEditor: View {
                         {
                             withAnimation {
                                 save()
-                                dismiss()
                             }
                         }
                         else{
@@ -127,6 +136,13 @@ struct SessionEditor: View {
                     // Edit the incoming animal.
                     url = URL(string: session.url)
                 }
+            }
+            .alert(isPresented: $showDuplicateAlert) {
+                Alert(
+                    title: Text("Duplicate URL"),
+                    message: Text("A session with this URL already exists."),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
     }

@@ -27,9 +27,12 @@ struct DFAPI {
     init(url: URL, token: String){
         self.url = url
         self.token = token
+        print("DF API init")
+        print(url)
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        print("End df api init")
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {
@@ -277,7 +280,7 @@ struct DFAPI {
             }
             
             let session = URLSession(configuration: configuration)
-            let (_, response) = try await session.data(for: urlRequest)
+            let (data, response) = try await session.data(for: urlRequest)
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

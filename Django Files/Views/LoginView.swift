@@ -3,7 +3,7 @@ import WebKit
 
 struct LoginView: View {
     @Environment(\.modelContext) private var modelContext
-    let selectedServer: DjangoFilesSession  // Regular property, not @Bindable
+    @State private var selectedServer: DjangoFilesSession
     
     @State private var username: String = ""
     @State private var password: String = ""
@@ -19,27 +19,33 @@ struct LoginView: View {
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
     
-    init(dfapi: DFAPI, selectedServer: DjangoFilesSession, onLoginSuccess: @escaping () -> Void) {
-        self.dfapi = dfapi
+    init(selectedServer: DjangoFilesSession, onLoginSuccess: @escaping () -> Void) {
+        print("LoginView init")
+        self.dfapi = DFAPI(
+            url: URL(string: selectedServer.url) ?? URL(string: "http://notarealhost")!,
+            token: selectedServer.token
+        )
         self.selectedServer = selectedServer
         self.onLoginSuccess = onLoginSuccess
     }
     
-    private func fetchAuthMethods() async {
+    private func fetchAuthMethods(selectedServer: DjangoFilesSession) async {
+        print("Fetching auth methods \(selectedServer.url)")
         isLoading = true
         if let response = await dfapi.getAuthMethods() {
+            print("methods fetched")
             authMethods = response.authMethods
             siteName = response.siteName
         } else {
             error = "Failed to fetch authentication methods, is this a Django Files server?"
         }
+        print("done")
         isLoading = false
     }
     
     private func handleLocalLogin() async {
-        guard authMethods.contains(where: { $0.name == "local" }) else { return }
-        
         isLoggingIn = true
+        guard authMethods.contains(where: { $0.name == "local" }) else { return }
         if await dfapi.localLogin(username: username, password: password, selectedServer: selectedServer) {
             await MainActor.run {
                 selectedServer.auth = true
@@ -74,7 +80,7 @@ struct LoginView: View {
                         .padding()
                     Button("Retry") {
                         Task {
-                            await fetchAuthMethods()
+                            await fetchAuthMethods(selectedServer: selectedServer)
                         }
                     }
                 } else {
@@ -83,17 +89,20 @@ struct LoginView: View {
                             VStack() {
                                 // Local login form
                                 Text(siteName).font(.title)
-                                Text("Login to Django Files at \(dfapi.url)")
+                                    .padding([.bottom], 5)
+                                Text("Login for \(dfapi.url)")
                                 if authMethods.contains(where: { $0.name == "local" }) {
                                     VStack(spacing: 15) {
                                         TextField("Username", text: $username)
                                             .textFieldStyle(RoundedBorderTextFieldStyle())
                                             .autocapitalization(.none)
                                             .disabled(isLoggingIn)
+                                            .padding([.top, .leading, .trailing])
                                         
                                         SecureField("Password", text: $password)
                                             .textFieldStyle(RoundedBorderTextFieldStyle())
                                             .disabled(isLoggingIn)
+                                            .padding([.leading, .trailing])
                                         
                                         Button() {
                                             Task {
@@ -109,10 +118,13 @@ struct LoginView: View {
                                             .foregroundColor(.white)
                                             .cornerRadius(10)
                                         }
+                                        .padding([.top], 15)
                                         .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
                                     }
-                                    .padding()
+                                    .padding([.leading, .trailing], 50)
+                                    .padding([.bottom], 15)
                                     Divider()
+                                    .padding([.bottom], 15)
                                 }
 
                                 // OAuth methods
@@ -121,7 +133,7 @@ struct LoginView: View {
                                         handleOAuthLogin(url: method.url)
                                     } label: {
                                         HStack {
-                                            Text("Continue with \(method.name.capitalized)")
+                                            Text("\(method.name.capitalized) Login")
                                             Image(systemName: "arrow.right.circle.fill")
                                         }
                                         .frame(maxWidth: .infinity)
@@ -130,7 +142,8 @@ struct LoginView: View {
                                         .foregroundColor(.white)
                                         .cornerRadius(10)
                                     }
-                                    .padding()
+                                    .padding([.leading, .trailing], 50)
+                                    .padding([.bottom])
                                 }
                             }
                             .frame(
@@ -143,7 +156,7 @@ struct LoginView: View {
             }
             .onAppear {
                 Task {
-                    await fetchAuthMethods()
+                    await fetchAuthMethods(selectedServer: selectedServer)
                 }
             }
             .sheet(item: $oauthSheetURL) { oauthURL in
@@ -198,7 +211,7 @@ struct OAuthURL: Identifiable {
 }
 
 #Preview {
-    LoginView(dfapi: DFAPI(url: URL(string: "http://localhost")!, token: ""), selectedServer: DjangoFilesSession(), onLoginSuccess: {
+    LoginView(selectedServer: DjangoFilesSession(), onLoginSuccess: {
         print("Login success")
     })
 } 
