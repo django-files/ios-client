@@ -85,72 +85,75 @@ struct LoginView: View {
                     }
                 } else {
                     GeometryReader { geometry in
-                        ScrollView {
-                            VStack() {
-                                // Local login form
-                                Text(siteName).font(.title)
-                                    .padding([.bottom], 5)
-                                Text("Login for \(dfapi.url)")
-                                if authMethods.contains(where: { $0.name == "local" }) {
-                                    VStack(spacing: 15) {
-                                        TextField("Username", text: $username)
-                                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                                            .autocapitalization(.none)
-                                            .disabled(isLoggingIn)
-                                            .padding([.top, .leading, .trailing])
-                                        
-                                        SecureField("Password", text: $password)
-                                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                                            .disabled(isLoggingIn)
-                                            .padding([.leading, .trailing])
-                                        
-                                        Button() {
-                                            Task {
-                                                await handleLocalLogin()
-                                            }
-                                        } label: {
-                                            HStack {
-                                                Text(isLoggingIn ? "Logging in..." : "Login")
-                                            }
-                                            .frame(maxWidth: .infinity)
-                                            .padding()
-                                            .background(Color.accentColor)
-                                            .foregroundColor(.white)
-                                            .cornerRadius(10)
+                        VStack() {
+                            // Local login form
+                            Text(siteName).font(.title)
+                            Text("Login for \(dfapi.url)")
+                                .padding([.top, .bottom], 5)
+                            if authMethods.contains(where: { $0.name == "local" }) {
+                                VStack(spacing: 15) {
+                                    TextField("Username", text: $username)
+                                        .font(.title2)
+                                        .padding()
+                                        .frame(width: 270, height: 50).border(Color.gray)
+                                        .cornerRadius(3)
+                                        .autocapitalization(.none)
+                                        .disabled(isLoggingIn)
+                                        .padding([.leading, .trailing])
+                                    SecureField("Password", text: $password)
+                                        .font(.title3)
+                                        .padding()
+                                        .frame(width: 270, height: 50).border(Color.gray)
+                                        .cornerRadius(3)
+                                        .disabled(isLoggingIn)
+                                        .padding([.leading, .trailing])
+                                    
+                                    Button() {
+                                        Task {
+                                            await handleLocalLogin()
                                         }
-                                        .padding([.top], 15)
-                                        .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
-                                    }
-                                    .padding([.leading, .trailing], 50)
-                                    .padding([.bottom], 15)
-                                    Divider()
-                                    .padding([.bottom], 15)
-                                }
-
-                                // OAuth methods
-                                ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
-                                    Button {
-                                        handleOAuthLogin(url: method.url)
                                     } label: {
                                         HStack {
-                                            Text("\(method.name.capitalized) Login")
-                                            Image(systemName: "arrow.right.circle.fill")
+                                            Text(isLoggingIn ? "Logging in..." : "Login")
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding()
-                                        .background(Color.blue)
+                                        .background(Color.accentColor)
                                         .foregroundColor(.white)
                                         .cornerRadius(10)
                                     }
-                                    .padding([.leading, .trailing], 50)
-                                    .padding([.bottom])
+                                    .padding([.top], 15)
+                                    .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
                                 }
+                                .padding([.leading, .trailing], 50)
+                                .padding([.bottom], 15)
+                                Divider()
+                                .padding([.bottom], 15)
                             }
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: geometry.size.height
-                            )
+
+                            // OAuth methods
+                            ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
+                                Button {
+                                    handleOAuthLogin(url: method.url)
+                                } label: {
+                                    HStack {
+                                        Text("\(method.name.capitalized) Login")
+                                        Image(systemName: "arrow.right.circle.fill")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                }
+                                .padding([.leading, .trailing], 50)
+                                .padding([.bottom])
+                            }
                         }
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: geometry.size.height
+                        )
                     }
                 }
             }
@@ -211,7 +214,7 @@ struct OAuthURL: Identifiable {
 }
 
 #Preview {
-    LoginView(selectedServer: DjangoFilesSession(), onLoginSuccess: {
+    LoginView(selectedServer: DjangoFilesSession(url: "http://localhost"), onLoginSuccess: {
         print("Login success")
     })
 } 
