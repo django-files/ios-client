@@ -3,7 +3,7 @@ import AuthenticationServices
 
 struct OAuthWebView: View {
     let url: String
-    let onComplete: (String?) -> Void
+    let onComplete: (String?, String?) -> Void
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -16,7 +16,7 @@ struct OAuthWebView: View {
         print("Starting authentication...")
         guard let authURL = URL(string: url) else {
             print("Failed to create URL from string: '\(url)'")
-            onComplete(nil)
+            onComplete(nil, nil)
             dismiss()
             return
         }
@@ -29,21 +29,24 @@ struct OAuthWebView: View {
             completionHandler: { callbackURL, error in          
                 if let error = error {
                     print("Authentication failed: \(error.localizedDescription)")
-                    onComplete(nil)
+                    onComplete(nil, nil)
                     dismiss()
                     return
                 }
                 
                 guard let callbackURL = callbackURL,
                       let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-                      let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {
-                    print("No callback URL or token received")
-                    onComplete(nil)
-                    dismiss()
-                    return
-                }
+                      let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
+                      let sessionKey = components.queryItems?.first(where: { $0.name == "session_key" })?.value else {
+                            print("No callback URL or token received")
+                            onComplete(nil, nil)
+                            dismiss()
+                            return
+                        }
+                     
                 
-                onComplete(token)
+                
+                onComplete(token, sessionKey)
                 dismiss()
             }
         )
@@ -57,7 +60,7 @@ struct OAuthWebView: View {
         
         if !started {
             print("Failed to start authentication session")
-            onComplete(nil)
+            onComplete(nil, nil)
             dismiss()
         }
     }
@@ -77,7 +80,8 @@ class WindowProvider: NSObject, ASWebAuthenticationPresentationContextProviding 
 }
 
 #Preview {
-    OAuthWebView(url: "https://example.com/oauth") { token in
+    OAuthWebView(url: "https://example.com/oauth") { token, sessionKey in
         print("Received token: \(String(describing: token))")
+        print("Received session key: \(String(describing: sessionKey))")
     }
 } 

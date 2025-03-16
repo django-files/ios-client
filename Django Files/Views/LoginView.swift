@@ -145,23 +145,21 @@ struct LoginView: View {
             }
         }
         .sheet(item: $oauthSheetURL) { oauthURL in
-            OAuthWebView(url: oauthURL.url, onComplete: { token in
+            OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey in
                 Task {
-                    if let token = token {
-                        // Get cookies from shared storage
-                        if let url = URL(string: selectedServer.url) {
-                            let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
-                            await MainActor.run {
-                                selectedServer.token = token
-                                selectedServer.cookies = cookies
-                                selectedServer.auth = true
-                                try? modelContext.save()
-                                oauthSheetURL = nil
-                            }
-                            onLoginSuccess()
+                    if let token = token, let sessionKey = sessionKey {
+                        let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
+                        print("\(sessionKey) : \(token)")
+                        print(selectedServer.cookies)
+                        if status {
+                            selectedServer.auth = true
+                            print("oauth login cookie success")
+                        } else {
+                            print("oauth login cookie failure")
                         }
+                        onLoginSuccess()
                     } else {
-                        error = "Failed to get OAuth token"
+                        error = "Failed to get OAuth token or session key"
                         oauthSheetURL = nil
                     }
                 }
