@@ -69,6 +69,39 @@ struct LoginView: View {
         }
     }
     
+    struct AnimatedGradientView: View {
+        let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple, .red])
+
+        @State private var start = UnitPoint(x: 0, y: -1)
+        @State private var end = UnitPoint(x: 1, y: 0)
+        
+        var body: some View {
+            TimelineView(.animation(minimumInterval: 0.02, paused: false)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                
+                let animatedStart = UnitPoint(
+                    x: 0.5 + 0.5 * cos(time),
+                    y: 0.5 + 0.5 * sin(time)
+                )
+                let animatedEnd = UnitPoint(
+                    x: 0.5 + 0.5 * cos(time + .pi),
+                    y: 0.5 + 0.5 * sin(time + .pi)
+                )
+
+                LinearGradient(gradient: gradient, startPoint: animatedStart, endPoint: animatedEnd)
+                    .blur(radius: 250)
+                    .onAppear {
+                        withAnimation(
+                            .linear(duration: 3)
+                        ) {
+                            self.start = UnitPoint(x: 1, y: 0)
+                            self.end = UnitPoint(x: 0, y: 1)
+                        }
+                    }
+            }
+        }
+    }
+    
     var body: some View {
         ZStack {
             VStack {
@@ -89,24 +122,29 @@ struct LoginView: View {
                             // Local login form
                             Text(siteName).font(.title)
                             Text("Login for \(dfapi.url)")
-                                .padding([.top, .bottom], 5)
+                                .padding([.top], 5)
+                                .padding([.bottom], 15)
                             if authMethods.contains(where: { $0.name == "local" }) {
                                 VStack(spacing: 15) {
                                     TextField("Username", text: $username)
                                         .font(.title2)
                                         .padding()
-                                        .frame(width: 270, height: 50).border(Color.gray)
-                                        .cornerRadius(3)
+                                        .frame(width: 270, height: 50)
                                         .autocapitalization(.none)
                                         .disabled(isLoggingIn)
-                                        .padding([.leading, .trailing])
+                                        .background(Color.black)
+                                        .cornerRadius(10)
+                                        .opacity(0.7)
+                                        
                                     SecureField("Password", text: $password)
-                                        .font(.title3)
+                                        .font(.title2)
                                         .padding()
-                                        .frame(width: 270, height: 50).border(Color.gray)
+                                        .frame(width: 270, height: 50)
                                         .cornerRadius(3)
                                         .disabled(isLoggingIn)
-                                        .padding([.leading, .trailing])
+                                        .background(Color.black)
+                                        .cornerRadius(10)
+                                        .opacity(0.7)
                                     
                                     Button() {
                                         Task {
@@ -118,9 +156,10 @@ struct LoginView: View {
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding()
-                                        .background(Color.accentColor)
+                                        .background(.gray)
                                         .foregroundColor(.white)
                                         .cornerRadius(10)
+                                        .opacity(0.8)
                                     }
                                     .padding([.top], 15)
                                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
@@ -138,16 +177,16 @@ struct LoginView: View {
                                 } label: {
                                     HStack {
                                         Text("\(method.name.capitalized) Login")
-                                        Image(systemName: "arrow.right.circle.fill")
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding()
-                                    .background(Color.blue)
+                                    .background(.indigo)
                                     .foregroundColor(.white)
                                     .cornerRadius(10)
                                 }
                                 .padding([.leading, .trailing], 50)
                                 .padding([.bottom])
+                                .opacity(0.8)
                             }
                         }
                         .frame(
@@ -157,6 +196,7 @@ struct LoginView: View {
                     }
                 }
             }
+            .background(AnimatedGradientView())
             .onAppear {
                 Task {
                     await fetchAuthMethods(selectedServer: selectedServer)

@@ -280,7 +280,7 @@ struct DFAPI {
             }
             
             let session = URLSession(configuration: configuration)
-            let (data, response) = try await session.data(for: urlRequest)
+            let (_, response) = try await session.data(for: urlRequest)
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
