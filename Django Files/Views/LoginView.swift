@@ -53,7 +53,13 @@ struct LoginView: View {
             }
             onLoginSuccess()
         } else {
-            error = "Login request failed"
+            showErrorBanner = true
+            oauthSheetURL = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation {
+                    showErrorBanner = false
+                }
+            }
         }
         isLoggingIn = false
     }
