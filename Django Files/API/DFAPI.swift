@@ -14,8 +14,10 @@ struct DFAPI {
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
-        case upload = "upload"
+        case upload = "upload/"
         case short = "shorten/"
+        case auth_methods = "auth/methods/"
+        case login = "auth/token/"
     }
     
     let url: URL
@@ -25,9 +27,12 @@ struct DFAPI {
     init(url: URL, token: String){
         self.url = url
         self.token = token
+        print("DF API init")
+        print(url)
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        print("End df api init")
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {
@@ -156,7 +161,172 @@ struct DFAPI {
             return nil;
         }
     }
+    
+    public func getAuthMethods() async -> DFAuthMethodsResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.auth_methods),
+                parameters: [:],
+                method: .get
+            )
+            //log response body content
+            return try decoder.decode(DFAuthMethodsResponse.self, from: responseBody)
+        } catch {
+            print("Request failed \(error)")
+            return nil
+        }
+    }
+
+    struct DFLocalLoginRequest: Codable {
+        let username: String
+        let password: String
+    }
+    
+    struct UserToken: Codable {
+        let token: String
+    }
+
+    public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {
+        let request = DFLocalLoginRequest(username: username, password: password)
+        do {
+            let json = try JSONEncoder().encode(request)
+            
+            // Create URL request manually to access response headers
+            var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:]))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = json
+            
+            // Use default session configuration which persists cookies
+            let configuration = URLSessionConfiguration.default
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            
+            // Extract cookies from response
+            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
+                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
+                // Store cookies in the shared cookie storage
+                cookies.forEach { cookie in
+                    HTTPCookieStorage.shared.setCookie(cookie)
+                }
+                await MainActor.run {
+                    selectedServer.cookies = cookies
+                }
+            }
+            
+            let userToken = try JSONDecoder().decode(UserToken.self, from: data)
+            
+            // Update the token in the server object
+            await MainActor.run {
+                selectedServer.token = userToken.token
+            }
+            return true
+        } catch {
+            print("Local login request failed \(error)")
+            return false
+        }
+    }
+    
+    struct DFOAuthLoginRequest: Codable {
+        let token: String
+        let sessionKey: String
+    }
+    
+    public func oauthTokenLogin(token: String, sessionKey: String, selectedServer: DjangoFilesSession) async -> Bool {
+        let request = DFOAuthLoginRequest(token: token, sessionKey: sessionKey)
+        do {
+            let json = try JSONEncoder().encode(request)
+            
+            // Create URL request manually to access response headers
+            var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:]))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = json
+            
+            if let url = urlRequest.url {
+                // Set the cookie directly in the request header
+                urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
+                
+                // Also set it in the cookie storage
+                let cookieProperties: [HTTPCookiePropertyKey: Any] = [
+                    .name: "sessionid",
+                    .value: sessionKey,
+                    .domain: url.host ?? "",
+                    .path: "/",
+                    .secure: false,
+                    .expires: Date().addingTimeInterval(31536000)  // 1 year from now
+                ]
+                
+                if let cookie = HTTPCookie(properties: cookieProperties) {
+                    HTTPCookieStorage.shared.setCookie(cookie)
+                    print("Set cookie: \(cookie)")
+                }
+            }
+            
+            // Use default session configuration which persists cookies
+            let configuration = URLSessionConfiguration.default
+            configuration.httpCookieStorage = .shared
+            configuration.httpCookieAcceptPolicy = .always
+            
+            // Print all cookies before making the request
+            print("Cookies before request:")
+            HTTPCookieStorage.shared.cookies?.forEach { cookie in
+                print(" - \(cookie.name): \(cookie.value)")
+            }
+            
+            let session = URLSession(configuration: configuration)
+            let (_, response) = try await session.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                print("Request failed with status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+                throw URLError(.badServerResponse)
+            }
+            
+            // Print request headers for debugging
+            print("Request headers:")
+            urlRequest.allHTTPHeaderFields?.forEach { key, value in
+                print(" - \(key): \(value)")
+            }
+            
+            // Print response headers for debugging
+            print("Response headers:")
+            (response as? HTTPURLResponse)?.allHeaderFields.forEach { key, value in
+                print(" - \(key): \(value)")
+            }
+            
+            // Extract cookies from response
+            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
+                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
+                // Store cookies in the shared cookie storage
+                cookies.forEach { cookie in
+                    HTTPCookieStorage.shared.setCookie(cookie)
+                    print("Received cookie from response: \(cookie)")
+                }
+                await MainActor.run {
+                    selectedServer.cookies = cookies
+                }
+            }
+            
+            // Update the token in the server object
+            await MainActor.run {
+                selectedServer.token = token
+            }
+            
+            return true
+        } catch {
+            print("OAuth login request failed \(error)")
+            return false
+        }
+    }
 }
+
+
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
     enum States {
@@ -470,4 +640,14 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
             }
         }
     }
+}
+
+struct DFAuthMethod: Codable {
+    let name: String
+    let url: String
+}
+
+struct DFAuthMethodsResponse: Codable {
+    let authMethods: [DFAuthMethod]
+    let siteName: String
 }

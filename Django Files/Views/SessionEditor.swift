@@ -14,10 +14,13 @@ struct SessionEditor: View {
     @Query private var items: [DjangoFilesSession]
     
     let session: DjangoFilesSession?
+    var onSessionCreated: ((DjangoFilesSession) -> Void)?
     
     private var editorTitle: String {
         session == nil ? "Add Server" : "Edit Server"
     }
+    
+    @State private var showDuplicateAlert = false
     
     private func save() {
         if let session {
@@ -25,17 +28,26 @@ struct SessionEditor: View {
             session.token = token
             session.auth = false
         } else {
-            let session = DjangoFilesSession()
-            session.url = url?.absoluteString ?? ""
-            for item in items{
+            // Check for duplicate URL
+            if items.contains(where: { $0.url == url?.absoluteString }) {
+                // Set the alert state to true to show the alert
+                showDuplicateAlert = true
+                return
+            }
+            
+            let newSession = DjangoFilesSession()
+            newSession.url = url?.absoluteString ?? ""
+            for item in items {
                 item.defaultSession = false
             }
-            session.defaultSession = true
-            session.token = token
-            session.auth = false
-            modelContext.insert(session)
+            newSession.defaultSession = true
+            newSession.token = token
+            newSession.auth = false
+            modelContext.insert(newSession)
             do {
                 try modelContext.save()
+                onSessionCreated?(newSession)
+                dismiss() // Dismiss the editor only after successful save
             } catch {
                 print("Error saving session: \(error)")
             }
@@ -97,7 +109,6 @@ struct SessionEditor: View {
                         {
                             withAnimation {
                                 save()
-                                dismiss()
                             }
                         }
                         else{
@@ -125,6 +136,13 @@ struct SessionEditor: View {
                     // Edit the incoming animal.
                     url = URL(string: session.url)
                 }
+            }
+            .alert(isPresented: $showDuplicateAlert) {
+                Alert(
+                    title: Text("Duplicate URL"),
+                    message: Text("A session with this URL already exists."),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
     }

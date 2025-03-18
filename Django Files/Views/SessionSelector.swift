@@ -26,21 +26,6 @@ struct SessionSelector: View {
     @State private var showTokenCopiedAlert = false
     @State private var showURLCopiedAlert = false
     
-    private func tryAuth() async -> Bool{
-        guard let dfUrl = URL(string: url) else {
-            return false
-        }
-        let stats = await DFAPI(url: dfUrl, token: token).getStats(amount: nil)
-        if stats == nil {
-            session.auth = false
-            return false
-        }
-        else{
-            session.auth = true
-            return true
-        }
-    }
-    
     var body: some View {
         NavigationStack {
             Form {
@@ -140,12 +125,6 @@ struct SessionSelector: View {
                 defaultSession = session.defaultSession
                 token = session.token
                 
-                if token != ""{
-                    Task{
-                        
-                        _ = await tryAuth()
-                    }
-                }
             }
         }
     }
