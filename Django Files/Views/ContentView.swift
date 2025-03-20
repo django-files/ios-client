@@ -190,6 +190,13 @@ public struct AuthViewContainer: View {
                             case "serversettings":
                                 viewingSettings.wrappedValue = true
                                 break
+                            case "logout":
+                                selectedServer.auth = false
+                                print("logout event")
+                                toolbarHidden = false
+                                authError = true
+                                dismiss()
+                                break
                             default:
                                 return
                             }
@@ -223,6 +230,13 @@ public struct AuthViewContainer: View {
                                     break
                                 case "serversettings":
                                     viewingSettings.wrappedValue = true
+                                    break
+                                case "logout":
+                                    selectedServer.auth = false
+                                    print("logout event")
+                                    toolbarHidden = false
+                                    authError = true
+                                    dismiss()
                                     break
                                 default:
                                     return

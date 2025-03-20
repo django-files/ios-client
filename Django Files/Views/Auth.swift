@@ -33,6 +33,8 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     
     private var safeAreaInsets: EdgeInsets = EdgeInsets()
     
+    private var isAuthenticated: Bool = false
+    
     public func getAuthErrorMessage() -> String? {
         return authError
     }
@@ -130,6 +132,10 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         Task{
             onStartedLoadingAction?()
         }
+    }
+    
+    public func setAuthStatus(_ status: Bool) {
+        isAuthenticated = status
     }
 }
 
