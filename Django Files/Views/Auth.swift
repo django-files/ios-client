@@ -86,7 +86,9 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
-            loadHomepage()
+            if navigationAction.request.url!.host! != "logout" {
+                loadHomepage()
+            }
             return .cancel
         }
         else if navigationAction.request.url?.absoluteString == "about:blank"{
@@ -131,6 +133,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
             onStartedLoadingAction?()
         }
     }
+    
 }
 
 struct AuthView: UIViewRepresentable {

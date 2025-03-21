@@ -15,6 +15,8 @@ struct LoginView: View {
     @State private var isLoggingIn: Bool = false
     @State private var showErrorBanner: Bool = false
     
+    @State private var oauthError: String? = nil
+    
 
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
@@ -45,6 +47,7 @@ struct LoginView: View {
     
     private func handleLocalLogin() async {
         isLoggingIn = true
+        self.oauthError = nil
         guard authMethods.contains(where: { $0.name == "local" }) else { return }
         if await dfapi.localLogin(username: username, password: password, selectedServer: selectedServer) {
             await MainActor.run {
@@ -64,6 +67,17 @@ struct LoginView: View {
         isLoggingIn = false
     }
     
+    private func showErrorBanner() async {
+        showErrorBanner = true
+        oauthSheetURL = nil
+        // Automatically hide the banner after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation {
+                showErrorBanner = false
+            }
+        }
+    }
+    
     private func handleOAuthLogin(url: String) {
         print("handleOAuthLogin received URL string: '\(url)'")
         if URL(string: url) != nil {
@@ -76,7 +90,7 @@ struct LoginView: View {
     }
     
     struct AnimatedGradientView: View {
-        let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple, .red])
+        let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple])
 
         @State private var start = UnitPoint(x: 0, y: -1)
         @State private var end = UnitPoint(x: 1, y: 0)
@@ -98,7 +112,7 @@ struct LoginView: View {
                     .blur(radius: 250)
                     .onAppear {
                         withAnimation(
-                            .linear(duration: 3)
+                            .linear(duration: 2)
                         ) {
                             self.start = UnitPoint(x: 1, y: 0)
                             self.end = UnitPoint(x: 0, y: 1)
@@ -107,6 +121,7 @@ struct LoginView: View {
             }
         }
     }
+    
     
     var body: some View {
         ZStack {
@@ -209,28 +224,22 @@ struct LoginView: View {
                 }
             }
             .sheet(item: $oauthSheetURL) { oauthURL in
-                OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey in
+                OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey, oauthError in
                     Task {
-                        if let token = token, let sessionKey = sessionKey {
+                        if let token = token, let sessionKey = sessionKey, let oauthError = oauthError {
+                            if !oauthError.isEmpty {
+                                print("Error from OAuth backend: \(oauthError)")
+                                self.oauthError = ": " + oauthError
+                                await showErrorBanner()
+                                return
+                            }
                             let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
-                            print("\(sessionKey) : \(token)")
-                            print(selectedServer.cookies)
                             if status {
                                 selectedServer.auth = true
-                                print("oauth login cookie success")
-                            } else {
-                                print("oauth login cookie failure")
+                                onLoginSuccess()
                             }
-                            onLoginSuccess()
                         } else {
-                            showErrorBanner = true
-                            oauthSheetURL = nil
-                            // Automatically hide the banner after 3 seconds
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                withAnimation {
-                                    showErrorBanner = false
-                                }
-                            }
+                            await showErrorBanner()
                         }
                     }
                 })
@@ -240,7 +249,7 @@ struct LoginView: View {
             if showErrorBanner {
                 VStack {
                     Spacer()
-                    Text("Authentication failed. Please try again.")
+                    Text("Authetication Failed" + (oauthError ?? ""))
                         .foregroundColor(.white)
                         .padding()
                         .background(Color.red.opacity(0.8))
@@ -249,10 +258,15 @@ struct LoginView: View {
                 }
                 .transition(.move(edge: .bottom))
                 .animation(.easeInOut, value: showErrorBanner)
+                .onDisappear {
+                    self.oauthError = nil
+                }
             }
         }
     }
 }
+
+
 
 struct OAuthURL: Identifiable {
     let id = UUID()

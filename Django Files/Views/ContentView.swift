@@ -68,7 +68,6 @@ struct ContentView: View {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
-                            print("Login success")
                             needsRefresh = true
                         }
                     )
@@ -179,21 +178,6 @@ public struct AuthViewContainer: View {
                             toolbarHidden = false
                             authError = true
                         }
-                        .onSchemeRedirect {
-                            guard let resolve = authController.schemeURL else{
-                                return
-                            }
-                            switch resolve{
-                            case "serverlist":
-                                self.presentationMode.wrappedValue.dismiss()
-                                break
-                            case "serversettings":
-                                viewingSettings.wrappedValue = true
-                                break
-                            default:
-                                return
-                            }
-                        }
                         .onAppear(){
                             toolbarHidden = true
                             authController.setSafeAreaInsets(geometry.safeAreaInsets)
@@ -223,6 +207,11 @@ public struct AuthViewContainer: View {
                                     break
                                 case "serversettings":
                                     viewingSettings.wrappedValue = true
+                                    break
+                                case "logout":
+                                    selectedServer.auth = false
+                                    toolbarHidden = false
+                                    self.presentationMode.wrappedValue.dismiss()
                                     break
                                 default:
                                     return
