@@ -33,8 +33,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     
     private var safeAreaInsets: EdgeInsets = EdgeInsets()
     
-    private var isAuthenticated: Bool = false
-    
     public func getAuthErrorMessage() -> String? {
         return authError
     }
@@ -85,9 +83,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
-            if navigationAction.request.url!.host! == "logout" {
-                isAuthenticated = false
-            }
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
@@ -139,9 +134,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         }
     }
     
-    public func setAuthStatus(_ status: Bool) {
-        isAuthenticated = status
-    }
 }
 
 struct AuthView: UIViewRepresentable {
