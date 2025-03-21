@@ -44,7 +44,7 @@ struct OAuthWebView: View {
                             dismiss()
                             return
                         }
-                
+                print(oauth_error)
                 onComplete(token, sessionKey, oauth_error)
                 dismiss()
             }

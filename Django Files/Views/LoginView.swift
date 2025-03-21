@@ -15,7 +15,7 @@ struct LoginView: View {
     @State private var isLoggingIn: Bool = false
     @State private var showErrorBanner: Bool = false
     
-    let oauthError: String? = nil
+    @State private var oauthError: String? = nil
     
 
     let dfapi: DFAPI
@@ -47,6 +47,7 @@ struct LoginView: View {
     
     private func handleLocalLogin() async {
         isLoggingIn = true
+        self.oauthError = nil
         guard authMethods.contains(where: { $0.name == "local" }) else { return }
         if await dfapi.localLogin(username: username, password: password, selectedServer: selectedServer) {
             await MainActor.run {
@@ -226,14 +227,14 @@ struct LoginView: View {
                 OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey, oauthError in
                     Task {
                         if let token = token, let sessionKey = sessionKey, let oauthError = oauthError {
+                            print(oauthError)
                             if !oauthError.isEmpty {
                                 print("Error from OAuth backend: \(oauthError)")
+                                self.oauthError = ": " + oauthError
                                 await showErrorBanner()
                                 return
                             }
                             let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
-                            print("\(sessionKey) : \(token)")
-                            print(selectedServer.cookies)
                             if status {
                                 selectedServer.auth = true
                                 print("oauth login cookie success")
@@ -252,7 +253,7 @@ struct LoginView: View {
             if showErrorBanner {
                 VStack {
                     Spacer()
-                    Text("Authetication Failed " + (oauthError ?? ""))
+                    Text("Authetication Failed" + (oauthError ?? ""))
                         .foregroundColor(.white)
                         .padding()
                         .background(Color.red.opacity(0.8))
@@ -261,6 +262,9 @@ struct LoginView: View {
                 }
                 .transition(.move(edge: .bottom))
                 .animation(.easeInOut, value: showErrorBanner)
+                .onDisappear {
+                    self.oauthError = nil
+                }
             }
         }
     }

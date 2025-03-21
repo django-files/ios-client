@@ -85,10 +85,16 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
+            if navigationAction.request.url!.host! == "logout" {
+                isAuthenticated = false
+                print("logout caught")
+            }
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
-            loadHomepage()
+            if navigationAction.request.url!.host! != "logout" {
+                loadHomepage()
+            }
             return .cancel
         }
         else if navigationAction.request.url?.absoluteString == "about:blank"{

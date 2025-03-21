@@ -179,28 +179,6 @@ public struct AuthViewContainer: View {
                             toolbarHidden = false
                             authError = true
                         }
-                        .onSchemeRedirect {
-                            guard let resolve = authController.schemeURL else{
-                                return
-                            }
-                            switch resolve{
-                            case "serverlist":
-                                self.presentationMode.wrappedValue.dismiss()
-                                break
-                            case "serversettings":
-                                viewingSettings.wrappedValue = true
-                                break
-                            case "logout":
-                                selectedServer.auth = false
-                                print("logout event")
-                                toolbarHidden = false
-                                authError = true
-                                dismiss()
-                                break
-                            default:
-                                return
-                            }
-                        }
                         .onAppear(){
                             toolbarHidden = true
                             authController.setSafeAreaInsets(geometry.safeAreaInsets)
@@ -221,6 +199,7 @@ public struct AuthViewContainer: View {
                             }
                             
                             authController.onSchemeRedirectAction = {
+                                print("on scheme redirect action triggered")
                                 guard let resolve = authController.schemeURL else{
                                     return
                                 }
@@ -233,10 +212,9 @@ public struct AuthViewContainer: View {
                                     break
                                 case "logout":
                                     selectedServer.auth = false
-                                    print("logout event")
                                     toolbarHidden = false
-                                    authError = true
-                                    dismiss()
+                                    print("logout event triggered with deep link")
+                                    self.presentationMode.wrappedValue.dismiss()
                                     break
                                 default:
                                     return
