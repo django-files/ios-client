@@ -90,7 +90,7 @@ struct LoginView: View {
     }
     
     struct AnimatedGradientView: View {
-        let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple, .red])
+        let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple])
 
         @State private var start = UnitPoint(x: 0, y: -1)
         @State private var end = UnitPoint(x: 1, y: 0)
@@ -112,7 +112,7 @@ struct LoginView: View {
                     .blur(radius: 250)
                     .onAppear {
                         withAnimation(
-                            .linear(duration: 3)
+                            .linear(duration: 2)
                         ) {
                             self.start = UnitPoint(x: 1, y: 0)
                             self.end = UnitPoint(x: 0, y: 1)
@@ -227,7 +227,6 @@ struct LoginView: View {
                 OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey, oauthError in
                     Task {
                         if let token = token, let sessionKey = sessionKey, let oauthError = oauthError {
-                            print(oauthError)
                             if !oauthError.isEmpty {
                                 print("Error from OAuth backend: \(oauthError)")
                                 self.oauthError = ": " + oauthError
@@ -237,11 +236,8 @@ struct LoginView: View {
                             let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
                             if status {
                                 selectedServer.auth = true
-                                print("oauth login cookie success")
-                            } else {
-                                print("oauth login cookie failure")
+                                onLoginSuccess()
                             }
-                            onLoginSuccess()
                         } else {
                             await showErrorBanner()
                         }

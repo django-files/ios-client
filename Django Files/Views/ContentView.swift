@@ -68,7 +68,6 @@ struct ContentView: View {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
-                            print("Login success")
                             needsRefresh = true
                         }
                     )
@@ -199,7 +198,6 @@ public struct AuthViewContainer: View {
                             }
                             
                             authController.onSchemeRedirectAction = {
-                                print("on scheme redirect action triggered")
                                 guard let resolve = authController.schemeURL else{
                                     return
                                 }
@@ -213,7 +211,6 @@ public struct AuthViewContainer: View {
                                 case "logout":
                                     selectedServer.auth = false
                                     toolbarHidden = false
-                                    print("logout event triggered with deep link")
                                     self.presentationMode.wrappedValue.dismiss()
                                     break
                                 default:

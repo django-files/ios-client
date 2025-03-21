@@ -87,7 +87,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             if navigationAction.request.url!.host! == "logout" {
                 isAuthenticated = false
-                print("logout caught")
             }
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
