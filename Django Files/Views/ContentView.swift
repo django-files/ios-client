@@ -13,9 +13,8 @@ struct ContentView: View {
     @Environment(\.dismiss) private var dismiss
     
     @Query private var items: [DjangoFilesSession]
+    @State private var showSidebarButton: Bool = false
     @State private var showingEditor = false
-    @State private var showingLogin = false
-    @State private var runningSession = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession?
     @State private var selectedSession: DjangoFilesSession? // Track session for settings
@@ -61,6 +60,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .toolbar(removing: !showSidebarButton ? .sidebarToggle : nil)
         } detail: {
             if let server = selectedServer {
                 if server.auth {
@@ -69,9 +69,14 @@ struct ContentView: View {
                         selectedServer: server,
                         columnVisibility: $columnVisibility,
                         showingEditor: $showingEditor,
-                        needsRefresh: $needsRefresh
+                        needsRefresh: $needsRefresh,
+                        showSidebarButton: $showSidebarButton
                     )
                     .id(server.url)
+                    .onAppear {
+                        showSidebarButton = false
+                        columnVisibility = .detailOnly
+                    }
                 } else {
                     LoginView(
                         selectedServer: server,
@@ -79,6 +84,11 @@ struct ContentView: View {
                             needsRefresh = true
                         }
                     )
+                    .id(server.url)
+                    .onAppear {
+                        showSidebarButton = true
+                        columnVisibility = .detailOnly
+                    }
                 }
             }
         }
@@ -142,8 +152,8 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
+    var showSidebarButton: Binding<Bool>
     
-    @State private var toolbarHidden: Bool = false
     @State private var authController: AuthController = AuthController()
     
     var backButton : some View { Button(action: {
@@ -151,9 +161,6 @@ public struct AuthViewContainer: View {
         }) {
             HStack {
                 if !UIDevice.current.localizedModel.contains("iPad") {
-//                    Image("backImage")
-//                        .aspectRatio(contentMode: .fit)
-//                        .foregroundColor(.white)
                     Text("Server List")
                 }
             }
@@ -177,27 +184,23 @@ public struct AuthViewContainer: View {
                         session: selectedServer
                     )
                         .onStartedLoading {
-                            toolbarHidden = false
                         }
                         .onCancelled {
                             dismiss()
-                            toolbarHidden = false
                         }
                         .onAppear(){
-                            toolbarHidden = true
-                            columnVisibility.wrappedValue = .automatic
+                            showSidebarButton.wrappedValue = false
+                            columnVisibility.wrappedValue = .detailOnly
                             if needsRefresh.wrappedValue {
                                 authController.reset()
                                 needsRefresh.wrappedValue = false
                             }
                             
                             authController.onStartedLoadingAction = {
-                                toolbarHidden = true
                             }
                             
                             authController.onCancelledAction = {
                                 dismiss()
-                                toolbarHidden = false
                             }
                             
                             authController.onSchemeRedirectAction = {
@@ -206,14 +209,19 @@ public struct AuthViewContainer: View {
                                 }
                                 switch resolve{
                                 case "serverlist":
-                                    self.presentationMode.wrappedValue.dismiss()
+                                    if UIDevice.current.userInterfaceIdiom == .phone{
+                                        self.presentationMode.wrappedValue.dismiss()
+                                    }
+                                    showSidebarButton.wrappedValue = true
+                                    columnVisibility.wrappedValue = .automatic
                                     break
                                 case "serversettings":
                                     viewingSettings.wrappedValue = true
                                     break
                                 case "logout":
                                     selectedServer.auth = false
-                                    toolbarHidden = false
+                                    showSidebarButton.wrappedValue = true
+                                    columnVisibility.wrappedValue = .automatic
                                     self.presentationMode.wrappedValue.dismiss()
                                     break
                                 default:
@@ -224,7 +232,6 @@ public struct AuthViewContainer: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
-                .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
                 .navigationTitle(Text(""))
                 .navigationBarBackButtonHidden(true)
             }

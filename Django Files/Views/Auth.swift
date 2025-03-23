@@ -55,7 +55,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
         webView.isHidden = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
         onLoadedAction?()
         decisionHandler(.allow)
         return
@@ -71,14 +70,16 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
-        webView.scrollView.zoomScale = 0
+        webView.scrollView.zoomScale = 1
+        webView.scrollView.minimumZoomScale = 1.0
+        webView.scrollView.maximumZoomScale = 1.0
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
-            if navigationAction.request.url!.host! != "logout" {
+            if navigationAction.request.url!.host! != "logout" && navigationAction.request.url!.host! != "serverlist" {
                 loadHomepage()
             }
             return .cancel
