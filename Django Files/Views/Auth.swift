@@ -29,17 +29,9 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
 
     public var isLoaded: Bool = false
     private var reloadState: Bool = false
-    private var authError: String? = nil
-    
-    private var safeAreaInsets: EdgeInsets = EdgeInsets()
-    
-    public func getAuthErrorMessage() -> String? {
-        return authError
-    }
     
     public var schemeURL: String?
     
-    var onAuthAction: (() -> Void)?
     var onLoadedAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
     var onStartedLoadingAction: (() -> Void)?
@@ -63,7 +55,6 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
         webView.isHidden = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
         onLoadedAction?()
         decisionHandler(.allow)
         return
@@ -79,14 +70,16 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy{
-        webView.scrollView.zoomScale = 0
+        webView.scrollView.zoomScale = 1
+        webView.scrollView.minimumZoomScale = 1.0
+        webView.scrollView.maximumZoomScale = 1.0
         
         if navigationAction.request.url?.scheme == "djangofiles"{
             var schemeRemove = URLComponents(url: navigationAction.request.url!, resolvingAgainstBaseURL: true)!
             schemeRemove.scheme = nil
             schemeURL = schemeRemove.url!.absoluteString.trimmingCharacters(in: ["/", "\\"])
             onSchemeRedirectAction?()
-            if navigationAction.request.url!.host! != "logout" {
+            if navigationAction.request.url!.host! != "logout" && navigationAction.request.url!.host! != "serverlist" {
                 loadHomepage()
             }
             return .cancel
@@ -97,7 +90,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         else if url?.scheme == "https" && navigationAction.request.url?.scheme != "https" {
             onCancelledAction?()
             reset()
-            authError = "Blocked attempt to navigate to non-HTTPS URL while using HTTPS."
+            print("Blocked attempt to navigate to non-HTTPS URL while using HTTPS.")
             return .cancel
         }
         else{
@@ -105,12 +98,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         }
     }
     
-    public func setSafeAreaInsets(_ insets: EdgeInsets){
-        safeAreaInsets = insets
-    }
-    
     public func reset(){
-        authError = nil
         isLoaded = false
         loadHomepage()
     }
