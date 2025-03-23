@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var showingSelector = false // Show SessionSelector
     @State private var needsRefresh = false  // Added to handle refresh after adding server
     
+    
     @State private var token: String?
         
     @State private var viewingSettings: Bool = false
@@ -30,7 +31,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selectedServer) {
-                ForEach(items) { item in
+                ForEach(items, id: \.self) { item in
                     NavigationLink(value: item) {
                         Text(item.url)
                             .swipeActions() {
@@ -63,7 +64,14 @@ struct ContentView: View {
         } detail: {
             if let server = selectedServer {
                 if server.auth {
-                    AuthViewContainer(viewingSettings: $viewingSettings, selectedServer: server, columnVisibility: $columnVisibility, showingEditor: $showingEditor, needsRefresh: $needsRefresh)
+                    AuthViewContainer(
+                        viewingSettings: $viewingSettings,
+                        selectedServer: server,
+                        columnVisibility: $columnVisibility,
+                        showingEditor: $showingEditor,
+                        needsRefresh: $needsRefresh
+                    )
+                    .id(server.url)
                 } else {
                     LoginView(
                         selectedServer: server,
@@ -136,7 +144,6 @@ public struct AuthViewContainer: View {
     var needsRefresh: Binding<Bool>
     
     @State private var toolbarHidden: Bool = false
-    @State private var authError: Bool = false
     @State private var authController: AuthController = AuthController()
     
     var backButton : some View { Button(action: {
@@ -153,7 +160,6 @@ public struct AuthViewContainer: View {
         }
     }
     public var body: some View {
-        GeometryReader { geometry in
             if viewingSettings.wrappedValue{
                 SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
                     .onAppear(){
@@ -176,11 +182,9 @@ public struct AuthViewContainer: View {
                         .onCancelled {
                             dismiss()
                             toolbarHidden = false
-                            authError = true
                         }
                         .onAppear(){
                             toolbarHidden = true
-                            authController.setSafeAreaInsets(geometry.safeAreaInsets)
                             columnVisibility.wrappedValue = .automatic
                             if needsRefresh.wrappedValue {
                                 authController.reset()
@@ -194,7 +198,6 @@ public struct AuthViewContainer: View {
                             authController.onCancelledAction = {
                                 dismiss()
                                 toolbarHidden = false
-                                authError = true
                             }
                             
                             authController.onSchemeRedirectAction = {
@@ -218,19 +221,12 @@ public struct AuthViewContainer: View {
                                 }
                             }
                         }
-                        .onChange(of: geometry.safeAreaInsets){
-                            authController.setSafeAreaInsets(geometry.safeAreaInsets)
-                        }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
                 .toolbar(toolbarHidden && UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .visible)
                 .navigationTitle(Text(""))
                 .navigationBarBackButtonHidden(true)
-                .navigationBarItems(leading: backButton)
-                .alert(isPresented: $authError){
-                    Alert(title: Text("Error"), message: Text(authController.getAuthErrorMessage() ?? "Unknown Error"))
-                }
             }
             else {
                 Text("Loading...")
@@ -238,7 +234,6 @@ public struct AuthViewContainer: View {
                         columnVisibility.wrappedValue = .automatic
                     }
             }
-        }
     }
     
     private func setDefaultServer(){

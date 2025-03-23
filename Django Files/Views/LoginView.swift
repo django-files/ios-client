@@ -249,7 +249,7 @@ struct LoginView: View {
             if showErrorBanner {
                 VStack {
                     Spacer()
-                    Text("Authetication Failed" + (oauthError ?? ""))
+                    Text("Authentication Failed" + (oauthError ?? ""))
                         .foregroundColor(.white)
                         .padding()
                         .background(Color.red.opacity(0.8))

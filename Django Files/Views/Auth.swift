@@ -29,17 +29,9 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
 
     public var isLoaded: Bool = false
     private var reloadState: Bool = false
-    private var authError: String? = nil
-    
-    private var safeAreaInsets: EdgeInsets = EdgeInsets()
-    
-    public func getAuthErrorMessage() -> String? {
-        return authError
-    }
     
     public var schemeURL: String?
     
-    var onAuthAction: (() -> Void)?
     var onLoadedAction: (() -> Void)?
     var onCancelledAction: (() -> Void)?
     var onStartedLoadingAction: (() -> Void)?
@@ -97,7 +89,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         else if url?.scheme == "https" && navigationAction.request.url?.scheme != "https" {
             onCancelledAction?()
             reset()
-            authError = "Blocked attempt to navigate to non-HTTPS URL while using HTTPS."
+            print("Blocked attempt to navigate to non-HTTPS URL while using HTTPS.")
             return .cancel
         }
         else{
@@ -105,12 +97,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         }
     }
     
-    public func setSafeAreaInsets(_ insets: EdgeInsets){
-        safeAreaInsets = insets
-    }
-    
     public func reset(){
-        authError = nil
         isLoaded = false
         loadHomepage()
     }
