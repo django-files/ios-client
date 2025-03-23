@@ -175,7 +175,7 @@ struct LoginView: View {
                                         HStack {
                                             Text(isLoggingIn ? "Logging in..." : "Login")
                                         }
-                                        .frame(maxWidth: .infinity)
+                                        .frame(maxWidth: 300)
                                         .padding()
                                         .background(.gray)
                                         .foregroundColor(.white)
@@ -199,7 +199,7 @@ struct LoginView: View {
                                     HStack {
                                         Text("\(method.name.capitalized) Login")
                                     }
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: 300)
                                     .padding()
                                     .background(.indigo)
                                     .foregroundColor(.white)
