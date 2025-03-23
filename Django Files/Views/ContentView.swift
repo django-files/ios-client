@@ -82,6 +82,7 @@ struct ContentView: View {
                         selectedServer: server,
                         onLoginSuccess: {
                             needsRefresh = true
+                            showSidebarButton = false
                         }
                     )
                     .id(server.url)
