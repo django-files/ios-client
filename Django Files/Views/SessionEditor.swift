@@ -59,12 +59,14 @@ struct SessionEditor: View {
     @State private var badURL = false
     @State private var insecureURL = false
     
+    @FocusState private var isURLFieldFocused: Bool
+    
     
     var body: some View {
         NavigationStack {
             Form {
                 LabeledContent{
-                    TextField("https://df.myserver.com", text: Binding(
+                    TextField("", text: Binding(
                         get: {
                             if url?.scheme == nil || url?.scheme == ""{
                                 return ""
@@ -75,22 +77,24 @@ struct SessionEditor: View {
                             let temp = URL(string: $0)
                             if temp?.scheme != nil && temp?.scheme != ""{
                                 url = temp
-                                if (url?.scheme?.lowercased()) == ("http"){
-                                    insecureURL = true
-                                } else {
-                                    insecureURL = false
-                                }
+                                insecureURL = (url?.scheme?.lowercased()) == ("http")
                             }
                         }
-                    ))
-                        .disableAutocorrection(true)
-                        .textInputAutocapitalization(.never)
-                        .accessibilityIdentifier("urlTextField")
+                    ), prompt: Text(verbatim: "https://df.example.com"))
+                    .focused($isURLFieldFocused)
+                    .onChange(of: isURLFieldFocused) { wasFocused, isFocused in
+                        if isFocused && url == nil {
+                            url = URL(string: "https://")
+                        }
+                    }
+                    .disableAutocorrection(true)
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("urlTextField")
                 } label: {
                     Text("URL:")
                 }
                 if insecureURL {
-                    let warningMessage = "⚠️ We strongly recommend using HTTPS."
+                    let warningMessage = "⚠️ HTTPS strongly recommend."
                     TextField("", text: Binding(
                             get: { warningMessage },
                             set: { _ in } // Prevents user from modifying the text
@@ -105,13 +109,18 @@ struct SessionEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action:{
-                        if url != nil
-                        {
+                        // Remove trailing slash if present
+                        if var urlString = url?.absoluteString {
+                            if urlString.hasSuffix("/") {
+                                urlString.removeLast()
+                                url = URL(string: urlString)
+                            }
+                        }
+                        if url != nil {
                             withAnimation {
                                 save()
                             }
-                        }
-                        else{
+                        } else {
                             badURL.toggle()
                         }
                     })

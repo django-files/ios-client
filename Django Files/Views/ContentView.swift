@@ -183,7 +183,7 @@ public struct AuthViewContainer: View {
                         httpsUrl: selectedServer.url,
                         doReset: authController.url?.absoluteString ?? "" != selectedServer.url || !selectedServer.auth,
                         session: selectedServer
-                    )
+                        )
                         .onStartedLoading {
                         }
                         .onCancelled {
@@ -234,12 +234,12 @@ public struct AuthViewContainer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
                 .navigationTitle(Text(""))
-                .navigationBarBackButtonHidden(true)
+                .navigationBarHidden(true)
             }
             else {
                 Text("Loading...")
                     .onAppear(){
-                        columnVisibility.wrappedValue = .automatic
+                        columnVisibility.wrappedValue = .all
                     }
             }
     }
