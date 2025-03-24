@@ -65,7 +65,7 @@ struct SessionEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                LabeledContent{
+                Section(header: Text("Server URL")) {
                     TextField("", text: Binding(
                         get: {
                             if url?.scheme == nil || url?.scheme == ""{
@@ -90,8 +90,7 @@ struct SessionEditor: View {
                     .disableAutocorrection(true)
                     .textInputAutocapitalization(.never)
                     .accessibilityIdentifier("urlTextField")
-                } label: {
-                    Text("URL:")
+                    .keyboardType(.URL)
                 }
                 if insecureURL {
                     let warningMessage = "⚠️ HTTPS strongly recommend."
@@ -103,6 +102,7 @@ struct SessionEditor: View {
                         .foregroundColor(.red)
                 }
             }
+            .padding(.top, -40)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(editorTitle)
@@ -125,7 +125,7 @@ struct SessionEditor: View {
                         }
                     })
                     {
-                        Text(editorTitle)
+                        Text("Save")
                     }
                     .accessibilityIdentifier("serverSubmitButton")
                     .alert(isPresented: $badURL){
