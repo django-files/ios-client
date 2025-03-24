@@ -214,7 +214,7 @@ public struct AuthViewContainer: View {
                                         self.presentationMode.wrappedValue.dismiss()
                                     }
                                     showSidebarButton.wrappedValue = true
-                                    columnVisibility.wrappedValue = .automatic
+                                    columnVisibility.wrappedValue = .all
                                     break
                                 case "serversettings":
                                     viewingSettings.wrappedValue = true
