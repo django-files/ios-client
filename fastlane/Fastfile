@@ -58,7 +58,11 @@ platform :ios do
       xcodeproj: "./Django\ Files.xcodeproj/"
     )
     build_app()
-    upload_to_appstore()
+    upload_to_app_store(
+      skip_metadata: true,
+      skip_screenshots: true,
+      api_key: api_key
+    )
   end
 
 
