@@ -24,13 +24,13 @@
 Allows you to Share or Open any file with your Django Files server.
 The URL to the file is automatically copied to the clipboard and the preview is shown in the app.
 
-| Django&nbsp;Files | Link                                          |
-| ----------------- | :-------------------------------------------- |
-| Website           | https://django-files.github.io/               |
-| GitHub            | https://github.com/django-files               |
-| Server            | https://github.com/django-files/django-files  |
-| iOS App           | https://github.com/django-files/ios-client    |
-| Web Extension     | https://github.com/django-files/web-extension |
+| Django&nbsp;Files | Link                                           |
+| ----------------- | :--------------------------------------------- |
+| Website           | https://django-files.github.io/                |
+| GitHub            | https://github.com/django-files                |
+| Server            | https://github.com/django-files/django-files   |
+| Android App       | https://github.com/django-files/android-client |
+| Web Extension     | https://github.com/django-files/web-extension  |
 
 ## Install
 
