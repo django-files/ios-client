@@ -1,21 +1,34 @@
 name: "Django Files iOS CI"
+
 on:
   push:
     branches:
-      - '**'
+      - "**"
+    paths:
+      - ".github/workflows/tests.yml"
+      - "Django Files/**"
+      - "Django Files*/**"
+      - "Gemfile"
+      - "Gemfile.lock"
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
+
 jobs:
   build:
     name: "Tests"
-    runs-on: ['self-hosted', 'macOS', 'ARM64'] 
+    runs-on: ["self-hosted", "macOS", "ARM64"]
+
     steps:
       - name: "Add Match Repo SSH Key"
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
-      - uses: actions/checkout@v4
+
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
       - name: "Fastlane Tests"
         run: fastlane tests
         env:

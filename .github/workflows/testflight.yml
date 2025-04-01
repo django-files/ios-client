@@ -1,27 +1,37 @@
-name: build-ios-app-testflight
+name: "build-ios-app-testflight"
+
 on:
   release:
     types: [published]
+
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
+
 jobs:
   build:
     if: ${{ github.event.release.prerelease }}
-    runs-on: ['self-hosted', 'macOS', 'ARM64']
+    runs-on: ["self-hosted", "macOS", "ARM64"]
+
     steps:
-      - name: "Run Number"
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Set Run Number"
         id: run
         run: |
           echo "number=$(echo $((50 + ${{ github.run_number }})))" >> "$GITHUB_OUTPUT"
-      - name: "Debug"
+
+      - name: "Debug Run Number"
+        continue-on-error: true
         run: |
-          echo ${{ steps.run.outputs.number }}
+          echo "run_number: ${{ steps.run.outputs.number }}"
+
       - name: "Add SSH Key"
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
-      - uses: actions/checkout@v4
+
       - name: "Publish App to TestFlight"
         run: fastlane beta
         env:
