@@ -153,7 +153,10 @@ struct LoginView: View {
                                         .frame(width: 270, height: 50)
                                         .autocapitalization(.none)
                                         .disabled(isLoggingIn)
-                                        .background(Color.black)
+                                        .background(
+                                            Color(uiColor: .systemGray6) // Matches system theme
+                                                .opacity(0.7) // Adjust opacity for effect
+                                        )
                                         .cornerRadius(10)
                                         .opacity(0.7)
                                         
@@ -163,7 +166,10 @@ struct LoginView: View {
                                         .frame(width: 270, height: 50)
                                         .cornerRadius(3)
                                         .disabled(isLoggingIn)
-                                        .background(Color.black)
+                                        .background(
+                                            Color(uiColor: .systemGray6) // Matches system theme
+                                                .opacity(0.7) // Adjust opacity for effect
+                                        )
                                         .cornerRadius(10)
                                         .opacity(0.7)
                                     
