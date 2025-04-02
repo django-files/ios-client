@@ -2,16 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Django Files requires access to your photo library in order to upload selected photos.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>To access a locally or privately hosted django files instance, Django Files needs local network access.</string>
+	<string>Django Files requires access to the local network to connect to a self-hosted instance.</string>
 	<key>NSFileProviderDomainUsageDescription</key>
-	<string>To upload files from your device, Django Files needs permission to access files.</string>
+	<string>Django Files needs access to your files to allow uploading from your device.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>To upload photos from your photo library, Django Files requires access to your photo library.</string>
+	<string>Django Files needs permission to save uploaded photos to your photo library.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>To upload captured audio or video, Django Files needs access to your microphone.</string>
+	<string>Django Files requires microphone access to record and upload audio or video.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>To upload captured video and photos, Django Files needs access to your camera.</string>
+	<string>Django Files requires camera access to capture and upload photos or videos.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
