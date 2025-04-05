@@ -10,7 +10,9 @@
 
 # Django Files iOS App
 
-[![Static Badge](https://img.shields.io/badge/Download%20on%20the%20App%20Store-black?style=for-the-badge&logo=apple)](https://github.com/django-files/ios-client/releases/latest)
+<a href="https://apps.apple.com/us/app/django-files/id6742523003?itscg=30200&itsct=apps_box_badge&mttnsubad=6742523003" style="display: inline-block;">
+<img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us?releaseDate=1743638400" alt="Download on the App Store" style="width: 246px; height: 82px; vertical-align: middle; object-fit: contain; margin-bottom: 10px;" />
+</a>
 
 - [Install](#Install)
   - [Setup](#Setup)
@@ -37,14 +39,16 @@ The URL to the file is automatically copied to the clipboard and the preview is 
 > [!TIP]  
 > You can install from the App Store.
 >
-> [![GitHub Release](https://img.shields.io/github/v/release/django-files/ios-client?style=for-the-badge&logo=apple&label=Download%20on%20the%20App%20Store&labelColor=black)](https://github.com/django-files/ios-client/releases/latest)
+> <a href="https://apps.apple.com/us/app/django-files/id6742523003?itscg=30200&itsct=apps_box_badge&mttnsubad=6742523003" style="display: inline-block;">
+> <img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us?releaseDate=1743638400" alt="Download on the App Store" style="width: 246px; height: 82px; vertical-align: middle; object-fit: contain; margin-bottom: 10px;" />
+> </a>
 
 ### Setup
 
 1. [Install](#Install) and open the app on your device.
 2. Enter the URL to your Django Files server.
 3. Log in as you normally would on the website.
-4. All Done! You can now share and open files with Django Files.
+4. All Done! You can now share files with Django Files direclty in the iOS "share sheet".
 
 To use, share or open any file and choose the Django Files app.
 The app will then be upload the file to your Django Files server.
@@ -62,10 +66,6 @@ Don't see your feature here? [Request a Feature](https://github.com/django-files
 ### Known Issues
 
 Don't see your issue here? [Report an Issue](https://github.com/django-files/ios-client/issues).
-
-# Development
-
-Coming Soon...
 
 # Support
 
