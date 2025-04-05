@@ -32,8 +32,8 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: "Publish App to App Store"
-        run: fastlane appstore
+      - name: "Publish App"
+        run: fastlane ${{ github.event.release.prerelease && 'beta' || 'push_appstore' }}
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_URL: git@github.com:django-files/ios-match-certs.git
