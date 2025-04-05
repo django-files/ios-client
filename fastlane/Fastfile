@@ -35,7 +35,7 @@ platform :ios do
       xcodeproj: "./Django\ Files.xcodeproj/"
     )
     update_info_plist(
-      plist_path: "./Django Files/Info.plist",
+      plist_path: "./Django\ Files/Info.plist",
       block: lambda do |plist|
         plist['CFBundleVersion'] = ENV['BUILD_NUMBER']
         plist['CFBundleShortVersionString'] = ENV['VERSION_NUMBER']
@@ -65,7 +65,7 @@ platform :ios do
       xcodeproj: "./Django\ Files.xcodeproj/"
     )
     update_info_plist(
-      plist_path: "./Django Files/Info.plist",
+      plist_path: "./Django\ Files/Info.plist",
       block: lambda do |plist|
         plist['CFBundleVersion'] = ENV['BUILD_NUMBER']
         plist['CFBundleShortVersionString'] = ENV['VERSION_NUMBER']
