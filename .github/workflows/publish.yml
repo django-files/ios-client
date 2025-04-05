@@ -32,23 +32,8 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: "Publish App to App Store"
-        if: ${{ !github.event.release.prerelease }}
-        run: fastlane push_appstore
-        env:
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_URL: git@github.com:django-files/ios-match-certs.git
-          CI: false
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
-          ASC_API_ID: ${{ secrets.ASC_API_ID }}
-          BUILD_NUMBER: ${{ steps.run.outputs.number }}
-          VERSION_NUMBER: ${{ github.event.release.tag_name }}
-
-      - name: "Publish App to TestFlight"
-        if: ${{ github.event.release.prerelease }}
-        run: fastlane beta
+      - name: "Publish App"
+        run: fastlane ${{ github.event.release.prerelease && 'beta' || 'push_appstore' }}
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_URL: git@github.com:django-files/ios-match-certs.git
