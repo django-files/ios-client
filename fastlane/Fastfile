@@ -26,6 +26,7 @@ platform :ios do
       duration: 1200, # optional (maximum 1200)
       in_house: false # optional but may be required if using match/sigh
     )
+    build_app()
     increment_version_number(
       version_number: ENV['VERSION_NUMBER'],
       xcodeproj: "./Django\ Files.xcodeproj/"
@@ -41,7 +42,6 @@ platform :ios do
         plist['CFBundleShortVersionString'] = ENV['VERSION_NUMBER']
       end
     )
-    build_app()
     pilot(skip_submission: true)
     # upload_to_testflight(skip_waiting_for_build_processing: true, username: ENV['APPLE_ID'])
   end
@@ -56,6 +56,7 @@ platform :ios do
       duration: 1200, # optional (maximum 1200)
       in_house: false # optional but may be required if using match/sigh
     )
+    build_app()
     increment_version_number(
       version_number: ENV['VERSION_NUMBER'],
       xcodeproj: "./Django\ Files.xcodeproj/"
@@ -71,7 +72,6 @@ platform :ios do
         plist['CFBundleShortVersionString'] = ENV['VERSION_NUMBER']
       end
     )
-    build_app()
     upload_to_app_store(
       skip_metadata: true,
       skip_screenshots: true,
