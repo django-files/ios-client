@@ -1,17 +1,21 @@
-name: "Publish App Store"
+name: "Publish"
 
 on:
   release:
     types: [published]
 
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  command: ${{ github.event.release.prerelease && 'beta' || 'push_appstore' }}
+
 jobs:
-  build:
-    if: ${{ !github.event.release.prerelease }}
-    runs-on: ["macos-15"]
+  publish:
+    name: "Publish"
+    runs-on: macos-15
+    timeout-minutes: 30
 
     steps:
       - name: "Checkout"
@@ -25,15 +29,15 @@ jobs:
       - name: "Debug Run Number"
         continue-on-error: true
         run: |
-          echo "run_number: ${{ steps.run.outputs.number }}"
+          echo "number: ${{ steps.run.outputs.number }}"
 
       - name: "Add SSH Key"
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: "Publish App"
-        run: fastlane ${{ github.event.release.prerelease && 'beta' || 'push_appstore' }}
+      - name: "Fastlane ${{ env.command }}"
+        run: fastlane ${{ env.command }}
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_URL: git@github.com:django-files/ios-match-certs.git
@@ -44,3 +48,57 @@ jobs:
           ASC_API_ID: ${{ secrets.ASC_API_ID }}
           BUILD_NUMBER: ${{ steps.run.outputs.number }}
           VERSION_NUMBER: ${{ github.event.release.tag_name }}
+
+      - name: "Debug Fastlane"
+        if: ${{ !github.event.act }}
+        continue-on-error: true
+        run: |
+          ls -lAh .
+          ls -lAh fastlane/metadata
+          ls -lAh fastlane/screenshots
+
+      - name: "Upload Metadata"
+        if: ${{ !github.event.act }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.repository_owner }}-metadata
+          path: "fastlane/metadata"
+
+      - name: "Upload Screenshots"
+        if: ${{ !github.event.act }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.repository_owner }}-screenshots
+          path: "fastlane/screenshots"
+
+      - name: "Upload IPA"
+        if: ${{ !github.event.act }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.repository_owner }}-${{ env.command }}
+          path: "Django Files.ipa"
+
+      - name: "Upload IPA to Release"
+        if: ${{ github.event_name == 'release' }}
+        continue-on-error: true
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: "Django Files.ipa"
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: "Update Release Notes Action"
+        if: ${{ github.event_name == 'release' }}
+        continue-on-error: true
+        uses: smashedr/update-release-notes-action@master
+        with:
+          type: generic
+
+      - name: "Send Failure Notification"
+        if: ${{ failure() && github.event_name == 'release' }}
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
