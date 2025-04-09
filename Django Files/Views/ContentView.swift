@@ -98,6 +98,7 @@ struct ContentView: View {
                 .onDisappear {
                     if items.count > 0 {
                         needsRefresh = true
+                        selectedServer = items.last
                     }
                 }
         }
