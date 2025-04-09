@@ -31,7 +31,7 @@ final class Django_FilesUITests: XCTestCase {
         app.launch()
         let textField = app.textFields["urlTextField"]
         textField.tap()
-        textField.typeText("https://df.cssnr.com")
+        textField.typeText("df.cssnr.com")
         let submitButton = app.buttons["serverSubmitButton"]
         submitButton.tap()
 

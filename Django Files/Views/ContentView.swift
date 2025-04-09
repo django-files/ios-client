@@ -107,6 +107,9 @@ struct ContentView: View {
         }
         .onAppear() {
             selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
+            if items.count == 0{
+                self.showingEditor.toggle()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
