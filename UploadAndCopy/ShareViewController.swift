@@ -154,7 +154,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         var selectedServer: DjangoFilesSession?
         do{
             let servers = try sharedModelContainer.mainContext.fetch(FetchDescriptor<DjangoFilesSession>())
-            if servers.count == 0{
+            if servers.count == 0 {
                 return nil
             }
             selectedServer = servers.first(where: {
