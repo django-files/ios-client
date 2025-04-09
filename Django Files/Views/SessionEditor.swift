@@ -37,10 +37,6 @@ struct SessionEditor: View {
             
             let newSession = DjangoFilesSession()
             newSession.url = url?.absoluteString ?? ""
-            for item in items {
-                item.defaultSession = false
-            }
-            newSession.defaultSession = true
             newSession.token = token
             newSession.auth = false
             modelContext.insert(newSession)

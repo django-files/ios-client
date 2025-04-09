@@ -107,33 +107,15 @@ struct ContentView: View {
         }
         .onAppear() {
             selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
-            setDefaultServer()
+            if items.count == 0{
+                self.showingEditor.toggle()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
     }
-
-    private func setDefaultServer(){
-        if items.count > 0{
-            var server = items.first(where: {
-                return $0.defaultSession == true
-            })
-            if server == nil {
-                server = items.first(where: {
-                    return $0.auth
-                })
-                if server != nil{
-                    server?.defaultSession = true
-                }
-            }
-        }
-        if items.count == 0{
-            self.showingEditor.toggle()
-        }
-    }
     
     private func deleteItems(offsets: IndexSet) {
-        setDefaultServer()
         withAnimation {
             for index in offsets {
                 modelContext.delete(items[index])
@@ -242,22 +224,6 @@ public struct AuthViewContainer: View {
                         columnVisibility.wrappedValue = .all
                     }
             }
-    }
-    
-    private func setDefaultServer(){
-        if items.count > 0{
-            var server = items.first(where: {
-                return $0.defaultSession == true
-            })
-            if server == nil {
-                server = items.first(where: {
-                    return $0.auth
-                })
-                if server != nil{
-                    server?.defaultSession = true
-                }
-            }
-        }
     }
 }
 
