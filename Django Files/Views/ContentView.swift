@@ -20,7 +20,8 @@ struct ContentView: View {
     @State private var selectedSession: DjangoFilesSession? // Track session for settings
     @State private var showingSelector = false // Show SessionSelector
     @State private var needsRefresh = false  // Added to handle refresh after adding server
-    
+    @State private var itemToDelete: DjangoFilesSession? // Track item to be deleted
+    @State private var showingDeleteAlert = false // Track if delete alert is showing
     
     @State private var token: String?
         
@@ -35,7 +36,8 @@ struct ContentView: View {
                         Text(item.url)
                             .swipeActions() {
                                 Button(role: .destructive) {
-                                    deleteItems(offsets: [items.firstIndex(of: item)!])
+                                    itemToDelete = item
+                                    showingDeleteAlert = true
                                 } label: {
                                     Label("Delete", systemImage: "trash.fill")
                                 }
@@ -113,6 +115,16 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
+        .alert("Delete Server", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let item = itemToDelete, let index = items.firstIndex(of: item) {
+                    deleteItems(offsets: [index])
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this server? This action cannot be undone.")
+        }
     }
     
     private func deleteItems(offsets: IndexSet) {
