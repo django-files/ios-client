@@ -50,8 +50,8 @@ struct ContentView: View {
                             }
                     }
                 }
-                .onDelete(perform: deleteItems)
             }
+            .animation(.linear, value: items)
             .toolbar {
                 ToolbarItem {
                     Button(action: {
@@ -123,7 +123,7 @@ struct ContentView: View {
                 }
             }
         } message: {
-            Text("Are you sure you want to delete this server? This action cannot be undone.")
+            Text("Are you sure you want to delete \(URL(string: itemToDelete?.url ?? "")?.host ?? "this server")? This action cannot be undone.")
         }
     }
     
