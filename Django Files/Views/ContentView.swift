@@ -18,7 +18,6 @@ struct ContentView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession?
     @State private var selectedSession: DjangoFilesSession? // Track session for settings
-    @State private var showingSelector = false // Show SessionSelector
     @State private var needsRefresh = false  // Added to handle refresh after adding server
     @State private var itemToDelete: DjangoFilesSession? // Track item to be deleted
     @State private var showingDeleteAlert = false // Track if delete alert is showing
@@ -51,7 +50,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .animation(.linear, value: items)
+            .animation(.linear, value: self.items)
             .toolbar {
                 ToolbarItem {
                     Button(action: {
@@ -120,6 +119,10 @@ struct ContentView: View {
             Button("Delete", role: .destructive) {
                 if let item = itemToDelete, let index = items.firstIndex(of: item) {
                     deleteItems(offsets: [index])
+                    if selectedServer == item {
+                        needsRefresh = true
+                        selectedServer = nil
+                    }
                 }
             }
         } message: {
@@ -217,6 +220,12 @@ public struct AuthViewContainer: View {
                                     selectedServer.auth = false
                                     showSidebarButton.wrappedValue = true
                                     columnVisibility.wrappedValue = .automatic
+                                    modelContext.insert(selectedServer)
+                                    do {
+                                        try modelContext.save()
+                                    } catch {
+                                        print("Error saving session: \(error)")
+                                    }
                                     self.presentationMode.wrappedValue.dismiss()
                                     break
                                 default:

@@ -51,6 +51,7 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         self.webView.navigationDelegate = self
         self.webView.isOpaque = false
         self.webView.backgroundColor = .systemGray6
+//        self.webView.isInspectable = true
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void){
