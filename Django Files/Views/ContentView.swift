@@ -75,7 +75,7 @@ struct ContentView: View {
                         columnVisibility = .detailOnly
                     }
                     .toolbarVisibility(.hidden, for: .navigationBar)
-                } else if server.url != "" {
+                } else {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
@@ -86,8 +86,6 @@ struct ContentView: View {
                     .onAppear {
                         columnVisibility = .detailOnly
                     }
-                } else {
-                    Text("Loading...")
                 }
             }
         }
