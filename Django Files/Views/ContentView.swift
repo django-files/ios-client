@@ -68,7 +68,7 @@ struct ContentView: View {
                         selectedServer: server,
                         columnVisibility: $columnVisibility,
                         showingEditor: $showingEditor,
-                        needsRefresh: $needsRefresh,
+                        needsRefresh: $needsRefresh
                     )
                     .id(server.url)
                     .onAppear {
