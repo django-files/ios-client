@@ -13,7 +13,6 @@ struct ContentView: View {
     @Environment(\.dismiss) private var dismiss
     
     @Query private var items: [DjangoFilesSession]
-    @State private var showSidebarButton: Bool = false
     @State private var showingEditor = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession?
@@ -61,7 +60,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .toolbar(removing: !showSidebarButton ? .sidebarToggle : nil)
         } detail: {
             if let server = selectedServer {
                 if server.auth {
@@ -70,25 +68,22 @@ struct ContentView: View {
                         selectedServer: server,
                         columnVisibility: $columnVisibility,
                         showingEditor: $showingEditor,
-                        needsRefresh: $needsRefresh,
-                        showSidebarButton: $showSidebarButton
+                        needsRefresh: $needsRefresh
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = false
                         columnVisibility = .detailOnly
                     }
+                    .toolbarVisibility(.hidden, for: .navigationBar)
                 } else {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
                             needsRefresh = true
-                            showSidebarButton = false
                         }
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = true
                         columnVisibility = .detailOnly
                     }
                 }
@@ -145,25 +140,16 @@ public struct AuthViewContainer: View {
     @Environment(\.presentationMode) private var presentationMode: Binding<PresentationMode>
     @Query private var items: [DjangoFilesSession]
     
+    @State private var isAuthViewLoading: Bool = true
+    
     var viewingSettings: Binding<Bool>
     let selectedServer: DjangoFilesSession
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
-    var showSidebarButton: Binding<Bool>
     
     @State private var authController: AuthController = AuthController()
     
-    var backButton : some View { Button(action: {
-        self.presentationMode.wrappedValue.dismiss()
-        }) {
-            HStack {
-                if !UIDevice.current.localizedModel.contains("iPad") {
-                    Text("Server List")
-                }
-            }
-        }
-    }
     public var body: some View {
             if viewingSettings.wrappedValue{
                 SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
@@ -172,9 +158,8 @@ public struct AuthViewContainer: View {
                     }
             }
             else if selectedServer.url != "" {
-                ZStack{
-                    Color.djangoFilesBackground.ignoresSafeArea()
-                    LoadingView().frame(width: 100, height: 100)
+                Color.djangoFilesBackground.ignoresSafeArea()
+                .overlay{
                     AuthView(
                         authController: authController,
                         httpsUrl: selectedServer.url,
@@ -182,12 +167,13 @@ public struct AuthViewContainer: View {
                         session: selectedServer
                         )
                         .onStartedLoading {
+                            isAuthViewLoading = true
                         }
                         .onCancelled {
+                            isAuthViewLoading = false
                             dismiss()
                         }
                         .onAppear(){
-                            showSidebarButton.wrappedValue = false
                             columnVisibility.wrappedValue = .detailOnly
                             if needsRefresh.wrappedValue {
                                 authController.reset()
@@ -197,11 +183,17 @@ public struct AuthViewContainer: View {
                             authController.onStartedLoadingAction = {
                             }
                             
+                            authController.onLoadedAction = {
+                                isAuthViewLoading = false
+
+                            }
                             authController.onCancelledAction = {
+                                isAuthViewLoading = false
                                 dismiss()
                             }
                             
                             authController.onSchemeRedirectAction = {
+                                isAuthViewLoading = false
                                 guard let resolve = authController.schemeURL else{
                                     return
                                 }
@@ -210,7 +202,6 @@ public struct AuthViewContainer: View {
                                     if UIDevice.current.userInterfaceIdiom == .phone{
                                         self.presentationMode.wrappedValue.dismiss()
                                     }
-                                    showSidebarButton.wrappedValue = true
                                     columnVisibility.wrappedValue = .all
                                     break
                                 case "serversettings":
@@ -218,7 +209,6 @@ public struct AuthViewContainer: View {
                                     break
                                 case "logout":
                                     selectedServer.auth = false
-                                    showSidebarButton.wrappedValue = true
                                     columnVisibility.wrappedValue = .automatic
                                     modelContext.insert(selectedServer)
                                     do {
@@ -233,11 +223,14 @@ public struct AuthViewContainer: View {
                                 }
                             }
                         }
+                        .overlay {
+                            if isAuthViewLoading {
+                                LoadingView().frame(width: 100, height: 100)
+                            }
+                        }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
-                .navigationTitle(Text(""))
-                .navigationBarHidden(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             else {
                 Text("Loading...")
