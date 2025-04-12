@@ -25,9 +25,6 @@ struct ContentView: View {
     @State private var token: String?
         
     @State private var viewingSettings: Bool = false
-    @State private var isAuthViewLoading: Bool = true
-    
-    @State private var isReady = false
     
     
     var body: some View {
