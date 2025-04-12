@@ -13,7 +13,6 @@ struct ContentView: View {
     @Environment(\.dismiss) private var dismiss
     
     @Query private var items: [DjangoFilesSession]
-    @State private var showSidebarButton: Bool = false
     @State private var showingEditor = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession?
@@ -61,7 +60,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .toolbar(removing: !showSidebarButton ? .sidebarToggle : nil)
         } detail: {
             if let server = selectedServer {
                 if server.auth {
@@ -74,21 +72,18 @@ struct ContentView: View {
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = false
                         columnVisibility = .detailOnly
                     }
-                    .navigationBarHidden(true)
+                    .toolbarVisibility(.hidden, for: .navigationBar)
                 } else if server.url != "" {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
                             needsRefresh = true
-                            showSidebarButton = false
                         }
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = true
                         columnVisibility = .detailOnly
                     }
                 } else {
@@ -157,16 +152,6 @@ public struct AuthViewContainer: View {
     
     @State private var authController: AuthController = AuthController()
     
-//    var backButton : some View { Button(action: {
-//        self.presentationMode.wrappedValue.dismiss()
-//        }) {
-//            HStack {
-//                if !UIDevice.current.localizedModel.contains("iPad") {
-//                    Text("Server List")
-//                }
-//            }
-//        }
-//    }
     public var body: some View {
             if viewingSettings.wrappedValue{
                 SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
