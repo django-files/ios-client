@@ -124,7 +124,6 @@ struct SessionSelector: View {
                 url = session.url
                 defaultSession = session.defaultSession
                 token = session.token
-                
             }
         }
     }

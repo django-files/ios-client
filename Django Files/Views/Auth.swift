@@ -153,7 +153,6 @@ struct AuthView: UIViewRepresentable {
         if let session = session {
             authController.applyCookies(from: session)
         }
-        
         return authController.webView
     }
     
