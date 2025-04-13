@@ -4,7 +4,7 @@ import WebKit
 struct LoginView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedServer: DjangoFilesSession
-    
+
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var authMethods: [DFAuthMethod] = []
@@ -14,23 +14,27 @@ struct LoginView: View {
     @State private var oauthSheetURL: OAuthURL? = nil
     @State private var isLoggingIn: Bool = false
     @State private var showErrorBanner: Bool = false
-    
+
     @State private var oauthError: String? = nil
-    
 
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
-    
-    init(selectedServer: DjangoFilesSession, onLoginSuccess: @escaping () -> Void) {
+
+    init(
+        selectedServer: DjangoFilesSession,
+        onLoginSuccess: @escaping () -> Void
+    ) {
         print("LoginView init")
         self.dfapi = DFAPI(
-            url: URL(string: selectedServer.url) ?? URL(string: "http://notarealhost")!,
+            url: URL(string: selectedServer.url) ?? URL(
+                string: "http://notarealhost"
+            )!,
             token: selectedServer.token
         )
         self.selectedServer = selectedServer
         self.onLoginSuccess = onLoginSuccess
     }
-    
+
     private func fetchAuthMethods(selectedServer: DjangoFilesSession) async {
         print("Fetching auth methods \(selectedServer.url)")
         isLoading = true
@@ -39,17 +43,24 @@ struct LoginView: View {
             authMethods = response.authMethods
             siteName = response.siteName
         } else {
-            error = "Failed to fetch authentication methods, is this a Django Files server?"
+            error =
+                "Failed to fetch authentication methods, is this a Django Files server?"
         }
         print("done")
         isLoading = false
     }
-    
+
     private func handleLocalLogin() async {
         isLoggingIn = true
         self.oauthError = nil
-        guard authMethods.contains(where: { $0.name == "local" }) else { return }
-        if await dfapi.localLogin(username: username, password: password, selectedServer: selectedServer) {
+        guard authMethods.contains(where: { $0.name == "local" }) else {
+            return
+        }
+        if await dfapi.localLogin(
+            username: username,
+            password: password,
+            selectedServer: selectedServer
+        ) {
             await MainActor.run {
                 selectedServer.auth = true
                 try? modelContext.save()
@@ -66,7 +77,7 @@ struct LoginView: View {
         }
         isLoggingIn = false
     }
-    
+
     private func showErrorBanner() async {
         showErrorBanner = true
         oauthSheetURL = nil
@@ -77,7 +88,7 @@ struct LoginView: View {
             }
         }
     }
-    
+
     private func handleOAuthLogin(url: String) {
         print("handleOAuthLogin received URL string: '\(url)'")
         if URL(string: url) != nil {
@@ -88,17 +99,18 @@ struct LoginView: View {
             error = "Invalid OAuth URL"
         }
     }
-    
+
     struct AnimatedGradientView: View {
         let gradient = Gradient(colors: [.red, .green, .gray, .blue, .purple])
 
         @State private var start = UnitPoint(x: 0, y: -1)
         @State private var end = UnitPoint(x: 1, y: 0)
-        
+
         var body: some View {
-            TimelineView(.animation(minimumInterval: 0.02, paused: false)) { timeline in
+            TimelineView(.animation(minimumInterval: 0.02, paused: false)) {
+                timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                
+
                 let animatedStart = UnitPoint(
                     x: 0.5 + 0.5 * cos(time),
                     y: 0.5 + 0.5 * sin(time)
@@ -108,21 +120,24 @@ struct LoginView: View {
                     y: 0.5 + 0.5 * sin(time + .pi)
                 )
 
-                LinearGradient(gradient: gradient, startPoint: animatedStart, endPoint: animatedEnd)
-                    .blur(radius: 250)
-                    .onAppear {
-                        withAnimation(
-                            .linear(duration: 2)
-                        ) {
-                            self.start = UnitPoint(x: 1, y: 0)
-                            self.end = UnitPoint(x: 0, y: 1)
-                        }
+                LinearGradient(
+                    gradient: gradient,
+                    startPoint: animatedStart,
+                    endPoint: animatedEnd
+                )
+                .blur(radius: 250)
+                .onAppear {
+                    withAnimation(
+                        .linear(duration: 2)
+                    ) {
+                        self.start = UnitPoint(x: 1, y: 0)
+                        self.end = UnitPoint(x: 0, y: 1)
                     }
+                }
             }
         }
     }
-    
-    
+
     var body: some View {
         ZStack {
             VStack {
@@ -134,18 +149,22 @@ struct LoginView: View {
                         .padding()
                     Button("Retry") {
                         Task {
-                            await fetchAuthMethods(selectedServer: selectedServer)
+                            await fetchAuthMethods(
+                                selectedServer: selectedServer
+                            )
                         }
                     }
                 } else {
                     GeometryReader { geometry in
                         ScrollView {
-                            VStack() {
+                            VStack {
                                 Text(siteName).font(.title)
                                 Text("Login for \(dfapi.url)")
                                     .padding([.top], 5)
                                     .padding([.bottom], 15)
-                                if authMethods.contains(where: { $0.name == "local" }) {
+                                if authMethods.contains(where: {
+                                    $0.name == "local"
+                                }) {
                                     VStack(spacing: 15) {
                                         TextField("Username", text: $username)
                                             .font(.title2)
@@ -154,8 +173,8 @@ struct LoginView: View {
                                             .autocapitalization(.none)
                                             .disabled(isLoggingIn)
                                             .background(
-                                                Color(uiColor: .systemGray6) // Matches system theme
-                                                    .opacity(0.7) // Adjust opacity for effect
+                                                Color(uiColor: .systemGray6)  // Matches system theme
+                                                    .opacity(0.7)  // Adjust opacity for effect
                                             )
                                             .cornerRadius(10)
                                             .opacity(0.7)
@@ -166,18 +185,22 @@ struct LoginView: View {
                                             .cornerRadius(3)
                                             .disabled(isLoggingIn)
                                             .background(
-                                                Color(uiColor: .systemGray6) // Matches system theme
-                                                    .opacity(0.7) // Adjust opacity for effect
+                                                Color(uiColor: .systemGray6)  // Matches system theme
+                                                    .opacity(0.7)  // Adjust opacity for effect
                                             )
                                             .cornerRadius(10)
                                             .opacity(0.7)
-                                        Button() {
+                                        Button {
                                             Task {
                                                 await handleLocalLogin()
                                             }
                                         } label: {
                                             HStack {
-                                                Text(isLoggingIn ? "Logging in..." : "Login")
+                                                Text(
+                                                    isLoggingIn
+                                                        ? "Logging in..."
+                                                        : "Login"
+                                                )
                                             }
                                             .frame(maxWidth: 300)
                                             .padding()
@@ -187,21 +210,29 @@ struct LoginView: View {
                                             .opacity(0.8)
                                         }
                                         .padding([.top], 15)
-                                        .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
+                                        .disabled(
+                                            username.isEmpty || password.isEmpty
+                                                || isLoggingIn
+                                        )
                                     }
                                     .padding([.leading, .trailing], 50)
                                     .padding([.bottom], 15)
                                     Divider()
-                                    .padding([.bottom], 15)
+                                        .padding([.bottom], 15)
                                 }
 
                                 // OAuth method login buttons
-                                ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
+                                ForEach(
+                                    authMethods.filter { $0.name != "local" },
+                                    id: \.name
+                                ) { method in
                                     Button {
                                         handleOAuthLogin(url: method.url)
                                     } label: {
                                         HStack {
-                                            Text("\(method.name.capitalized) Login")
+                                            Text(
+                                                "\(method.name.capitalized) Login"
+                                            )
                                         }
                                         .frame(maxWidth: 300)
                                         .padding()
@@ -216,7 +247,7 @@ struct LoginView: View {
                             }
                             .frame(
                                 maxWidth: .infinity,
-                                minHeight: geometry.size.height,
+                                minHeight: geometry.size.height
                             )
                         }
                     }
@@ -229,27 +260,38 @@ struct LoginView: View {
                 }
             }
             .sheet(item: $oauthSheetURL) { oauthURL in
-                OAuthWebView(url: oauthURL.url, onComplete: { token, sessionKey, oauthError in
-                    Task {
-                        if let token = token, let sessionKey = sessionKey, let oauthError = oauthError {
-                            if !oauthError.isEmpty {
-                                print("Error from OAuth backend: \(oauthError)")
-                                self.oauthError = ": " + oauthError
+                OAuthWebView(
+                    url: oauthURL.url,
+                    onComplete: { token, sessionKey, oauthError in
+                        Task {
+                            if let token = token, let sessionKey = sessionKey,
+                                let oauthError = oauthError
+                            {
+                                if !oauthError.isEmpty {
+                                    print(
+                                        "Error from OAuth backend: \(oauthError)"
+                                    )
+                                    self.oauthError = ": " + oauthError
+                                    await showErrorBanner()
+                                    return
+                                }
+                                let status = await dfapi.oauthTokenLogin(
+                                    token: token,
+                                    sessionKey: sessionKey,
+                                    selectedServer: selectedServer
+                                )
+                                if status {
+                                    selectedServer.auth = true
+                                    onLoginSuccess()
+                                }
+                            } else {
                                 await showErrorBanner()
-                                return
                             }
-                            let status = await dfapi.oauthTokenLogin(token: token, sessionKey: sessionKey, selectedServer: selectedServer)
-                            if status {
-                                selectedServer.auth = true
-                                onLoginSuccess()
-                            }
-                        } else {
-                            await showErrorBanner()
                         }
                     }
-                })
+                )
             }
-            
+
             // Error banner overlay
             if showErrorBanner {
                 VStack {
@@ -271,15 +313,16 @@ struct LoginView: View {
     }
 }
 
-
-
 struct OAuthURL: Identifiable {
     let id = UUID()
     let url: String
 }
 
 #Preview {
-    LoginView(selectedServer: DjangoFilesSession(url: "http://localhost"), onLoginSuccess: {
-        print("Login success")
-    })
-} 
+    LoginView(
+        selectedServer: DjangoFilesSession(url: "http://localhost"),
+        onLoginSuccess: {
+            print("Login success")
+        }
+    )
+}

@@ -5,36 +5,38 @@
 //  Created by Michael on 2/14/25.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    
+
     @Query private var items: [DjangoFilesSession]
     @State private var showingEditor = false
-    @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
+    @State private var columnVisibility = NavigationSplitViewVisibility
+        .detailOnly
     @State private var selectedServer: DjangoFilesSession?
-    @State private var selectedSession: DjangoFilesSession? // Track session for settings
+    @State private var selectedSession: DjangoFilesSession?  // Track session for settings
     @State private var needsRefresh = false  // Added to handle refresh after adding server
-    @State private var itemToDelete: DjangoFilesSession? // Track item to be deleted
-    @State private var showingDeleteAlert = false // Track if delete alert is showing
-    
+    @State private var itemToDelete: DjangoFilesSession?  // Track item to be deleted
+    @State private var showingDeleteAlert = false  // Track if delete alert is showing
+
     @State private var token: String?
-        
+
     @State private var viewingSettings: Bool = false
-    
+
     // stupid work around where we have to show the toolbar on ipad so splitview does not crash due to toolbar state
-    let toolbarVisibility: Visibility = UIDevice.current.userInterfaceIdiom == .pad ? .visible : .hidden
-    
+    let toolbarVisibility: Visibility =
+        UIDevice.current.userInterfaceIdiom == .pad ? .visible : .hidden
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selectedServer) {
                 ForEach(items, id: \.self) { item in
                     NavigationLink(value: item) {
                         Text(item.url)
-                            .swipeActions() {
+                            .swipeActions {
                                 Button(role: .destructive) {
                                     itemToDelete = item
                                     showingDeleteAlert = true
@@ -56,8 +58,7 @@ struct ContentView: View {
                 ToolbarItem {
                     Button(action: {
                         self.showingEditor.toggle()
-                    })
-                    {
+                    }) {
                         Label("Add Item", systemImage: "plus")
                     }
                 }
@@ -92,7 +93,7 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingEditor){
+        .sheet(isPresented: $showingEditor) {
             SessionEditor(session: nil)
                 .onDisappear {
                     if items.count > 0 {
@@ -104,18 +105,21 @@ struct ContentView: View {
         .sheet(item: $selectedSession) { session in
             SessionSelector(session: session)
         }
-        .onAppear() {
-            selectedServer = items.first(where: { $0.defaultSession }) ?? items.first
-            if items.count == 0{
+        .onAppear {
+            selectedServer =
+                items.first(where: { $0.defaultSession }) ?? items.first
+            if items.count == 0 {
                 self.showingEditor.toggle()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
         .alert("Delete Server", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
-                if let item = itemToDelete, let index = items.firstIndex(of: item) {
+                if let item = itemToDelete,
+                    let index = items.firstIndex(of: item)
+                {
                     deleteItems(offsets: [index])
                     if selectedServer == item {
                         needsRefresh = true
@@ -124,10 +128,12 @@ struct ContentView: View {
                 }
             }
         } message: {
-            Text("Are you sure you want to delete \(URL(string: itemToDelete?.url ?? "")?.host ?? "this server")? This action cannot be undone.")
+            Text(
+                "Are you sure you want to delete \(URL(string: itemToDelete?.url ?? "")?.host ?? "this server")? This action cannot be undone."
+            )
         }
     }
-    
+
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
@@ -140,107 +146,111 @@ struct ContentView: View {
 public struct AuthViewContainer: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.presentationMode) private var presentationMode: Binding<PresentationMode>
+    @Environment(\.presentationMode) private var presentationMode:
+        Binding<PresentationMode>
     @Query private var items: [DjangoFilesSession]
-    
+
     @State private var isAuthViewLoading: Bool = true
-    
+
     var viewingSettings: Binding<Bool>
     let selectedServer: DjangoFilesSession
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
-    
+
     @State private var authController: AuthController = AuthController()
-    
+
     public var body: some View {
-            if viewingSettings.wrappedValue{
-                SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
-                    .onAppear(){
-                        columnVisibility.wrappedValue = .automatic
-                    }
+        if viewingSettings.wrappedValue {
+            SessionSelector(
+                session: selectedServer,
+                viewingSelect: viewingSettings
+            )
+            .onAppear {
+                columnVisibility.wrappedValue = .automatic
             }
-            else if selectedServer.url != "" {
-                Color.djangoFilesBackground.ignoresSafeArea()
-                .overlay{
+        } else if selectedServer.url != "" {
+            Color.djangoFilesBackground.ignoresSafeArea()
+                .overlay {
                     AuthView(
                         authController: authController,
                         httpsUrl: selectedServer.url,
-                        doReset: authController.url?.absoluteString ?? "" != selectedServer.url || !selectedServer.auth,
+                        doReset: authController.url?.absoluteString ?? ""
+                            != selectedServer.url || !selectedServer.auth,
                         session: selectedServer
-                        )
-                        .onStartedLoading {
-                            isAuthViewLoading = true
+                    )
+                    .onStartedLoading {
+                        isAuthViewLoading = true
+                    }
+                    .onCancelled {
+                        isAuthViewLoading = false
+                        dismiss()
+                    }
+                    .onAppear {
+                        if needsRefresh.wrappedValue {
+                            authController.reset()
+                            needsRefresh.wrappedValue = false
                         }
-                        .onCancelled {
+
+                        authController.onStartedLoadingAction = {
+                        }
+
+                        authController.onLoadedAction = {
+                            isAuthViewLoading = false
+
+                        }
+                        authController.onCancelledAction = {
                             isAuthViewLoading = false
                             dismiss()
                         }
-                        .onAppear(){
-                            if needsRefresh.wrappedValue {
-                                authController.reset()
-                                needsRefresh.wrappedValue = false
-                            }
-                            
-                            authController.onStartedLoadingAction = {
-                            }
-                            
-                            authController.onLoadedAction = {
-                                isAuthViewLoading = false
 
+                        authController.onSchemeRedirectAction = {
+                            isAuthViewLoading = false
+                            guard let resolve = authController.schemeURL else {
+                                return
                             }
-                            authController.onCancelledAction = {
-                                isAuthViewLoading = false
-                                dismiss()
-                            }
-                            
-                            authController.onSchemeRedirectAction = {
-                                isAuthViewLoading = false
-                                guard let resolve = authController.schemeURL else{
-                                    return
-                                }
-                                switch resolve{
-                                case "serverlist":
-                                    if UIDevice.current.userInterfaceIdiom == .phone{
-                                        self.presentationMode.wrappedValue.dismiss()
-                                    }
-                                    columnVisibility.wrappedValue = .all
-                                    break
-                                case "serversettings":
-                                    viewingSettings.wrappedValue = true
-                                    break
-                                case "logout":
-                                    selectedServer.auth = false
-                                    columnVisibility.wrappedValue = .all
-                                    modelContext.insert(selectedServer)
-                                    do {
-                                        try modelContext.save()
-                                    } catch {
-                                        print("Error saving session: \(error)")
-                                    }
+                            switch resolve {
+                            case "serverlist":
+                                if UIDevice.current.userInterfaceIdiom == .phone
+                                {
                                     self.presentationMode.wrappedValue.dismiss()
-                                    break
-                                default:
-                                    return
                                 }
+                                columnVisibility.wrappedValue = .all
+                                break
+                            case "serversettings":
+                                viewingSettings.wrappedValue = true
+                                break
+                            case "logout":
+                                selectedServer.auth = false
+                                columnVisibility.wrappedValue = .all
+                                modelContext.insert(selectedServer)
+                                do {
+                                    try modelContext.save()
+                                } catch {
+                                    print("Error saving session: \(error)")
+                                }
+                                self.presentationMode.wrappedValue.dismiss()
+                                break
+                            default:
+                                return
                             }
                         }
-                        .overlay {
-                            if isAuthViewLoading {
-                                LoadingView().frame(width: 100, height: 100)
-                            }
+                    }
+                    .overlay {
+                        if isAuthViewLoading {
+                            LoadingView().frame(width: 100, height: 100)
                         }
+                    }
                 }
                 .ignoresSafeArea()
                 .edgesIgnoringSafeArea(.all)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            else {
-                Text("Loading...")
-                    .onAppear(){
-                        columnVisibility.wrappedValue = .all
-                    }
-            }
+        } else {
+            Text("Loading...")
+                .onAppear {
+                    columnVisibility.wrappedValue = .all
+                }
+        }
     }
 }
 
@@ -253,21 +263,25 @@ struct LoadingView: View {
             .stroke(Color.launchScreenBackground, lineWidth: 5)
             .rotationEffect(Angle(degrees: isLoading ? 360 : 0))
             .opacity(firstAppear ? 1 : 0)
-            .onAppear(){
+            .onAppear {
                 DispatchQueue.main.async {
-                    if isLoading == false{
-                        withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)){
+                    if isLoading == false {
+                        withAnimation(
+                            .linear(duration: 1).repeatForever(
+                                autoreverses: false
+                            )
+                        ) {
                             isLoading.toggle()
                         }
                     }
-                    withAnimation(.easeInOut(duration: 0.25)){
+                    withAnimation(.easeInOut(duration: 0.25)) {
                         firstAppear = true
                     }
                 }
             }
-            .onDisappear(){
+            .onDisappear {
                 DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.25)){
+                    withAnimation(.easeInOut(duration: 0.25)) {
                         firstAppear = true
                     }
                 }
