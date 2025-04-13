@@ -13,7 +13,6 @@ struct ContentView: View {
     @Environment(\.dismiss) private var dismiss
     
     @Query private var items: [DjangoFilesSession]
-    @State private var showSidebarButton: Bool = false
     @State private var showingEditor = false
     @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
     @State private var selectedServer: DjangoFilesSession?
@@ -26,6 +25,8 @@ struct ContentView: View {
         
     @State private var viewingSettings: Bool = false
     
+    // stupid work around where we have to show the toolbar on ipad so splitview does not crash due to toolbar state
+    let toolbarVisibility: Visibility = UIDevice.current.userInterfaceIdiom == .pad ? .visible : .hidden
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -61,7 +62,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .toolbar(removing: !showSidebarButton ? .sidebarToggle : nil)
         } detail: {
             if let server = selectedServer {
                 if server.auth {
@@ -71,26 +71,24 @@ struct ContentView: View {
                         columnVisibility: $columnVisibility,
                         showingEditor: $showingEditor,
                         needsRefresh: $needsRefresh,
-                        showSidebarButton: $showSidebarButton
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = false
                         columnVisibility = .detailOnly
                     }
+                    .toolbar(toolbarVisibility)
                 } else {
                     LoginView(
                         selectedServer: server,
                         onLoginSuccess: {
                             needsRefresh = true
-                            showSidebarButton = false
                         }
                     )
                     .id(server.url)
                     .onAppear {
-                        showSidebarButton = true
                         columnVisibility = .detailOnly
                     }
+                    .toolbarBackground(.hidden, for: .navigationBar)
                 }
             }
         }
@@ -150,7 +148,6 @@ public struct AuthViewContainer: View {
     var columnVisibility: Binding<NavigationSplitViewVisibility>
     var showingEditor: Binding<Bool>
     var needsRefresh: Binding<Bool>
-    var showSidebarButton: Binding<Bool>
     
     @State private var authController: AuthController = AuthController()
     
@@ -165,13 +162,7 @@ public struct AuthViewContainer: View {
         }
     }
     public var body: some View {
-            if viewingSettings.wrappedValue{
-                SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
-                    .onAppear(){
-                        columnVisibility.wrappedValue = .automatic
-                    }
-            }
-            else if selectedServer.url != "" {
+            if selectedServer.url != "" {
                 ZStack{
                     Color.djangoFilesBackground.ignoresSafeArea()
                     LoadingView().frame(width: 100, height: 100)
@@ -187,8 +178,6 @@ public struct AuthViewContainer: View {
                             dismiss()
                         }
                         .onAppear(){
-                            showSidebarButton.wrappedValue = false
-                            columnVisibility.wrappedValue = .detailOnly
                             if needsRefresh.wrappedValue {
                                 authController.reset()
                                 needsRefresh.wrappedValue = false
@@ -210,7 +199,6 @@ public struct AuthViewContainer: View {
                                     if UIDevice.current.userInterfaceIdiom == .phone{
                                         self.presentationMode.wrappedValue.dismiss()
                                     }
-                                    showSidebarButton.wrappedValue = true
                                     columnVisibility.wrappedValue = .all
                                     break
                                 case "serversettings":
@@ -218,8 +206,7 @@ public struct AuthViewContainer: View {
                                     break
                                 case "logout":
                                     selectedServer.auth = false
-                                    showSidebarButton.wrappedValue = true
-                                    columnVisibility.wrappedValue = .automatic
+                                    columnVisibility.wrappedValue = .all
                                     modelContext.insert(selectedServer)
                                     do {
                                         try modelContext.save()
@@ -234,10 +221,9 @@ public struct AuthViewContainer: View {
                             }
                         }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
                 .edgesIgnoringSafeArea(.all)
-                .navigationTitle(Text(""))
-                .navigationBarHidden(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             else {
                 Text("Loading...")

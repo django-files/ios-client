@@ -139,87 +139,90 @@ struct LoginView: View {
                     }
                 } else {
                     GeometryReader { geometry in
-                        VStack() {
-                            // Local login form
-                            Text(siteName).font(.title)
-                            Text("Login for \(dfapi.url)")
-                                .padding([.top], 5)
-                                .padding([.bottom], 15)
-                            if authMethods.contains(where: { $0.name == "local" }) {
-                                VStack(spacing: 15) {
-                                    TextField("Username", text: $username)
-                                        .font(.title2)
-                                        .padding()
-                                        .frame(width: 270, height: 50)
-                                        .autocapitalization(.none)
-                                        .disabled(isLoggingIn)
-                                        .background(
-                                            Color(uiColor: .systemGray6) // Matches system theme
-                                                .opacity(0.7) // Adjust opacity for effect
-                                        )
-                                        .cornerRadius(10)
-                                        .opacity(0.7)
+                        ScrollView {
+                            VStack() {
+                                // Local login form
+                                Text(siteName).font(.title)
+                                Text("Login for \(dfapi.url)")
+                                    .padding([.top], 5)
+                                    .padding([.bottom], 15)
+                                if authMethods.contains(where: { $0.name == "local" }) {
+                                    VStack(spacing: 15) {
+                                        TextField("Username", text: $username)
+                                            .font(.title2)
+                                            .padding()
+                                            .frame(width: 270, height: 50)
+                                            .autocapitalization(.none)
+                                            .disabled(isLoggingIn)
+                                            .background(
+                                                Color(uiColor: .systemGray6) // Matches system theme
+                                                    .opacity(0.7) // Adjust opacity for effect
+                                            )
+                                            .cornerRadius(10)
+                                            .opacity(0.7)
+                                            
+                                        SecureField("Password", text: $password)
+                                            .font(.title2)
+                                            .padding()
+                                            .frame(width: 270, height: 50)
+                                            .cornerRadius(3)
+                                            .disabled(isLoggingIn)
+                                            .background(
+                                                Color(uiColor: .systemGray6) // Matches system theme
+                                                    .opacity(0.7) // Adjust opacity for effect
+                                            )
+                                            .cornerRadius(10)
+                                            .opacity(0.7)
                                         
-                                    SecureField("Password", text: $password)
-                                        .font(.title2)
-                                        .padding()
-                                        .frame(width: 270, height: 50)
-                                        .cornerRadius(3)
-                                        .disabled(isLoggingIn)
-                                        .background(
-                                            Color(uiColor: .systemGray6) // Matches system theme
-                                                .opacity(0.7) // Adjust opacity for effect
-                                        )
-                                        .cornerRadius(10)
-                                        .opacity(0.7)
-                                    
-                                    Button() {
-                                        Task {
-                                            await handleLocalLogin()
+                                        Button() {
+                                            Task {
+                                                await handleLocalLogin()
+                                            }
+                                        } label: {
+                                            HStack {
+                                                Text(isLoggingIn ? "Logging in..." : "Login")
+                                            }
+                                            .frame(maxWidth: 300)
+                                            .padding()
+                                            .background(.gray)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(10)
+                                            .opacity(0.8)
                                         }
+                                        .padding([.top], 15)
+                                        .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
+                                    }
+                                    .padding([.leading, .trailing], 50)
+                                    .padding([.bottom], 15)
+                                    Divider()
+                                    .padding([.bottom], 15)
+                                }
+
+                                // OAuth methods
+                                ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
+                                    Button {
+                                        handleOAuthLogin(url: method.url)
                                     } label: {
                                         HStack {
-                                            Text(isLoggingIn ? "Logging in..." : "Login")
+                                            Text("\(method.name.capitalized) Login")
                                         }
                                         .frame(maxWidth: 300)
                                         .padding()
-                                        .background(.gray)
+                                        .background(.indigo)
                                         .foregroundColor(.white)
                                         .cornerRadius(10)
-                                        .opacity(0.8)
                                     }
-                                    .padding([.top], 15)
-                                    .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
+                                    .padding([.leading, .trailing], 50)
+                                    .padding([.bottom])
+                                    .opacity(0.8)
                                 }
-                                .padding([.leading, .trailing], 50)
-                                .padding([.bottom], 15)
-                                Divider()
-                                .padding([.bottom], 15)
                             }
-
-                            // OAuth methods
-                            ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
-                                Button {
-                                    handleOAuthLogin(url: method.url)
-                                } label: {
-                                    HStack {
-                                        Text("\(method.name.capitalized) Login")
-                                    }
-                                    .frame(maxWidth: 300)
-                                    .padding()
-                                    .background(.indigo)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                                }
-                                .padding([.leading, .trailing], 50)
-                                .padding([.bottom])
-                                .opacity(0.8)
-                            }
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: geometry.size.height,
+                                maxHeight: .infinity - 60
+                            )
                         }
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: geometry.size.height
-                        )
                     }
                 }
             }
