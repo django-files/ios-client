@@ -70,7 +70,7 @@ struct ContentView: View {
                         selectedServer: server,
                         columnVisibility: $columnVisibility,
                         showingEditor: $showingEditor,
-                        needsRefresh: $needsRefresh,
+                        needsRefresh: $needsRefresh
                     )
                     .id(server.url)
                     .onAppear {
@@ -143,6 +143,8 @@ public struct AuthViewContainer: View {
     @Environment(\.presentationMode) private var presentationMode: Binding<PresentationMode>
     @Query private var items: [DjangoFilesSession]
     
+    @State private var isAuthViewLoading: Bool = true
+    
     var viewingSettings: Binding<Bool>
     let selectedServer: DjangoFilesSession
     var columnVisibility: Binding<NavigationSplitViewVisibility>
@@ -151,21 +153,16 @@ public struct AuthViewContainer: View {
     
     @State private var authController: AuthController = AuthController()
     
-    var backButton : some View { Button(action: {
-        self.presentationMode.wrappedValue.dismiss()
-        }) {
-            HStack {
-                if !UIDevice.current.localizedModel.contains("iPad") {
-                    Text("Server List")
-                }
-            }
-        }
-    }
     public var body: some View {
-            if selectedServer.url != "" {
-                ZStack{
-                    Color.djangoFilesBackground.ignoresSafeArea()
-                    LoadingView().frame(width: 100, height: 100)
+            if viewingSettings.wrappedValue{
+                SessionSelector(session: selectedServer, viewingSelect: viewingSettings)
+                    .onAppear(){
+                        columnVisibility.wrappedValue = .automatic
+                    }
+            }
+            else if selectedServer.url != "" {
+                Color.djangoFilesBackground.ignoresSafeArea()
+                .overlay{
                     AuthView(
                         authController: authController,
                         httpsUrl: selectedServer.url,
@@ -173,8 +170,10 @@ public struct AuthViewContainer: View {
                         session: selectedServer
                         )
                         .onStartedLoading {
+                            isAuthViewLoading = true
                         }
                         .onCancelled {
+                            isAuthViewLoading = false
                             dismiss()
                         }
                         .onAppear(){
@@ -186,11 +185,17 @@ public struct AuthViewContainer: View {
                             authController.onStartedLoadingAction = {
                             }
                             
+                            authController.onLoadedAction = {
+                                isAuthViewLoading = false
+
+                            }
                             authController.onCancelledAction = {
+                                isAuthViewLoading = false
                                 dismiss()
                             }
                             
                             authController.onSchemeRedirectAction = {
+                                isAuthViewLoading = false
                                 guard let resolve = authController.schemeURL else{
                                     return
                                 }
@@ -218,6 +223,11 @@ public struct AuthViewContainer: View {
                                 default:
                                     return
                                 }
+                            }
+                        }
+                        .overlay {
+                            if isAuthViewLoading {
+                                LoadingView().frame(width: 100, height: 100)
                             }
                         }
                 }
