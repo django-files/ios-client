@@ -141,7 +141,6 @@ struct LoginView: View {
                     GeometryReader { geometry in
                         ScrollView {
                             VStack() {
-                                // Local login form
                                 Text(siteName).font(.title)
                                 Text("Login for \(dfapi.url)")
                                     .padding([.top], 5)
@@ -160,7 +159,6 @@ struct LoginView: View {
                                             )
                                             .cornerRadius(10)
                                             .opacity(0.7)
-                                            
                                         SecureField("Password", text: $password)
                                             .font(.title2)
                                             .padding()
@@ -173,7 +171,6 @@ struct LoginView: View {
                                             )
                                             .cornerRadius(10)
                                             .opacity(0.7)
-                                        
                                         Button() {
                                             Task {
                                                 await handleLocalLogin()
@@ -198,7 +195,7 @@ struct LoginView: View {
                                     .padding([.bottom], 15)
                                 }
 
-                                // OAuth methods
+                                // OAuth method login buttons
                                 ForEach(authMethods.filter { $0.name != "local" }, id: \.name) { method in
                                     Button {
                                         handleOAuthLogin(url: method.url)
@@ -220,7 +217,6 @@ struct LoginView: View {
                             .frame(
                                 maxWidth: .infinity,
                                 minHeight: geometry.size.height,
-                                maxHeight: .infinity - 60
                             )
                         }
                     }
