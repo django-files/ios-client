@@ -4,6 +4,7 @@
     <dependencies>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23721"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="UIMenu" message="Requires Xcode 11 or later." minToolsVersion="11.0" requiredIntegratedClassName="UICommandDiff"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -16,14 +17,14 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <view contentMode="bottom" id="mZN-4f-xCI">
-                                <rect key="frame" x="509" y="673" width="358" height="339"/>
+                                <rect key="frame" x="509" y="653" width="358" height="359"/>
                                 <autoresizingMask key="autoresizingMask" flexibleMinX="YES" flexibleMaxX="YES" flexibleMinY="YES"/>
                                 <subviews>
                                     <visualEffectView opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="GO1-Km-czD">
-                                        <rect key="frame" x="0.0" y="0.0" width="358" height="339"/>
+                                        <rect key="frame" x="0.0" y="0.0" width="358" height="359"/>
                                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                         <view key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" insetsLayoutMarginsFromSafeArea="NO" id="jkr-JH-ISC">
-                                            <rect key="frame" x="0.0" y="0.0" width="358" height="339"/>
+                                            <rect key="frame" x="0.0" y="0.0" width="358" height="359"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                         </view>
                                         <blurEffect style="regular"/>
@@ -41,8 +42,22 @@
                                         <rect key="frame" x="24" y="37" width="311" height="210"/>
                                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                     </imageView>
+                                    <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" showsMenuAsPrimaryAction="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="lIw-lC-Qye" userLabel="Servers">
+                                        <rect key="frame" x="8" y="258" width="342" height="30"/>
+                                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                        <menu key="menu" id="EuD-Tg-ocz">
+                                            <children>
+                                                <command title="Item 1" id="Aum-d2-ejp"/>
+                                                <command title="Item 2" id="16T-AE-w7d"/>
+                                            </children>
+                                        </menu>
+                                        <state key="normal" title="Button"/>
+                                        <buttonConfiguration key="configuration" style="tinted" title="Button">
+                                            <color key="baseBackgroundColor" systemColor="systemGrayColor"/>
+                                        </buttonConfiguration>
+                                    </button>
                                     <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" showsMenuAsPrimaryAction="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="qbS-Ny-dwp" userLabel="Share">
-                                        <rect key="frame" x="205" y="281" width="130" height="50"/>
+                                        <rect key="frame" x="205" y="297" width="145" height="50"/>
                                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                         <state key="normal" title="Button"/>
                                         <buttonConfiguration key="configuration" style="filled" title="Share"/>
@@ -50,15 +65,8 @@
                                             <action selector="onShare:" destination="j1y-V4-xli" eventType="primaryActionTriggered" id="ve5-Ud-qIO"/>
                                         </connections>
                                     </button>
-                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="center" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" text="Label" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="UXe-96-hUT" userLabel="ServerName">
-                                        <rect key="frame" x="24" y="255" width="311" height="21"/>
-                                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
-                                        <fontDescription key="fontDescription" type="system" pointSize="17"/>
-                                        <nil key="textColor"/>
-                                        <nil key="highlightedColor"/>
-                                    </label>
                                     <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="hrx-Ux-tAw">
-                                        <rect key="frame" x="24" y="281" width="130" height="50"/>
+                                        <rect key="frame" x="8" y="297" width="146" height="50"/>
                                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                         <buttonConfiguration key="configuration" style="gray" title="Cancel">
                                             <color key="baseForegroundColor" systemColor="lightTextColor"/>
@@ -107,9 +115,9 @@
                     <connections>
                         <outlet property="CancelButton" destination="hrx-Ux-tAw" id="1w3-yX-eza"/>
                         <outlet property="ImageView" destination="T3b-pJ-MQ3" id="uTe-ZR-hRh"/>
-                        <outlet property="ServerLabel" destination="UXe-96-hUT" id="ITX-y0-3rY"/>
                         <outlet property="ShareButton" destination="qbS-Ny-dwp" id="pgM-iP-QEf"/>
                         <outlet property="activityIndicator" destination="R4J-pt-1BH" id="aTU-cF-bWo"/>
+                        <outlet property="availableServers" destination="lIw-lC-Qye" id="MNJ-N7-UbZ"/>
                         <outlet property="progressBar" destination="UxW-kr-0i4" id="klH-Vg-pEi"/>
                         <outlet property="shareLabel" destination="h6M-o6-yR9" id="IY1-ab-l1d"/>
                         <outlet property="shortText" destination="etx-MM-w5d" id="HZN-xL-9My"/>
@@ -125,6 +133,9 @@
     <resources>
         <systemColor name="lightTextColor">
             <color white="1" alpha="0.59999999999999998" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+        <systemColor name="systemGrayColor">
+            <color red="0.5568627451" green="0.5568627451" blue="0.57647058819999997" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
         </systemColor>
     </resources>
 </document>
