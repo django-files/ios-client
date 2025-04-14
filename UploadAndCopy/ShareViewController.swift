@@ -62,7 +62,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             for ele in extensionItem.attachments! {
                 let itemProvider = ele
 
-                if itemProvider.hasItemConformingToTypeIdentifier("public.image"){
+                if itemProvider.hasItemConformingToTypeIdentifier("public.image") {
                     itemProvider.loadItem(forTypeIdentifier: "public.image", options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
                             self.shortText.isHidden = true
@@ -88,6 +88,19 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                 self.showMessageAndDismiss(message: "Invalid image.")
                             }
                             self.imageView.setNeedsDisplay()
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
+                        }
+                    })
+                    loaded = true
+                    break
+                }
+                else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
+                    itemProvider.loadItem(forTypeIdentifier: "public.file-url", options: nil, completionHandler: { (item, error) in
+                        DispatchQueue.main.async {
+                            self.shortText.isHidden = true
+                            self.shareLabel.text = "Upload File"
+                            self.shareURL = item as? URL
                             self.activityIndicator.stopAnimating()
                             self.shareButton.isEnabled = true
                         }
