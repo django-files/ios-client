@@ -28,7 +28,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     @IBOutlet weak var cancelButton: UIButton!
     @IBOutlet weak var progressBar: UIProgressView!
     @IBOutlet weak var imageView: UIImageView!
-    @IBOutlet weak var serverLabel: UILabel!
+    @IBOutlet weak var availableServers: UIButton!
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     @IBOutlet weak var shortTextLabel: UILabel!
     @IBOutlet weak var shortText: UITextField!
@@ -53,20 +53,8 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             self.showMessageAndDismiss(message: "Nothing to share.")
             return
         }
-        guard let server = getDefaultServer() else {
-            self.showMessageAndDismiss(message: "No servers configured.")
-            return
-        }
-        session = server
         
-        if URL(string: server.url) == nil{
-            self.showMessageAndDismiss(message: "Server '\(server.url)' is invalid.")
-            return
-        }
-        if URL(string: server.url)?.scheme == nil{
-            self.showMessageAndDismiss(message: "Server '\(server.url)' scheme (http or https) is invalid.")
-            return
-        }
+        getAvailableServers()
         
         self.progressBar.isHidden = true
         var loaded: Bool = false
@@ -74,7 +62,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             for ele in extensionItem.attachments! {
                 let itemProvider = ele
 
-                if itemProvider.hasItemConformingToTypeIdentifier("public.image"){
+                if itemProvider.hasItemConformingToTypeIdentifier("public.image") {
                     itemProvider.loadItem(forTypeIdentifier: "public.image", options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
                             self.shortText.isHidden = true
@@ -100,6 +88,19 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                 self.showMessageAndDismiss(message: "Invalid image.")
                             }
                             self.imageView.setNeedsDisplay()
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
+                        }
+                    })
+                    loaded = true
+                    break
+                }
+                else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
+                    itemProvider.loadItem(forTypeIdentifier: "public.file-url", options: nil, completionHandler: { (item, error) in
+                        DispatchQueue.main.async {
+                            self.shortText.isHidden = true
+                            self.shareLabel.text = "Upload File"
+                            self.shareURL = item as? URL
                             self.activityIndicator.stopAnimating()
                             self.shareButton.isEnabled = true
                         }
@@ -143,7 +144,46 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             }
         }
         
-        serverLabel.text = session.url
+    }
+    
+    func getAvailableServers() {
+        let context = sharedModelContainer.mainContext
+
+        do {
+            let descriptor = FetchDescriptor<DjangoFilesSession>(
+                predicate: #Predicate { $0.auth == true },
+                sortBy: [SortDescriptor(\.url)]
+            )
+            let sessions = try context.fetch(descriptor)
+
+            guard !sessions.isEmpty else {
+                availableServers.setTitle("No servers available", for: .normal)
+                return
+            }
+
+            // Pick the default session, or fallback to the first one
+            let defaultSession = sessions.first(where: { $0.defaultSession }) ?? sessions.first!
+
+            // Build menu actions
+            let actions = sessions.map { session in
+                UIAction(title: session.url) { _ in
+                    self.session = session
+                    self.availableServers.setTitle(session.url, for: .normal)
+                }
+            }
+
+            let menu = UIMenu(title: "Select a Server", options: .displayInline, children: actions)
+            availableServers.menu = menu
+            availableServers.showsMenuAsPrimaryAction = true
+
+            // Set the default selected title and session
+            availableServers.setTitle(defaultSession.url, for: .normal)
+            session = defaultSession
+
+        } catch {
+            self.showMessageAndDismiss(message: error.localizedDescription)
+            availableServers.setTitle("Error loading servers", for: .normal)
+        }
     }
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
@@ -165,7 +205,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             }
         }
         catch {
-            print(error)
+            self.showMessageAndDismiss(message: error.localizedDescription)
         }
         return selectedServer
     }
