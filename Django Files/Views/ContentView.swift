@@ -26,9 +26,6 @@ struct ContentView: View {
 
     @State private var viewingSettings: Bool = false
 
-    // stupid work around where we have to show the toolbar on ipad so splitview does not crash due to toolbar state
-    let toolbarVisibility: Visibility =
-        UIDevice.current.userInterfaceIdiom == .pad ? .visible : .hidden
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -71,7 +68,6 @@ struct ContentView: View {
                     .onAppear {
                         columnVisibility = .detailOnly
                     }
-                    .toolbar(toolbarVisibility)
                 } else {
                     LoginView(
                         selectedServer: server,
