@@ -66,13 +66,7 @@ struct ContentView: View {
         } detail: {
             if let server = selectedServer {
                 if server.auth {
-                    AuthViewContainer(
-                        viewingSettings: $viewingSettings,
-                        selectedServer: server,
-                        columnVisibility: $columnVisibility,
-                        showingEditor: $showingEditor,
-                        needsRefresh: $needsRefresh
-                    )
+                    FileListView(server: server)
                     .id(server.url)
                     .onAppear {
                         columnVisibility = .detailOnly
