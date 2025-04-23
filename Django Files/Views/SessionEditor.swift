@@ -13,6 +13,9 @@ struct SessionEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var items: [DjangoFilesSession]
     
+    @State private var showLoginSheet: Bool = false
+    @State private var newSession: DjangoFilesSession?
+    
     let session: DjangoFilesSession?
     var onSessionCreated: ((DjangoFilesSession) -> Void)?
     
@@ -22,31 +25,22 @@ struct SessionEditor: View {
     
     @State private var showDuplicateAlert = false
     
-    private func save() {
+    private func checkURLAuthAndSave() {
         if let session {
             session.url = url?.absoluteString ?? ""
             session.token = token
             session.auth = false
         } else {
-            // Check for duplicate URL
             if items.contains(where: { $0.url == url?.absoluteString }) {
-                // Set the alert state to true to show the alert
                 showDuplicateAlert = true
                 return
             }
-            
-            let newSession = DjangoFilesSession()
-            newSession.url = url?.absoluteString ?? ""
-            newSession.token = token
-            newSession.auth = false
-            modelContext.insert(newSession)
-            do {
-                try modelContext.save()
-                onSessionCreated?(newSession)
-                dismiss() // Dismiss the editor only after successful save
-            } catch {
-                print("Error saving session: \(error)")
-            }
+            newSession = DjangoFilesSession()
+            newSession!.url = url?.absoluteString ?? ""
+            newSession!.token = token
+            newSession!.auth = false
+            modelContext.insert(newSession!)
+            showLoginSheet = true
         }
     }
     
@@ -105,7 +99,6 @@ struct SessionEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action:{
-                        // Remove trailing slash if present
                         if var urlString = url?.absoluteString {
                             if urlString.hasSuffix("/") {
                                 urlString.removeLast()
@@ -114,7 +107,7 @@ struct SessionEditor: View {
                         }
                         if url != nil {
                             withAnimation {
-                                save()
+                                checkURLAuthAndSave()
                             }
                         } else {
                             badURL.toggle()
@@ -148,6 +141,27 @@ struct SessionEditor: View {
                     message: Text("A session with this URL already exists."),
                     dismissButton: .default(Text("OK"))
                 )
+            }
+            .sheet(isPresented: $showLoginSheet, onDismiss: {
+                if let newSession = newSession, newSession.auth {
+                    do {
+                        try modelContext.save()
+                        onSessionCreated?(newSession)
+                        dismiss()
+                    } catch {
+                        print("Error saving session: \(error)")
+                    }
+                }
+            }) {
+                if let newSession = newSession {
+                    LoginView(selectedServer: newSession, onLoginSuccess: {
+                        newSession.auth = true
+                    })
+                } else if let session = session {
+                    LoginView(selectedServer: session, onLoginSuccess: {
+                        session.auth = true
+                    })
+                }
             }
         }
     }

@@ -9,11 +9,9 @@ import SwiftUI
 import SwiftData
 import Foundation
 
-// Make sure we have the proper imports
-@_implementationOnly import Django_Files
 
 struct FileListView: View {
-    let server: DjangoFilesSession
+    let server: Binding<DjangoFilesSession?>
     
     @State private var files: [DFFile] = []
     @State private var currentPage = 1
@@ -23,8 +21,6 @@ struct FileListView: View {
     
     var body: some View {
         ZStack {
-            Color.djangoFilesBackground.ignoresSafeArea()
-            
             if isLoading && files.isEmpty {
                 LoadingView()
                     .frame(width: 100, height: 100)
@@ -57,48 +53,77 @@ struct FileListView: View {
                 }
                 .padding()
             } else {
-                List {
-                    ForEach(files, id: \.id) { file in
-                        FileRowView(file: file)
-                    }
-                    
-                    if hasNextPage {
-                        HStack {
-                            Spacer()
-                            Button("Load More") {
-                                loadNextPage()
+                NavigationStack {
+                    List {
+                        ForEach(files, id: \.id) { file in
+                            NavigationLink {
+                                ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
+                                    .toolbar {
+                                        ToolbarItem(placement: .navigationBarTrailing) {
+                                            Menu {
+                                                FileContextMenuButtons(
+                                                    onPreview: {
+
+                                                    },
+                                                    onCopyShareLink: {
+                                                        // Open Maps and center it on this item.
+                                                    },
+                                                    onCopyRawLink: {
+                                                        // Open Maps and center it on this item.
+                                                    },
+                                                    onSetPrivate: {
+                                                        // Add this item to a list of favorites.
+                                                    },
+                                                    onShowInMaps: {
+                                                        // Open Maps and center it on this item.
+                                                    }
+                                                )
+                                            } label: {
+                                                Image(systemName: "ellipsis.circle")
+                                            }
+                                        }
+                                    }
+
+                            } label: {
+                                FileRowView(file: file)
                             }
-                            .buttonStyle(.bordered)
-                            Spacer()
                         }
-                        .padding(.vertical, 8)
+                        
+                        if hasNextPage {
+                            HStack {
+                                Button("Load More") {
+                                    loadNextPage()
+                                }
+                            }
+                        }
+                    }
+
+                    .listStyle(.plain)
+                    .refreshable {
+                        await refreshFiles()
+                    }
+                    .navigationTitle(server.wrappedValue != nil ? "Files (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Files")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Menu {
+                                Button(action: {
+                                    // Upload action
+                                }) {
+                                    Label("Upload File", systemImage: "arrow.up.doc")
+                                }
+
+                                Button(action: {
+                                    refreshFiles()
+                                }) {
+                                    Label("Refresh", systemImage: "arrow.clockwise")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                        }
                     }
                 }
-                .listStyle(.insetGrouped)
-                .refreshable {
-                    await refreshFiles()
-                }
-            }
-        }
-        .navigationTitle("Files")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: { 
-                        // Upload action
-                    }) {
-                        Label("Upload File", systemImage: "arrow.up.doc")
-                    }
-                    
-                    Button(action: { 
-                        refreshFiles()
-                    }) {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+
             }
         }
         .onAppear {
@@ -142,13 +167,14 @@ struct FileListView: View {
     
     @MainActor
     private func fetchFiles(page: Int, append: Bool = false) async {
-        guard let url = URL(string: server.url) else {
+        guard let serverInstance = server.wrappedValue, 
+              let url = URL(string: serverInstance.url) else {
             errorMessage = "Invalid server URL"
             isLoading = false
             return
         }
         
-        let api = DFAPI(url: url, token: server.token)
+        let api = DFAPI(url: url, token: serverInstance.token)
         
         if let filesResponse = await api.getFiles(page: page) {
             if append {
@@ -170,20 +196,46 @@ struct FileListView: View {
     }
 }
 
+struct CustomLabel: LabelStyle {
+    var spacing: Double = 0.0
+    
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: spacing) {
+            configuration.icon
+            configuration.title
+        }
+    }
+}
+
 struct FileRowView: View {
     let file: DFFile
     
+    @State private var showPreview: Bool = false
+    
+    private func getIcon() -> String {
+        switch file.mime {
+        case "image/jpeg":
+            return "photo.artframe"
+        default:
+            return "doc.fill"
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(file.name)
                 .font(.headline)
+                .lineLimit(1)
+                .foregroundColor(.blue)
             
-            HStack(spacing: 12) {
-                Label(file.mime, systemImage: "doc.fill")
+            HStack(spacing: 5) {
+                Label(file.mime, systemImage: getIcon())
                     .font(.caption)
+                    .labelStyle(CustomLabel(spacing: 3))
                 
                 Label("User: \(file.user)", systemImage: "person")
                     .font(.caption)
+                    .labelStyle(CustomLabel(spacing: 3))
                 
                 Spacer()
                 
@@ -192,6 +244,27 @@ struct FileRowView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .contextMenu {
+            FileContextMenuButtons(
+                onPreview: {
+                    showPreview = true
+                },
+                onCopyShareLink: {
+                    // Open Maps and center it on this item.
+                },
+                onCopyRawLink: {
+                    // Open Maps and center it on this item.
+                },
+                onSetPrivate: {
+                    // Add this item to a list of favorites.
+                },
+                onShowInMaps: {
+                    // Open Maps and center it on this item.
+                }
+            )
+        }
+        .sheet(isPresented: $showPreview) {
+            ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
+        }
     }
 }

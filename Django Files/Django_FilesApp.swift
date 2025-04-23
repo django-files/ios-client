@@ -8,6 +8,32 @@
 import SwiftUI
 import SwiftData
 
+class SessionManager: ObservableObject {
+    @Published var selectedSession: DjangoFilesSession?
+    private let userDefaultsKey = "lastSelectedSessionURL"
+    
+    func saveSelectedSession() {
+        if let session = selectedSession {
+            UserDefaults.standard.set(session.url, forKey: userDefaultsKey)
+        }
+    }
+    
+    func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
+        // Return if we already have a session loaded
+        if selectedSession != nil { return }
+        
+        if let lastSessionURL = UserDefaults.standard.string(forKey: userDefaultsKey) {
+            selectedSession = sessions.first(where: { $0.url == lastSessionURL })
+        } else if let defaultSession = sessions.first(where: { $0.defaultSession }) {
+            // Fall back to any session marked as default
+            selectedSession = defaultSession
+        } else if let firstSession = sessions.first {
+            // Fall back to the first available session
+            selectedSession = firstSession
+        }
+    }
+}
+
 @main
 struct Django_FilesApp: App {
     var sharedModelContainer: ModelContainer = {
@@ -21,6 +47,8 @@ struct Django_FilesApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
+
+    @StateObject private var sessionManager = SessionManager()
 
     init() {
         // Handle reset arguments
@@ -55,7 +83,8 @@ struct Django_FilesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+//            ContentView()
+            TabViewWindow(sessionManager: sessionManager)
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
