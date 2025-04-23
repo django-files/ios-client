@@ -49,6 +49,7 @@ struct Django_FilesApp: App {
     }()
 
     @StateObject private var sessionManager = SessionManager()
+    @State private var hasExistingSessions = false
 
     init() {
         // Handle reset arguments
@@ -83,8 +84,19 @@ struct Django_FilesApp: App {
 
     var body: some Scene {
         WindowGroup {
-//            ContentView()
-            TabViewWindow(sessionManager: sessionManager)
+            Group {
+                if hasExistingSessions {
+                    TabViewWindow(sessionManager: sessionManager)
+                } else {
+                    SessionEditor(session: nil, onSessionCreated: { newSession in
+                        sessionManager.selectedSession = newSession
+                        hasExistingSessions = true
+                    })
+                    .onAppear {
+                        checkForExistingSessions()
+                    }
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
@@ -92,5 +104,17 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
+    }
+    
+    private func checkForExistingSessions() {
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        do {
+            let sessionsCount = try context.fetchCount(descriptor)
+            hasExistingSessions = sessionsCount > 0
+        } catch {
+            print("Error checking for existing sessions: \(error)")
+        }
     }
 }

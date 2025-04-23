@@ -87,13 +87,22 @@ struct FileListView: View {
                             } label: {
                                 FileRowView(file: file)
                             }
+                            .id(file.id)
+                            
+                            // If this is the last item and we have more pages, load more when it appears
+                            if hasNextPage && file.id == files.last?.id {
+                                Color.clear
+                                    .frame(height: 20)
+                                    .onAppear {
+                                        loadNextPage()
+                                    }
+                            }
                         }
                         
-                        if hasNextPage {
+                        if isLoading && hasNextPage {
                             HStack {
-                                Button("Load More") {
-                                    loadNextPage()
-                                }
+
+                                ProgressView()
                             }
                         }
                     }
@@ -143,6 +152,7 @@ struct FileListView: View {
     
     private func loadNextPage() {
         guard hasNextPage else { return }
+        guard !isLoading else { return }  // Prevent multiple simultaneous loading requests
         isLoading = true
         
         Task {
