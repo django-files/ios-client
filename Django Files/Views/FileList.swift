@@ -243,7 +243,7 @@ struct FileRowView: View {
                     .font(.caption)
                     .labelStyle(CustomLabel(spacing: 3))
                 
-                Label("User: \(file.user)", systemImage: "person")
+                Label(file.userUsername, systemImage: "person")
                     .font(.caption)
                     .labelStyle(CustomLabel(spacing: 3))
                 
