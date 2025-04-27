@@ -19,6 +19,10 @@ struct FileListView: View {
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     
+    @State private var previewFile: Bool = true
+    @State private var selectedFile: DFFile? = nil
+    @State private var navigationPath = NavigationPath()
+        
     var body: some View {
         ZStack {
             if isLoading && files.isEmpty {
@@ -53,39 +57,31 @@ struct FileListView: View {
                 }
                 .padding()
             } else {
-                NavigationStack {
+                NavigationStack(path: $navigationPath) {
                     List {
                         ForEach(files, id: \.id) { file in
-                            NavigationLink {
-                                ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
-                                    .toolbar {
-                                        ToolbarItem(placement: .navigationBarTrailing) {
-                                            Menu {
-                                                FileContextMenuButtons(
-                                                    onPreview: {
-
-                                                    },
-                                                    onCopyShareLink: {
-                                                        // Open Maps and center it on this item.
-                                                    },
-                                                    onCopyRawLink: {
-                                                        // Open Maps and center it on this item.
-                                                    },
-                                                    onSetPrivate: {
-                                                        // Add this item to a list of favorites.
-                                                    },
-                                                    onShowInMaps: {
-                                                        // Open Maps and center it on this item.
-                                                    }
-                                                )
-                                            } label: {
-                                                Image(systemName: "ellipsis.circle")
-                                            }
-                                        }
-                                    }
-
-                            } label: {
+                            NavigationLink(value: file) {
                                 FileRowView(file: file)
+                                    .contextMenu {
+                                        FileContextMenuButtons(
+                                            isPreviewing: false,
+                                            onPreview: {
+                                                selectedFile = file
+                                            },
+                                            onCopyShareLink: {
+                                                UIPasteboard.general.string = file.url
+                                            },
+                                            onCopyRawLink: {
+                                                UIPasteboard.general.string = file.raw
+                                            },
+                                            onTogglePrivate: {
+                                                // Add this item to a list of favorites.
+                                            },
+                                            onShowInMaps: {
+                                                // Open Maps and center it on this item.
+                                            }
+                                        )
+                                    }
                             }
                             .id(file.id)
                             
@@ -105,6 +101,35 @@ struct FileListView: View {
                                 ProgressView()
                             }
                         }
+                    }
+                    .navigationDestination(for: DFFile.self) { file in
+                        ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
+                            .toolbar {
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                    Menu {
+                                        FileContextMenuButtons(
+                                            isPreviewing: true,
+                                            onPreview: {
+                                                // No action needed since this is already the preview screen.
+                                            },
+                                            onCopyShareLink: {
+                                                UIPasteboard.general.string = file.url
+                                            },
+                                            onCopyRawLink: {
+                                                UIPasteboard.general.string = file.raw
+                                            },
+                                            onTogglePrivate: {
+                                                // Add this item to a list of favorites.
+                                            },
+                                            onShowInMaps: {
+                                                // Open Maps and center it on this item.
+                                            }
+                                        )
+                                    } label: {
+                                        Image(systemName: "ellipsis.circle")
+                                    }
+                                }
+                            }
                     }
 
                     .listStyle(.plain)
@@ -132,7 +157,12 @@ struct FileListView: View {
                         }
                     }
                 }
-
+                .onChange(of: selectedFile) { oldValue, newValue in
+                    if let file = newValue {
+                        navigationPath.append(file)
+                        selectedFile = nil // Reset after navigation
+                    }
+                }
             }
         }
         .onAppear {
@@ -219,9 +249,6 @@ struct CustomLabel: LabelStyle {
 
 struct FileRowView: View {
     let file: DFFile
-    
-    @State private var showPreview: Bool = false
-    
     private func getIcon() -> String {
         switch file.mime {
         case "image/jpeg":
@@ -254,27 +281,8 @@ struct FileRowView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .contextMenu {
-            FileContextMenuButtons(
-                onPreview: {
-                    showPreview = true
-                },
-                onCopyShareLink: {
-                    // Open Maps and center it on this item.
-                },
-                onCopyRawLink: {
-                    // Open Maps and center it on this item.
-                },
-                onSetPrivate: {
-                    // Add this item to a list of favorites.
-                },
-                onShowInMaps: {
-                    // Open Maps and center it on this item.
-                }
-            )
-        }
-        .sheet(isPresented: $showPreview) {
-            ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
-        }
+//        .sheet(isPresented: $showPreview) {
+//            ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
+//        }
     }
 }

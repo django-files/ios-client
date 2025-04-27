@@ -1,18 +1,23 @@
 import SwiftUI
 
 struct FileContextMenuButtons: View {
+    
+    var isPreviewing: Bool = false
+    
     var onPreview: () -> Void
     var onCopyShareLink: () -> Void
     var onCopyRawLink: () -> Void
-    var onSetPrivate: () -> Void
+    var onTogglePrivate: () -> Void
     var onShowInMaps: () -> Void
     
     var body: some View {
         Group {
-            Button {
-                onPreview()
-            } label: {
-                Label("Open Preview", systemImage: "arrow.up.forward.app")
+            if !isPreviewing {
+                Button {
+                    onPreview()
+                } label: {
+                    Label("Open Preview", systemImage: "arrow.up.forward.app")
+                }
             }
             
             Button {
@@ -28,7 +33,7 @@ struct FileContextMenuButtons: View {
             }
             
             Button {
-                onSetPrivate()
+                onTogglePrivate()
             } label: {
                 Label("Set Private", systemImage: "lock")
             }

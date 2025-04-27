@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct DFFile: Codable {
+public struct DFFile: Codable, Hashable, Equatable {
     public let id: Int
     public let user: Int
     public let size: Int
@@ -65,6 +65,16 @@ public struct DFFile: Codable {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+    
+    // Add hash implementation for Hashable conformance
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    // Add equality implementation for Equatable conformance
+    public static func == (lhs: DFFile, rhs: DFFile) -> Bool {
+        return lhs.id == rhs.id
     }
 }
 
