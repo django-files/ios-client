@@ -79,9 +79,11 @@
 		4CA2E47D2D6D22CA006EF3F0 /* Exceptions for "Django Files" folder in "UploadAndCopy" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				API/Albums.swift,
 				API/DFAPI.swift,
 				API/Error.swift,
 				API/Files.swift,
+				API/Gallery.swift,
 				API/Short.swift,
 				API/Stats.swift,
 				API/Upload.swift,

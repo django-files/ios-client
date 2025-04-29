@@ -31,12 +31,12 @@ struct TabViewWindow: View {
             }
             
             Tab("Albums", systemImage: "square.stack") {
-                //                ReceivedView()
+                AlbumListView(server: $sessionManager.selectedSession)
             }
             
             
             Tab("Shorts", systemImage: "link") {
-                //                SentView()
+                ShortListView(server: $sessionManager.selectedSession)
             }
             
             Tab("Web", systemImage: "globe"){

@@ -23,6 +23,7 @@ struct DFAPI {
         case auth_methods = "auth/methods/"
         case login = "auth/token/"
         case files = "files/"
+        case shorts = "shorts/"
     }
     
     let url: URL
@@ -162,6 +163,28 @@ struct DFAPI {
         }catch {
             print("Request failed \(error)")
             return nil;
+        }
+    }
+    
+    public func getShorts(amount: Int = 50, start: Int? = nil) async -> ShortsResponse? {
+        var parameters: [String: String] = ["amount": "\(amount)"]
+        if let start = start {
+            parameters["start"] = "\(start)"
+        }
+        
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.shorts),
+                parameters: parameters,
+                method: .get
+            )
+            
+            let shorts = try decoder.decode([DFShort].self, from: responseBody)
+            return ShortsResponse(shorts: shorts)
+            
+        } catch {
+            print("Error fetching shorts: \(error)")
+            return nil
         }
     }
     
@@ -343,10 +366,12 @@ struct DFAPI {
             let specialDecoder = JSONDecoder()
             specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
             return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
+        } catch let DecodingError.keyNotFound(key, context) {
+            print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
             print("Request failed \(error)")
-            return nil
         }
+        return nil
     }
 }
 

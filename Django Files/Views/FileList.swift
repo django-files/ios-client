@@ -77,7 +77,7 @@ struct FileListView: View {
                                             onTogglePrivate: {
                                                 // Add this item to a list of favorites.
                                             },
-                                            onShowInMaps: {
+                                            setExpire: {
                                                 // Open Maps and center it on this item.
                                             }
                                         )
@@ -109,9 +109,6 @@ struct FileListView: View {
                                     Menu {
                                         FileContextMenuButtons(
                                             isPreviewing: true,
-                                            onPreview: {
-                                                // No action needed since this is already the preview screen.
-                                            },
                                             onCopyShareLink: {
                                                 UIPasteboard.general.string = file.url
                                             },
@@ -121,7 +118,7 @@ struct FileListView: View {
                                             onTogglePrivate: {
                                                 // Add this item to a list of favorites.
                                             },
-                                            onShowInMaps: {
+                                            setExpire: {
                                                 // Open Maps and center it on this item.
                                             }
                                         )
@@ -270,7 +267,7 @@ struct FileRowView: View {
                     .font(.caption)
                     .labelStyle(CustomLabel(spacing: 3))
                 
-                Label(file.userUsername, systemImage: "person")
+                Label(file.userUsername!, systemImage: "person")
                     .font(.caption)
                     .labelStyle(CustomLabel(spacing: 3))
                 
@@ -281,8 +278,5 @@ struct FileRowView: View {
                     .foregroundColor(.secondary)
             }
         }
-//        .sheet(isPresented: $showPreview) {
-//            ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
-//        }
     }
 }

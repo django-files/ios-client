@@ -13,6 +13,8 @@ struct ContentPreview: View {
     @State private var content: Data?
     @State private var isLoading = true
     @State private var error: Error?
+    @State private var imageScale: CGFloat = 1.0
+    @State private var lastImageScale: CGFloat = 1.0
     
     var body: some View {
         Group {
@@ -65,15 +67,39 @@ struct ContentPreview: View {
     
     // Image Preview
     private var imagePreview: some View {
-        ScrollView {
-            if let content = content, let uiImage = UIImage(data: content) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                Text("Unable to load image")
-                    .foregroundColor(.red)
+        GeometryReader { geometry in
+            ScrollView([.horizontal, .vertical]) {
+                if let content = content, let uiImage = UIImage(data: content) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geometry.size.width)
+                        .scaleEffect(imageScale)
+                        .frame(
+                            minWidth: geometry.size.width * imageScale,
+                            minHeight: geometry.size.height * imageScale
+                        )
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastImageScale
+                                    lastImageScale = value
+                                    imageScale = min(max(imageScale * delta, 1), 5)
+                                }
+                                .onEnded { _ in
+                                    lastImageScale = 1.0
+                                }
+                        )
+                        .onTapGesture(count: 2) {
+                            withAnimation {
+                                imageScale = imageScale > 1 ? 1 : 2
+                            }
+                        }
+                } else {
+                    Text("Unable to load image")
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
     

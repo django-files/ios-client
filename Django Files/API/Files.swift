@@ -13,8 +13,8 @@ public struct DFFile: Codable, Hashable, Equatable {
     public let size: Int
     public let mime: String
     public let name: String
-    public let userName: String
-    public let userUsername: String
+    public let userName: String? = ""
+    public let userUsername: String? = ""
     public let info: String
     public let expr: String
     public let view: Int

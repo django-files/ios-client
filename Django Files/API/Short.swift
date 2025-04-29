@@ -39,3 +39,30 @@ struct DFShortResponse: Codable{
         url = try container.decode(String.self, forKey: .url)
     }
 }
+
+struct DFShort: Identifiable, Codable, Hashable {
+    let id: Int
+    let short: String
+    let url: String
+    let max: Int
+    let views: Int
+    let user: Int
+    let fullUrl: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, short, url, max, views, user, fullUrl
+    }
+}
+
+// Response structure for shorts API call
+struct ShortsResponse: Codable {
+    let shorts: [DFShort]
+    
+    init(shorts: [DFShort]) {
+        self.shorts = shorts
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case shorts
+    }
+}
