@@ -8,9 +8,20 @@
 import Foundation
 import HTTPTypes
 import HTTPTypesFoundation
+import UIKit
+
+// Custom imports
+import SwiftUI  // Needed for ToastManager
+
+// Add an import for the models file
+// This line should be modified if the module structure is different
+// Or the models should be declared here if needed
 
 struct DFAPI {
     private static let API_PATH = "/api/"
+    
+    // Add a shared WebSocket instance
+    private static var sharedWebSocket: DFWebSocket?
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
@@ -18,11 +29,14 @@ struct DFAPI {
         case short = "shorten/"
         case auth_methods = "auth/methods/"
         case login = "auth/token/"
+        case files = "files/"
+        case shorts = "shorts/"
     }
     
     let url: URL
     let token: String
     var decoder: JSONDecoder
+    
     
     init(url: URL, token: String){
         self.url = url
@@ -159,6 +173,28 @@ struct DFAPI {
         }
     }
     
+    public func getShorts(amount: Int = 50, start: Int? = nil) async -> ShortsResponse? {
+        var parameters: [String: String] = ["amount": "\(amount)"]
+        if let start = start {
+            parameters["start"] = "\(start)"
+        }
+        
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.shorts),
+                parameters: parameters,
+                method: .get
+            )
+            
+            let shorts = try decoder.decode([DFShort].self, from: responseBody)
+            return ShortsResponse(shorts: shorts)
+            
+        } catch {
+            print("Error fetching shorts: \(error)")
+            return nil
+        }
+    }
+    
     public func getAuthMethods() async -> DFAuthMethodsResponse? {
         do {
             let responseBody = try await makeAPIRequest(
@@ -248,6 +284,7 @@ struct DFAPI {
             if let url = urlRequest.url {
                 // Set the cookie directly in the request header
                 urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
+                print("Using session key cookie: \(sessionKey) on \(url)")
                 
                 // Also set it in the cookie storage
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
@@ -278,6 +315,8 @@ struct DFAPI {
             
             let session = URLSession(configuration: configuration)
             let (_, response) = try await session.data(for: urlRequest)
+            
+            print("response: \(response)")
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -321,9 +360,50 @@ struct DFAPI {
             return false
         }
     }
+
+    public func getFiles(page: Int = 1) async -> DFFilesResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.files) + "\(page)/",
+                parameters: [:],
+                method: .get
+            )
+            
+            // Use the default decoder since dates are now handled as strings
+            let specialDecoder = JSONDecoder()
+            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
+        } catch let DecodingError.keyNotFound(key, context) {
+            print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
+        } catch {
+            print("Request failed \(error)")
+        }
+        return nil
+    }
+
+    // Create and connect to a WebSocket, also setting up WebSocketToastObserver
+    public func connectToWebSocket() -> DFWebSocket {
+        let webSocket = self.createWebSocket()
+        
+        // Instead of directly accessing WebSocketToastObserver, post a notification
+        // that the observer will pick up
+        NotificationCenter.default.post(
+            name: Notification.Name("DFWebSocketConnectionRequest"),
+            object: nil,
+            userInfo: ["api": self]
+        )
+        
+        // Store as the shared instance
+        DFAPI.sharedWebSocket = webSocket
+        
+        return webSocket
+    }
+    
+    // Get the shared WebSocket or create a new one if none exists
+    public static func getSharedWebSocket() -> DFWebSocket? {
+        return sharedWebSocket
+    }
 }
-
-
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
     enum States {

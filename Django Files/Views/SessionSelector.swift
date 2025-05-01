@@ -16,8 +16,6 @@ struct SessionSelector: View {
     
     let session: DjangoFilesSession
     
-    var viewingSelect: Binding<Bool>? = nil
-    
     @State private var url = ""
     @State private var token = ""
     @State private var sessionStarted = false
@@ -104,19 +102,13 @@ struct SessionSelector: View {
                     Text("Auth Status:")
                 }
             }
-            .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Server Options")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Back") {
-                        if viewingSelect == nil{
-                            dismiss()
-                        }
-                        else{
-                            viewingSelect?.wrappedValue = false
-                        }
+                        dismiss()
                     }
                 }
             }
@@ -124,7 +116,6 @@ struct SessionSelector: View {
                 url = session.url
                 defaultSession = session.defaultSession
                 token = session.token
-                
             }
         }
     }

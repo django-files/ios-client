@@ -8,6 +8,32 @@
 import SwiftUI
 import SwiftData
 
+class SessionManager: ObservableObject {
+    @Published var selectedSession: DjangoFilesSession?
+    private let userDefaultsKey = "lastSelectedSessionURL"
+    
+    func saveSelectedSession() {
+        if let session = selectedSession {
+            UserDefaults.standard.set(session.url, forKey: userDefaultsKey)
+        }
+    }
+    
+    func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
+        // Return if we already have a session loaded
+        if selectedSession != nil { return }
+        
+        if let lastSessionURL = UserDefaults.standard.string(forKey: userDefaultsKey) {
+            selectedSession = sessions.first(where: { $0.url == lastSessionURL })
+        } else if let defaultSession = sessions.first(where: { $0.defaultSession }) {
+            // Fall back to any session marked as default
+            selectedSession = defaultSession
+        } else if let firstSession = sessions.first {
+            // Fall back to the first available session
+            selectedSession = firstSession
+        }
+    }
+}
+
 @main
 struct Django_FilesApp: App {
     var sharedModelContainer: ModelContainer = {
@@ -22,7 +48,17 @@ struct Django_FilesApp: App {
         }
     }()
 
+    @StateObject private var sessionManager = SessionManager()
+    @State private var hasExistingSessions = false
+
     init() {
+        // Initialize WebSocket debugging
+        print("📱 App initializing - WebSocket toast system will use direct approach")
+        
+        // Initialize WebSocket toast observer - make sure this runs at startup
+        print("📱 Setting up WebSocketToastObserver")
+        let _ = WebSocketToastObserver.shared
+        
         // Handle reset arguments
         if CommandLine.arguments.contains("--DeleteAllData") {
             // Clear UserDefaults
@@ -55,7 +91,19 @@ struct Django_FilesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if hasExistingSessions {
+                    TabViewWindow(sessionManager: sessionManager)
+                } else {
+                    SessionEditor(session: nil, onSessionCreated: { newSession in
+                        sessionManager.selectedSession = newSession
+                        hasExistingSessions = true
+                    })
+                    .onAppear {
+                        checkForExistingSessions()
+                    }
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
@@ -63,5 +111,17 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
+    }
+    
+    private func checkForExistingSessions() {
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        do {
+            let sessionsCount = try context.fetchCount(descriptor)
+            hasExistingSessions = sessionsCount > 0
+        } catch {
+            print("Error checking for existing sessions: \(error)")
+        }
     }
 }
