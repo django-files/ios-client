@@ -52,6 +52,13 @@ struct Django_FilesApp: App {
     @State private var hasExistingSessions = false
 
     init() {
+        // Initialize WebSocket debugging
+        print("📱 App initializing - WebSocket toast system will use direct approach")
+        
+        // Initialize WebSocket toast observer - make sure this runs at startup
+        print("📱 Setting up WebSocketToastObserver")
+        let _ = WebSocketToastObserver.shared
+        
         // Handle reset arguments
         if CommandLine.arguments.contains("--DeleteAllData") {
             // Clear UserDefaults

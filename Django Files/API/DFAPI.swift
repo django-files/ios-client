@@ -8,6 +8,10 @@
 import Foundation
 import HTTPTypes
 import HTTPTypesFoundation
+import UIKit
+
+// Custom imports
+import SwiftUI  // Needed for ToastManager
 
 // Add an import for the models file
 // This line should be modified if the module structure is different
@@ -15,6 +19,9 @@ import HTTPTypesFoundation
 
 struct DFAPI {
     private static let API_PATH = "/api/"
+    
+    // Add a shared WebSocket instance
+    private static var sharedWebSocket: DFWebSocket?
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
@@ -372,6 +379,29 @@ struct DFAPI {
             print("Request failed \(error)")
         }
         return nil
+    }
+
+    // Create and connect to a WebSocket, also setting up WebSocketToastObserver
+    public func connectToWebSocket() -> DFWebSocket {
+        let webSocket = self.createWebSocket()
+        
+        // Instead of directly accessing WebSocketToastObserver, post a notification
+        // that the observer will pick up
+        NotificationCenter.default.post(
+            name: Notification.Name("DFWebSocketConnectionRequest"),
+            object: nil,
+            userInfo: ["api": self]
+        )
+        
+        // Store as the shared instance
+        DFAPI.sharedWebSocket = webSocket
+        
+        return webSocket
+    }
+    
+    // Get the shared WebSocket or create a new one if none exists
+    public static func getSharedWebSocket() -> DFWebSocket? {
+        return sharedWebSocket
     }
 }
 

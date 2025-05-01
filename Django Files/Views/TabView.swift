@@ -57,14 +57,34 @@ struct TabViewWindow: View {
         }
         .onAppear {
             sessionManager.loadLastSelectedSession(from: sessions)
+            
+            // Connect to WebSocket if a session is selected
+            if let selectedSession = sessionManager.selectedSession {
+                connectToWebSocket(session: selectedSession)
+            }
         }
         .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
             if newValue != nil {
                 sessionManager.saveSelectedSession()
+                
+                // Connect to WebSocket when session changes
+                if let session = newValue {
+                    connectToWebSocket(session: session)
+                }
             }
         }
         .navigationTitle(Text("Servers"))
 
+    }
+    
+    // Helper function to connect to WebSocket
+    private func connectToWebSocket(session: DjangoFilesSession) {
+        // Create the DFAPI instance
+        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
+        
+        // Connect to WebSocket
+        print("TabViewWindow: Connecting to WebSocket for session \(session.url)")
+        _ = api.connectToWebSocket()
     }
 }
 

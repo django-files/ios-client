@@ -27,13 +27,13 @@ class ToastManager {
         messageLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         messageLabel.numberOfLines = 0
         
-        // Create an image view for the clipboard icon
-        let imageView = UIImageView(image: UIImage(systemName: "doc.on.clipboard"))
-        imageView.tintColor = .white
-        imageView.contentMode = .scaleAspectFit
+//        // Create an image view for the clipboard icon
+//        let imageView = UIImageView(image: UIImage(systemName: "doc.on.clipboard"))
+//        imageView.tintColor = .white
+//        imageView.contentMode = .scaleAspectFit
         
         // Create a stack view to hold the image and label
-        let stackView = UIStackView(arrangedSubviews: [imageView, messageLabel])
+        let stackView = UIStackView(arrangedSubviews: [/*imageView,*/ messageLabel])
         stackView.axis = .horizontal
         stackView.spacing = 8
         stackView.alignment = .center
@@ -46,8 +46,8 @@ class ToastManager {
             stackView.bottomAnchor.constraint(equalTo: toastContainer.bottomAnchor, constant: -12),
             stackView.leadingAnchor.constraint(equalTo: toastContainer.leadingAnchor, constant: 16),
             stackView.trailingAnchor.constraint(equalTo: toastContainer.trailingAnchor, constant: -16),
-            imageView.widthAnchor.constraint(equalToConstant: 20),
-            imageView.heightAnchor.constraint(equalToConstant: 20)
+//            imageView.widthAnchor.constraint(equalToConstant: 20),
+//            imageView.heightAnchor.constraint(equalToConstant: 20)
         ])
         
         // Add the toast container to the window
@@ -57,7 +57,8 @@ class ToastManager {
         // Position the toast at the center bottom of the screen
         NSLayoutConstraint.activate([
             toastContainer.centerXAnchor.constraint(equalTo: window.centerXAnchor),
-            toastContainer.bottomAnchor.constraint(equalTo: window.safeAreaLayoutGuide.bottomAnchor, constant: -64)
+            toastContainer.bottomAnchor.constraint(equalTo: window.safeAreaLayoutGuide.bottomAnchor, constant: -64),
+            toastContainer.widthAnchor.constraint(lessThanOrEqualTo: window.widthAnchor, multiplier: 0.85)
         ])
         
         // Animate the toast
