@@ -31,6 +31,7 @@ struct DFAPI {
         case login = "auth/token/"
         case files = "files/"
         case shorts = "shorts/"
+        case delete_file = "files/delete/"
     }
     
     let url: URL
@@ -118,6 +119,24 @@ struct DFAPI {
         }catch {
             print("Request failed \(error)")
             return nil;
+        }
+    }
+    
+    public func deleteFiles(fileIDs: [Int]) async {
+        do {
+            // Convert array to JSON string
+            let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
+            let fileIDsString = String(data: fileIDsData, encoding: .utf8) ?? "[]"
+            print(fileIDsString)
+
+            let _ = try await makeAPIRequest(
+                body: fileIDsData,
+                path: getAPIPath(.delete_file),
+                parameters: [:],
+                method: .delete
+            )
+        } catch {
+            print("File Delete Failed \(error)")
         }
     }
     

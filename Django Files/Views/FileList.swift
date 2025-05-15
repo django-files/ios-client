@@ -22,6 +22,42 @@ struct FileListView: View {
     @State private var previewFile: Bool = true
     @State private var selectedFile: DFFile? = nil
     @State private var navigationPath = NavigationPath()
+    
+    @State private var showingDeleteConfirmation = false
+    @State private var fileIDsToDelete: [Int] = []
+    @State private var fileNameToDelete: String = ""
+    
+    // Helper function to create consistent FileContextMenuButtons
+    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool) -> FileContextMenuButtons {
+        return FileContextMenuButtons(
+            isPreviewing: isPreviewing,
+            onPreview: {
+                selectedFile = file
+            },
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                UIPasteboard.general.string = file.raw
+            },
+            openRawBrowser: {
+                if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            onTogglePrivate: {
+                // Add this item to a list of favorites.
+            },
+            setExpire: {
+                // Open Maps and center it on this item.
+            },
+            deleteFile: {
+                fileIDsToDelete = [file.id]
+                fileNameToDelete = file.name
+                showingDeleteConfirmation = true
+            }
+        )
+    }
         
     var body: some View {
         ZStack {
@@ -63,24 +99,7 @@ struct FileListView: View {
                             NavigationLink(value: file) {
                                 FileRowView(file: file)
                                     .contextMenu {
-                                        FileContextMenuButtons(
-                                            isPreviewing: false,
-                                            onPreview: {
-                                                selectedFile = file
-                                            },
-                                            onCopyShareLink: {
-                                                UIPasteboard.general.string = file.url
-                                            },
-                                            onCopyRawLink: {
-                                                UIPasteboard.general.string = file.raw
-                                            },
-                                            onTogglePrivate: {
-                                                // Add this item to a list of favorites.
-                                            },
-                                            setExpire: {
-                                                // Open Maps and center it on this item.
-                                            }
-                                        )
+                                        createFileMenuButtons(for: file, isPreviewing: false)
                                     }
                             }
                             .id(file.id)
@@ -97,31 +116,18 @@ struct FileListView: View {
                         
                         if isLoading && hasNextPage {
                             HStack {
-
                                 ProgressView()
                             }
                         }
                     }
                     .navigationDestination(for: DFFile.self) { file in
                         ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
+                            .navigationTitle(file.name)
+                            .navigationBarTitleDisplayMode(.inline)
                             .toolbar {
                                 ToolbarItem(placement: .navigationBarTrailing) {
                                     Menu {
-                                        FileContextMenuButtons(
-                                            isPreviewing: true,
-                                            onCopyShareLink: {
-                                                UIPasteboard.general.string = file.url
-                                            },
-                                            onCopyRawLink: {
-                                                UIPasteboard.general.string = file.raw
-                                            },
-                                            onTogglePrivate: {
-                                                // Add this item to a list of favorites.
-                                            },
-                                            setExpire: {
-                                                // Open Maps and center it on this item.
-                                            }
-                                        )
+                                        createFileMenuButtons(for: file, isPreviewing: true)
                                     } label: {
                                         Image(systemName: "ellipsis.circle")
                                     }
@@ -159,6 +165,21 @@ struct FileListView: View {
                         navigationPath.append(file)
                         selectedFile = nil // Reset after navigation
                     }
+                }
+                .alert("Delete File", isPresented: $showingDeleteConfirmation) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Delete", role: .destructive) {
+                        Task {
+                            await deleteFiles(fileIDs: fileIDsToDelete)
+                            
+                            // Return to the file list if we're in a detail view
+                            if navigationPath.count > 0 {
+                                navigationPath.removeLast()
+                            }
+                        }
+                    }
+                } message: {
+                    Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
                 }
             }
         }
@@ -230,6 +251,20 @@ struct FileListView: View {
             errorMessage = "Failed to load files from server"
             isLoading = false
         }
+    }
+    
+    @MainActor
+    private func deleteFiles(fileIDs: [Int]) async {
+        guard let serverInstance = server.wrappedValue, 
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        await api.deleteFiles(fileIDs: fileIDs)
+        
+        // Refresh the file list after deletion
+        await refreshFiles()
     }
 }
 
