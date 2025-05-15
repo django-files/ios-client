@@ -32,6 +32,7 @@ struct DFAPI {
         case files = "files/"
         case shorts = "shorts/"
         case delete_file = "files/delete/"
+        case edit_file = "files/edit/"
     }
     
     let url: URL
@@ -127,7 +128,6 @@ struct DFAPI {
             // Convert array to JSON string
             let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
             let fileIDsString = String(data: fileIDsData, encoding: .utf8) ?? "[]"
-            print(fileIDsString)
 
             let _ = try await makeAPIRequest(
                 body: fileIDsData,
@@ -137,6 +137,32 @@ struct DFAPI {
             )
         } catch {
             print("File Delete Failed \(error)")
+        }
+    }
+    
+    public func editFiles(fileIDs: [Int], changes: [String: Any]) async -> Bool {
+        do {
+            // Combine the file IDs and changes into a single dictionary
+            var requestData: [String: Any] = ["ids": fileIDs]
+            for (key, value) in changes {
+                requestData[key] = value
+            }
+            
+            // Convert combined dictionary to JSON data
+            let jsonData = try JSONSerialization.data(withJSONObject: requestData)
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            print(jsonString)
+            
+            let _ = try await makeAPIRequest(
+                body: jsonData,
+                path: getAPIPath(.edit_file),
+                parameters: [:],
+                method: .post
+            )
+            return true
+        } catch {
+            print("File Edit Failed \(error)")
+            return false
         }
     }
     

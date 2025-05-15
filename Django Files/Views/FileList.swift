@@ -27,38 +27,6 @@ struct FileListView: View {
     @State private var fileIDsToDelete: [Int] = []
     @State private var fileNameToDelete: String = ""
     
-    // Helper function to create consistent FileContextMenuButtons
-    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool) -> FileContextMenuButtons {
-        return FileContextMenuButtons(
-            isPreviewing: isPreviewing,
-            onPreview: {
-                selectedFile = file
-            },
-            onCopyShareLink: {
-                UIPasteboard.general.string = file.url
-            },
-            onCopyRawLink: {
-                UIPasteboard.general.string = file.raw
-            },
-            openRawBrowser: {
-                if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
-                }
-            },
-            onTogglePrivate: {
-                // Add this item to a list of favorites.
-            },
-            setExpire: {
-                // Open Maps and center it on this item.
-            },
-            deleteFile: {
-                fileIDsToDelete = [file.id]
-                fileNameToDelete = file.name
-                showingDeleteConfirmation = true
-            }
-        )
-    }
-        
     var body: some View {
         ZStack {
             if isLoading && files.isEmpty {
@@ -97,9 +65,9 @@ struct FileListView: View {
                     List {
                         ForEach(files, id: \.id) { file in
                             NavigationLink(value: file) {
-                                FileRowView(file: file)
+                                FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""))
                                     .contextMenu {
-                                        createFileMenuButtons(for: file, isPreviewing: false)
+                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private)
                                     }
                             }
                             .id(file.id)
@@ -127,17 +95,19 @@ struct FileListView: View {
                             .toolbar {
                                 ToolbarItem(placement: .navigationBarTrailing) {
                                     Menu {
-                                        createFileMenuButtons(for: file, isPreviewing: true)
+                                        createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private)
                                     } label: {
                                         Image(systemName: "ellipsis.circle")
                                     }
                                 }
                             }
                     }
-
+                    
                     .listStyle(.plain)
                     .refreshable {
-                        await refreshFiles()
+                        Task {
+                            await refreshFiles()
+                        }
                     }
                     .navigationTitle(server.wrappedValue != nil ? "Files (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Files")
                     .toolbar {
@@ -148,9 +118,11 @@ struct FileListView: View {
                                 }) {
                                     Label("Upload File", systemImage: "arrow.up.doc")
                                 }
-
+                                
                                 Button(action: {
-                                    refreshFiles()
+                                    Task {
+                                        await refreshFiles()
+                                    }
                                 }) {
                                     Label("Refresh", systemImage: "arrow.clockwise")
                                 }
@@ -188,6 +160,43 @@ struct FileListView: View {
         }
     }
     
+    // Helper function to create consistent FileContextMenuButtons
+    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool) -> FileContextMenuButtons {
+        var isPrivate: Bool = isPrivate
+        return FileContextMenuButtons(
+            isPreviewing: isPreviewing,
+            isPrivate: isPrivate,
+            onPreview: {
+                selectedFile = file
+            },
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                UIPasteboard.general.string = file.raw
+            },
+            openRawBrowser: {
+                if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            onTogglePrivate: {
+                Task {
+                    isPrivate = !isPrivate
+                    await toggleFilePrivacy(file: file)
+                }
+            },
+            setExpire: {
+                // Open Maps and center it on this item.
+            },
+            deleteFile: {
+                fileIDsToDelete = [file.id]
+                fileNameToDelete = file.name
+                showingDeleteConfirmation = true
+            }
+        )
+    }
+    
     private func loadFiles() {
         isLoading = true
         errorMessage = nil
@@ -208,24 +217,19 @@ struct FileListView: View {
         }
     }
     
-    private func refreshFiles() {
-        Task {
-            await refreshFiles()
-        }
-    }
-    
     @MainActor
     private func refreshFiles() async {
         isLoading = true
         errorMessage = nil
         currentPage = 1
+        files = []
         
         await fetchFiles(page: currentPage)
     }
     
     @MainActor
     private func fetchFiles(page: Int, append: Bool = false) async {
-        guard let serverInstance = server.wrappedValue, 
+        guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
             errorMessage = "Invalid server URL"
             isLoading = false
@@ -255,7 +259,7 @@ struct FileListView: View {
     
     @MainActor
     private func deleteFiles(fileIDs: [Int]) async {
-        guard let serverInstance = server.wrappedValue, 
+        guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
             return
         }
@@ -266,8 +270,22 @@ struct FileListView: View {
         // Refresh the file list after deletion
         await refreshFiles()
     }
+    
+    @MainActor
+    private func toggleFilePrivacy(file: DFFile) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        // Toggle the private status (if currently private, make it public and vice versa)
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private])
+        
+        await refreshFiles()
+    }
 }
-
+    
 struct CustomLabel: LabelStyle {
     var spacing: Double = 0.0
     
@@ -281,6 +299,10 @@ struct CustomLabel: LabelStyle {
 
 struct FileRowView: View {
     let file: DFFile
+    @State var isPrivate: Bool
+    @State var hasPassword: Bool
+    @State var hasExpiration: Bool
+    
     private func getIcon() -> String {
         switch file.mime {
         case "image/jpeg":
@@ -289,7 +311,7 @@ struct FileRowView: View {
             return "doc.fill"
         }
     }
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(file.name)
@@ -306,11 +328,26 @@ struct FileRowView: View {
                     .font(.caption)
                     .labelStyle(CustomLabel(spacing: 3))
                 
-                Spacer()
+                Label("", systemImage: "lock")
+                    .font(.caption)
+                    .labelStyle(CustomLabel(spacing: 3))
+                    .opacity(isPrivate ? 1 : 0)
+                
+                Label("", systemImage: "key")
+                    .font(.caption)
+                    .labelStyle(CustomLabel(spacing: 3))
+                    .opacity(hasPassword ? 1 : 0)
+                
+                Label("", systemImage: "calendar.badge.exclamationmark")
+                    .font(.caption)
+                    .labelStyle(CustomLabel(spacing: 3))
+                    .opacity(hasExpiration ? 1 : 0)
+                
                 
                 Text(file.formattedDate())
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
     }

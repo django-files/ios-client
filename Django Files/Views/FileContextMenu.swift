@@ -3,6 +3,7 @@ import SwiftUI
 struct FileContextMenuButtons: View {
     
     var isPreviewing: Bool = false
+    var isPrivate: Bool = false
     
     var onPreview: () -> Void = {}
     var onCopyShareLink: () -> Void = {}
@@ -50,7 +51,11 @@ struct FileContextMenuButtons: View {
             Button {
                 onTogglePrivate()
             } label: {
-                Label("Set Private", systemImage: "lock")
+                if isPrivate {
+                    Label("Make Public", systemImage: "lock.open")
+                } else {
+                    Label("Make Private", systemImage: "lock")
+                }
             }
             
             Button {
