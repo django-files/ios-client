@@ -27,6 +27,14 @@ struct FileListView: View {
     @State private var fileIDsToDelete: [Int] = []
     @State private var fileNameToDelete: String = ""
     
+    @State private var showingExpirationDialog = false
+    @State private var expirationText = ""
+    @State private var fileToExpire: DFFile? = nil
+    
+    @State private var showingPasswordDialog = false
+    @State private var passwordText = ""
+    @State private var fileToPassword: DFFile? = nil
+    
     @State private var redirectURLs: [String: String] = [:]
     
     var body: some View {
@@ -69,7 +77,7 @@ struct FileListView: View {
                             NavigationLink(value: file) {
                                 FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""))
                                     .contextMenu {
-                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private)
+                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText)
                                     }
                             }
                             .id(file.id)
@@ -106,7 +114,7 @@ struct FileListView: View {
                                     .toolbar {
                                         ToolbarItem(placement: .navigationBarTrailing) {
                                             Menu {
-                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private)
+                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText)
                                             } label: {
                                                 Image(systemName: "ellipsis.circle")
                                             }
@@ -166,6 +174,48 @@ struct FileListView: View {
                 } message: {
                     Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
                 }
+                .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
+                    TextField("Enter expiration", text: $expirationText)
+                    Button("Cancel", role: .cancel) {
+                        fileToExpire = nil
+                    }
+                    Button("Set") {
+                        if let file = fileToExpire {
+                            let expirationValue = expirationText // Capture the value
+                            Task {
+                                await setFileExpr(file: file, expr: expirationValue)
+                                // Only clear after the API call completes
+                                await MainActor.run {
+                                    expirationText = ""
+                                    fileToExpire = nil
+                                }
+                            }
+                        }
+                    }
+                } message: {
+                    Text("Enter time until file expiration. Examples: 1h, 5days, 2y")
+                }
+                .alert("Set File Password", isPresented: $showingPasswordDialog) {
+                    TextField("Enter password", text: $passwordText)
+                    Button("Cancel", role: .cancel) {
+                        fileToPassword = nil
+                    }
+                    Button("Set") {
+                        if let file = fileToPassword {
+                            let passwordValue = passwordText // Capture the value
+                            Task {
+                                await setFilePassword(file: file, password: passwordValue)
+                                // Only clear after the API call completes
+                                await MainActor.run {
+                                    passwordText = ""
+                                    fileToPassword = nil
+                                }
+                            }
+                        }
+                    }
+                } message: {
+                    Text("Enter a password for the file.")
+                }
             }
         }
         .onAppear {
@@ -174,7 +224,7 @@ struct FileListView: View {
     }
     
     // Helper function to create consistent FileContextMenuButtons
-    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool) -> FileContextMenuButtons {
+    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
         return FileContextMenuButtons(
             isPreviewing: isPreviewing,
@@ -200,7 +250,14 @@ struct FileListView: View {
                 }
             },
             setExpire: {
-                // Open Maps and center it on this item.
+                fileToExpire = file
+                expirationText.wrappedValue = fileToExpire?.expr ?? ""
+                showingExpirationDialog = true
+            },
+            setPassword: {
+                fileToPassword = file
+                passwordText.wrappedValue = fileToPassword?.password ?? ""
+                showingPasswordDialog = true
             },
             deleteFile: {
                 fileIDsToDelete = [file.id]
@@ -312,6 +369,34 @@ struct FileListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
         // Toggle the private status (if currently private, make it public and vice versa)
         let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private])
+        
+        await refreshFiles()
+    }
+    
+    @MainActor
+    private func setFileExpr(file: DFFile, expr: String?) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        // Send the expiration value to the API
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""])
+        
+        await refreshFiles()
+    }
+    
+    @MainActor
+    private func setFilePassword(file: DFFile, password: String?) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        // Send the expiration value to the API
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""])
         
         await refreshFiles()
     }

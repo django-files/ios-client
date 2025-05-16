@@ -128,7 +128,6 @@ struct DFAPI {
         do {
             // Convert array to JSON string
             let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
-            let fileIDsString = String(data: fileIDsData, encoding: .utf8) ?? "[]"
 
             let _ = try await makeAPIRequest(
                 body: fileIDsData,
@@ -148,7 +147,7 @@ struct DFAPI {
             for (key, value) in changes {
                 requestData[key] = value
             }
-            
+                        
             // Convert combined dictionary to JSON data
             let jsonData = try JSONSerialization.data(withJSONObject: requestData)
             let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
