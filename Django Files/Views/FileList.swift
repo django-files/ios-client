@@ -236,11 +236,47 @@ struct FileListView: View {
                 UIPasteboard.general.string = file.url
             },
             onCopyRawLink: {
-                UIPasteboard.general.string = file.raw
+                if redirectURLs[file.raw] == nil {
+                    Task {
+                        await loadRedirectURL(for: file)
+                        // Only open the URL after we've loaded the redirect
+                        if let redirectURL = redirectURLs[file.raw] {
+                            await MainActor.run {
+                                UIPasteboard.general.string = redirectURL
+                            }
+                        } else {
+                            await MainActor.run {
+                                UIPasteboard.general.string = file.raw
+                            }
+                        }
+                    }
+                } else if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                    UIPasteboard.general.string = finalURL.absoluteString
+                } else {
+                    UIPasteboard.general.string = file.raw
+                }
             },
             openRawBrowser: {
                 if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
+                    if redirectURLs[file.raw] == nil {
+                        Task {
+                            await loadRedirectURL(for: file)
+                            // Only open the URL after we've loaded the redirect
+                            if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                                await MainActor.run {
+                                    UIApplication.shared.open(finalURL)
+                                }
+                            } else {
+                                await MainActor.run {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        }
+                    } else if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                        UIApplication.shared.open(finalURL)
+                    } else {
+                        UIApplication.shared.open(url)
+                    }
                 }
             },
             onTogglePrivate: {
@@ -355,6 +391,7 @@ struct FileListView: View {
             redirectURLs[file.raw] = redirectURL
         } else {
             // If redirect fails, use the original URL
+            print("fail")
             redirectURLs[file.raw] = file.raw
         }
     }

@@ -70,17 +70,17 @@ struct FileContextMenuButtons: View {
                 Label("Set Password", systemImage: "key")
             }
             
-            Button {
-                addToAlbum()
-            } label: {
-                Label("Add To Album", systemImage: "rectangle.stack.badge.plus")
-            }
-            
-            Button {
-                manageAlbums()
-            } label: {
-                Label("Manage Albums", systemImage: "person.2.crop.square.stack")
-            }
+//            Button {
+//                addToAlbum()
+//            } label: {
+//                Label("Add To Album", systemImage: "rectangle.stack.badge.plus")
+//            }
+//            
+//            Button {
+//                manageAlbums()
+//            } label: {
+//                Label("Manage Albums", systemImage: "person.2.crop.square.stack")
+//            }
             Divider()
             
             Button {
