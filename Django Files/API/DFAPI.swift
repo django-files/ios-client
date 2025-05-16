@@ -33,6 +33,7 @@ struct DFAPI {
         case shorts = "shorts/"
         case delete_file = "files/delete/"
         case edit_file = "files/edit/"
+        case raw = "raw/"
     }
     
     let url: URL
@@ -426,6 +427,37 @@ struct DFAPI {
         return nil
     }
 
+    public func checkRedirect(url: String) async -> String? {
+        do {
+            guard let targetURL = URL(string: url) else { return nil }
+            
+            var request = HTTPRequest(method: .get, url: targetURL)
+            request.headerFields[.authorization] = self.token
+            request.headerFields[.referer] = self.url.absoluteString
+            
+            let configuration = URLSessionConfiguration.ephemeral
+            let delegate = RedirectDelegate()
+            let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+            
+            let (_, response) = try await session.data(for: request)
+            
+            if response.status.code == 302 {
+                if let newURL = URL(string: response.headerFields[.location]!) {
+                    if newURL.host() == nil {
+                        return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(response.headerFields[.location] ?? "")"
+                    } else {
+                        return response.headerFields[.location]
+                    }
+                }
+            }
+
+            return nil
+        } catch {
+            print("Redirect check failed: \(error)")
+            return nil
+        }
+    }
+
     // Create and connect to a WebSocket, also setting up WebSocketToastObserver
     public func connectToWebSocket() -> DFWebSocket {
         let webSocket = self.createWebSocket()
@@ -772,4 +804,17 @@ struct DFAuthMethod: Codable {
 struct DFAuthMethodsResponse: Codable {
     let authMethods: [DFAuthMethod]
     let siteName: String
+}
+
+class RedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Don't follow the redirect by passing nil
+        completionHandler(nil)
+    }
 }

@@ -27,6 +27,8 @@ struct FileListView: View {
     @State private var fileIDsToDelete: [Int] = []
     @State private var fileNameToDelete: String = ""
     
+    @State private var redirectURLs: [String: String] = [:]
+    
     var body: some View {
         ZStack {
             if isLoading && files.isEmpty {
@@ -89,18 +91,29 @@ struct FileListView: View {
                         }
                     }
                     .navigationDestination(for: DFFile.self) { file in
-                        ContentPreview(mimeType: file.mime, fileURL: URL(string: file.raw))
-                            .navigationTitle(file.name)
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .navigationBarTrailing) {
-                                    Menu {
-                                        createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private)
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
+                        ZStack {
+                            if redirectURLs[file.raw] == nil {
+                                ProgressView()
+                                    .onAppear {
+                                        Task {
+                                            await loadRedirectURL(for: file)
+                                        }
                                     }
-                                }
+                            } else {
+                                ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!))
+                                    .navigationTitle(file.name)
+                                    .navigationBarTitleDisplayMode(.inline)
+                                    .toolbar {
+                                        ToolbarItem(placement: .navigationBarTrailing) {
+                                            Menu {
+                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private)
+                                            } label: {
+                                                Image(systemName: "ellipsis.circle")
+                                            }
+                                        }
+                                    }
                             }
+                        }
                     }
                     
                     .listStyle(.plain)
@@ -269,6 +282,24 @@ struct FileListView: View {
         
         // Refresh the file list after deletion
         await refreshFiles()
+    }
+    
+    @MainActor
+    private func loadRedirectURL(for file: DFFile) async {
+        guard redirectURLs[file.raw] == nil,
+              let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        
+        if let redirectURL = await api.checkRedirect(url: file.raw) {
+            redirectURLs[file.raw] = redirectURL
+        } else {
+            // If redirect fails, use the original URL
+            redirectURLs[file.raw] = file.raw
+        }
     }
     
     @MainActor
