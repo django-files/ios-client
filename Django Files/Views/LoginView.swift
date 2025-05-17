@@ -3,6 +3,7 @@ import WebKit
 
 struct LoginView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedServer: DjangoFilesSession
 
     @State private var username: String = ""
@@ -66,6 +67,9 @@ struct LoginView: View {
                 try? modelContext.save()
             }
             onLoginSuccess()
+            Task {
+                self.dismiss()
+            }
         } else {
             showErrorBanner = true
             oauthSheetURL = nil
@@ -318,11 +322,11 @@ struct OAuthURL: Identifiable {
     let url: String
 }
 
-#Preview {
-    LoginView(
-        selectedServer: DjangoFilesSession(url: "http://localhost"),
-        onLoginSuccess: {
-            print("Login success")
-        }
-    )
-}
+//#Preview {
+//    LoginView(
+//        selectedServer: DjangoFilesSession(url: "http://localhost"),
+//        onLoginSuccess: {
+//            print("Login success")
+//        }
+//    )
+//}

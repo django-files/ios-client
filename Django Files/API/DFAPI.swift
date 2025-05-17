@@ -8,9 +8,20 @@
 import Foundation
 import HTTPTypes
 import HTTPTypesFoundation
+import UIKit
+
+// Custom imports
+import SwiftUI  // Needed for ToastManager
+
+// Add an import for the models file
+// This line should be modified if the module structure is different
+// Or the models should be declared here if needed
 
 struct DFAPI {
     private static let API_PATH = "/api/"
+    
+    // Add a shared WebSocket instance
+    private static var sharedWebSocket: DFWebSocket?
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
@@ -18,11 +29,18 @@ struct DFAPI {
         case short = "shorten/"
         case auth_methods = "auth/methods/"
         case login = "auth/token/"
+        case files = "files/"
+        case shorts = "shorts/"
+        case delete_file = "files/delete/"
+        case edit_file = "files/edit/"
+        case file = "file/"
+        case raw = "raw/"
     }
     
     let url: URL
     let token: String
     var decoder: JSONDecoder
+    
     
     init(url: URL, token: String){
         self.url = url
@@ -107,6 +125,64 @@ struct DFAPI {
         }
     }
     
+    public func deleteFiles(fileIDs: [Int]) async {
+        do {
+            // Convert array to JSON string
+            let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
+
+            let _ = try await makeAPIRequest(
+                body: fileIDsData,
+                path: getAPIPath(.delete_file),
+                parameters: [:],
+                method: .delete
+            )
+        } catch {
+            print("File Delete Failed \(error)")
+        }
+    }
+    
+    public func editFiles(fileIDs: [Int], changes: [String: Any]) async -> Bool {
+        do {
+            // Combine the file IDs and changes into a single dictionary
+            var requestData: [String: Any] = ["ids": fileIDs]
+            for (key, value) in changes {
+                requestData[key] = value
+            }
+                        
+            // Convert combined dictionary to JSON data
+            let jsonData = try JSONSerialization.data(withJSONObject: requestData)
+            
+            let _ = try await makeAPIRequest(
+                body: jsonData,
+                path: getAPIPath(.edit_file),
+                parameters: [:],
+                method: .post
+            )
+            return true
+        } catch {
+            print("File Edit Failed \(error)")
+            return false
+        }
+    }
+    
+    public func renameFile(fileID: Int, name: String) async -> Bool {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: ["name": name])
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            
+            let _ = try await makeAPIRequest(
+                body: jsonData,
+                path: getAPIPath(.file) + "\(fileID)",
+                parameters: [:],
+                method: .post
+            )
+            return true
+        } catch {
+            print("File Edit Failed \(error)")
+            return false
+        }
+    }
+    
     public func uploadFile(url: URL, fileName: String? = nil, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
@@ -151,11 +227,33 @@ struct DFAPI {
         let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
         do{
             let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest<DFShortRequest>(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
+            let responseBody = try await makeAPIRequest(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
             return try decoder.decode(DFShortResponse.self, from: responseBody)
         }catch {
             print("Request failed \(error)")
             return nil;
+        }
+    }
+    
+    public func getShorts(amount: Int = 50, start: Int? = nil) async -> ShortsResponse? {
+        var parameters: [String: String] = ["amount": "\(amount)"]
+        if let start = start {
+            parameters["start"] = "\(start)"
+        }
+        
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.shorts),
+                parameters: parameters,
+                method: .get
+            )
+            
+            let shorts = try decoder.decode([DFShort].self, from: responseBody)
+            return ShortsResponse(shorts: shorts)
+            
+        } catch {
+            print("Error fetching shorts: \(error)")
+            return nil
         }
     }
     
@@ -248,6 +346,7 @@ struct DFAPI {
             if let url = urlRequest.url {
                 // Set the cookie directly in the request header
                 urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
+                print("Using session key cookie: \(sessionKey) on \(url)")
                 
                 // Also set it in the cookie storage
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
@@ -278,6 +377,8 @@ struct DFAPI {
             
             let session = URLSession(configuration: configuration)
             let (_, response) = try await session.data(for: urlRequest)
+            
+            print("response: \(response)")
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -321,9 +422,81 @@ struct DFAPI {
             return false
         }
     }
+
+    public func getFiles(page: Int = 1) async -> DFFilesResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.files) + "\(page)/",
+                parameters: [:],
+                method: .get
+            )
+            
+            // Use the default decoder since dates are now handled as strings
+            let specialDecoder = JSONDecoder()
+            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
+        } catch let DecodingError.keyNotFound(key, context) {
+            print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
+        } catch {
+            print("Request failed \(error)")
+        }
+        return nil
+    }
+
+    public func checkRedirect(url: String) async -> String? {
+        do {
+            guard let targetURL = URL(string: url) else { return nil }
+            
+            var request = HTTPRequest(method: .get, url: targetURL)
+            request.headerFields[.authorization] = self.token
+            request.headerFields[.referer] = self.url.absoluteString
+            
+            let configuration = URLSessionConfiguration.ephemeral
+            let delegate = RedirectDelegate()
+            let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+            
+            let (_, response) = try await session.data(for: request)
+            
+            if response.status.code == 302 {
+                if let newURL = URL(string: response.headerFields[.location]!) {
+                    if newURL.host() == nil {
+                        return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(response.headerFields[.location] ?? "")"
+                    } else {
+                        return response.headerFields[.location]
+                    }
+                }
+            }
+
+            return nil
+        } catch {
+            print("Redirect check failed: \(error)")
+            return nil
+        }
+    }
+
+    // Create and connect to a WebSocket, also setting up WebSocketToastObserver
+    public func connectToWebSocket() -> DFWebSocket {
+        let webSocket = self.createWebSocket()
+        
+        // Instead of directly accessing WebSocketToastObserver, post a notification
+        // that the observer will pick up
+        NotificationCenter.default.post(
+            name: Notification.Name("DFWebSocketConnectionRequest"),
+            object: nil,
+            userInfo: ["api": self]
+        )
+        
+        // Store as the shared instance
+        DFAPI.sharedWebSocket = webSocket
+        
+        return webSocket
+    }
+    
+    // Get the shared WebSocket or create a new one if none exists
+    public static func getSharedWebSocket() -> DFWebSocket? {
+        return sharedWebSocket
+    }
 }
-
-
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
     enum States {
@@ -647,4 +820,17 @@ struct DFAuthMethod: Codable {
 struct DFAuthMethodsResponse: Codable {
     let authMethods: [DFAuthMethod]
     let siteName: String
+}
+
+class RedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Don't follow the redirect by passing nil
+        completionHandler(nil)
+    }
 }
