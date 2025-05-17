@@ -35,6 +35,10 @@ struct FileListView: View {
     @State private var passwordText = ""
     @State private var fileToPassword: DFFile? = nil
     
+    @State private var showingRenameDialog = false
+    @State private var fileNameText = ""
+    @State private var fileToRename: DFFile? = nil
+    
     @State private var redirectURLs: [String: String] = [:]
     
     var body: some View {
@@ -77,7 +81,7 @@ struct FileListView: View {
                             NavigationLink(value: file) {
                                 FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""))
                                     .contextMenu {
-                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText)
+                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     }
                             }
                             .id(file.id)
@@ -114,7 +118,7 @@ struct FileListView: View {
                                     .toolbar {
                                         ToolbarItem(placement: .navigationBarTrailing) {
                                             Menu {
-                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText)
+                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                             } label: {
                                                 Image(systemName: "ellipsis.circle")
                                             }
@@ -216,6 +220,27 @@ struct FileListView: View {
                 } message: {
                     Text("Enter a password for the file.")
                 }
+                .alert("Rename File", isPresented: $showingRenameDialog) {
+                    TextField("New File Name", text: $fileNameText)
+                    Button("Cancel", role: .cancel) {
+                        fileToRename = nil
+                    }
+                    Button("Set") {
+                        if let file = fileToRename {
+                            let fileNameValue = fileNameText // Capture the value
+                            Task {
+                                await renameFile(file: file, name: fileNameValue)
+                                // Only clear after the API call completes
+                                await MainActor.run {
+                                    fileNameText = ""
+                                    fileToRename = nil
+                                }
+                            }
+                        }
+                    }
+                } message: {
+                    Text("Enter a new name for this file.")
+                }
             }
         }
         .onAppear {
@@ -224,7 +249,7 @@ struct FileListView: View {
     }
     
     // Helper function to create consistent FileContextMenuButtons
-    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>) -> FileContextMenuButtons {
+    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
         return FileContextMenuButtons(
             isPreviewing: isPreviewing,
@@ -294,6 +319,11 @@ struct FileListView: View {
                 fileToPassword = file
                 passwordText.wrappedValue = fileToPassword?.password ?? ""
                 showingPasswordDialog = true
+            },
+            renameFile: {
+                fileToRename = file
+                fileNameText.wrappedValue = fileToRename?.name ?? ""
+                showingRenameDialog = true
             },
             deleteFile: {
                 fileIDsToDelete = [file.id]
@@ -434,6 +464,20 @@ struct FileListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
         // Send the expiration value to the API
         let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""])
+        
+        await refreshFiles()
+    }
+    
+    @MainActor
+    private func renameFile(file: DFFile, name: String) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        // Send the expiration value to the API
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["name": name])
         
         await refreshFiles()
     }
