@@ -143,16 +143,23 @@ struct FileListView: View {
                                 }) {
                                     Label("Upload File", systemImage: "arrow.up.doc")
                                 }
-                                
                                 Button(action: {
-                                    Task {
-                                        await refreshFiles()
-                                    }
+                                    // Upload action
                                 }) {
-                                    Label("Refresh", systemImage: "arrow.clockwise")
+                                    Label("Create Short", systemImage: "link.badge.plus")
+                                }
+                                Button(action: {
+                                    // Upload action
+                                }) {
+                                    Label("Create Album", systemImage: "photo.badge.plus")
+                                }
+                                Button(action: {
+                                    // Upload action
+                                }) {
+                                    Label("Select", systemImage: "checkmark.circle")
                                 }
                             } label: {
-                                Image(systemName: "ellipsis.circle")
+                                Image(systemName: "plus")
                             }
                         }
                     }
@@ -477,7 +484,7 @@ struct FileListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         // Send the expiration value to the API
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["name": name])
+        let _ = await api.renameFile(fileID: file.id, name: name)
         
         await refreshFiles()
     }

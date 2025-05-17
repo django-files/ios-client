@@ -110,12 +110,6 @@ struct AlbumListView: View {
                                 }) {
                                     Label("Create Album", systemImage: "plus")
                                 }
-
-                                Button(action: {
-                                    refreshAlbums()
-                                }) {
-                                    Label("Refresh", systemImage: "arrow.clockwise")
-                                }
                             } label: {
                                 Image(systemName: "ellipsis.circle")
                             }

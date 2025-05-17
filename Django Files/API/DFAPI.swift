@@ -33,6 +33,7 @@ struct DFAPI {
         case shorts = "shorts/"
         case delete_file = "files/delete/"
         case edit_file = "files/edit/"
+        case file = "file/"
         case raw = "raw/"
     }
     
@@ -150,12 +151,28 @@ struct DFAPI {
                         
             // Convert combined dictionary to JSON data
             let jsonData = try JSONSerialization.data(withJSONObject: requestData)
-            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
-            print(jsonString)
             
             let _ = try await makeAPIRequest(
                 body: jsonData,
                 path: getAPIPath(.edit_file),
+                parameters: [:],
+                method: .post
+            )
+            return true
+        } catch {
+            print("File Edit Failed \(error)")
+            return false
+        }
+    }
+    
+    public func renameFile(fileID: Int, name: String) async -> Bool {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: ["name": name])
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            
+            let _ = try await makeAPIRequest(
+                body: jsonData,
+                path: getAPIPath(.file) + "\(fileID)",
                 parameters: [:],
                 method: .post
             )
@@ -210,7 +227,7 @@ struct DFAPI {
         let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
         do{
             let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest<DFShortRequest>(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
+            let responseBody = try await makeAPIRequest(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
             return try decoder.decode(DFShortResponse.self, from: responseBody)
         }catch {
             print("Request failed \(error)")
