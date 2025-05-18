@@ -34,12 +34,31 @@ struct TabViewWindow: View {
                 AlbumListView(server: $sessionManager.selectedSession)
             }
             
-            
             Tab("Shorts", systemImage: "link") {
                 ShortListView(server: $sessionManager.selectedSession)
             }
-            
-            Tab("Web", systemImage: "globe"){
+            Tab("Server List", systemImage: "server.rack") {
+                ServerSelector(selectedSession: $sessionManager.selectedSession)
+            }
+            Tab("User Settings", systemImage: "person") {
+                if let selectedSession = sessionManager.selectedSession {
+                    AuthViewContainer(
+                        selectedServer: selectedSession,
+                        customURL: selectedSession.url + "/settings/user/",
+                        needsRefresh: $needsRefresh
+                    )
+                }
+            }
+            Tab("Server Settings", systemImage: "person.2.badge.gearshape") {
+                if let selectedSession = sessionManager.selectedSession {
+                    AuthViewContainer(
+                        selectedServer: selectedSession,
+                        customURL: selectedSession.url + "/settings/site/",
+                        needsRefresh: $needsRefresh
+                    )
+                }
+            }
+            Tab("Mobile Web (Legacy)", systemImage: "globe"){
                 if let selectedSession = sessionManager.selectedSession {
                     AuthViewContainer(
                         selectedServer: selectedSession,
@@ -49,10 +68,6 @@ struct TabViewWindow: View {
                 } else {
                     Text("Please select a server")
                 }
-            }
-
-            Tab("Server List", systemImage: "server.rack") {
-                ServerSelector(selectedSession: $sessionManager.selectedSession)
             }
         }
         .onAppear {

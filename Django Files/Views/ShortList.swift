@@ -19,7 +19,7 @@ struct ShortListView: View {
     private let shortsPerPage = 50
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(shorts) { short in
                     ShortRow(short: short)
@@ -53,18 +53,10 @@ struct ShortListView: View {
             .navigationTitle("Short URLs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            // Create album action
-                        } label: {
-                            Label("Create Short", systemImage: "plus")
-                        }
-
-                        Button("Refresh") {
-                            loadInitialShorts()
-                        }
+                    Button {
+                        // Create album action
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Label("Create Short", systemImage: "plus")
                     }
                 }
             }

@@ -79,9 +79,9 @@ struct FileListView: View {
                     List {
                         ForEach(files, id: \.id) { file in
                             NavigationLink(value: file) {
-                                FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""))
+                                FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
                                     .contextMenu {
-                                        createFileMenuButtons(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     }
                             }
                             .id(file.id)
@@ -118,7 +118,14 @@ struct FileListView: View {
                                     .toolbar {
                                         ToolbarItem(placement: .navigationBarTrailing) {
                                             Menu {
-                                                createFileMenuButtons(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                                fileShareMenu(for: file)
+                                            } label: {
+                                                Image(systemName: "square.and.arrow.up")
+                                            }
+                                        }
+                                        ToolbarItem(placement: .navigationBarTrailing) {
+                                            Menu {
+                                                fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                             } label: {
                                                 Image(systemName: "ellipsis.circle")
                                             }
@@ -255,8 +262,20 @@ struct FileListView: View {
         }
     }
     
-    // Helper function to create consistent FileContextMenuButtons
-    private func createFileMenuButtons(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
+    private func fileShareMenu(for file: DFFile) -> FileShareMenu {
+        FileShareMenu(
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                UIPasteboard.general.string = file.raw
+            },
+        )
+    }
+    
+    
+
+    private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
         return FileContextMenuButtons(
             isPreviewing: isPreviewing,
@@ -506,52 +525,89 @@ struct FileRowView: View {
     @State var isPrivate: Bool
     @State var hasPassword: Bool
     @State var hasExpiration: Bool
+    let serverURL: URL
     
     private func getIcon() -> String {
-        switch file.mime {
-        case "image/jpeg":
+        if file.mime.hasPrefix("image/") {
             return "photo.artframe"
-        default:
+        } else if file.mime.hasPrefix("video/") {
+            return "video.fill"
+        } else {
             return "doc.fill"
         }
     }
     
+    private var thumbnailURL: URL {
+        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? serverURL
+    }
+    
+    init(file: DFFile, isPrivate: Bool, hasPassword: Bool, hasExpiration: Bool, serverURL: URL) {
+        self.file = file
+        self.isPrivate = isPrivate
+        self.hasPassword = hasPassword
+        self.hasExpiration = hasExpiration
+        self.serverURL = serverURL
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(file.name)
-                .font(.headline)
-                .lineLimit(1)
-                .foregroundColor(.blue)
+        HStack {
+            if file.mime.hasPrefix("image/") {
+                AsyncImage(url: thumbnailURL) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    ProgressView()
+                }
+                .frame(width: 64, height: 64)
+                .clipped()
+            } else {
+                Label("", systemImage: getIcon())
+                    .font(.system(size: 32))
+                    .frame(width: 64, height: 64)
+                    .foregroundColor(.white)
+                    
+            }
             
-            HStack(spacing: 5) {
-                Label(file.mime, systemImage: getIcon())
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
+            VStack(alignment: .leading, spacing: 2) {
                 
-                Label(file.userUsername!, systemImage: "person")
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
+                Text(file.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundColor(.blue)
                 
-                Label("", systemImage: "lock")
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
-                    .opacity(isPrivate ? 1 : 0)
-                
-                Label("", systemImage: "key")
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
-                    .opacity(hasPassword ? 1 : 0)
-                
-                Label("", systemImage: "calendar.badge.exclamationmark")
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
-                    .opacity(hasExpiration ? 1 : 0)
-                
-                
-                Text(file.formattedDate())
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(spacing: 5) {
+                    Label(file.mime, systemImage: getIcon())
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                    
+                    Label(file.userUsername!, systemImage: "person")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                    
+                    Label("", systemImage: "lock")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                        .opacity(isPrivate ? 1 : 0)
+                    
+                    Label("", systemImage: "key")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                        .opacity(hasPassword ? 1 : 0)
+                    
+                    Label("", systemImage: "calendar.badge.exclamationmark")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                        .opacity(hasExpiration ? 1 : 0)
+                    
+                    
+                    Text(file.formattedDate())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
         }
     }

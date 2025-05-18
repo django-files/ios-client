@@ -25,20 +25,21 @@ struct FileContextMenuButtons: View {
                 } label: {
                     Label("Open Preview", systemImage: "arrow.up.forward.app")
                 }
-            }
             
-            Button {
-                onCopyShareLink()
-                notifyClipboard()
-            } label: {
-                Label("Copy Share Link", systemImage: "link")
-            }
             
-            Button {
-                onCopyRawLink()
-                notifyClipboard()
-            } label: {
-                Label("Copy Raw Link", systemImage: "link.circle")
+                Button {
+                    onCopyShareLink()
+                    notifyClipboard()
+                } label: {
+                    Label("Copy Share Link", systemImage: "link")
+                }
+                
+                Button {
+                    onCopyRawLink()
+                    notifyClipboard()
+                } label: {
+                    Label("Copy Raw Link", systemImage: "link.circle")
+                }
             }
             
             Button {
@@ -69,18 +70,14 @@ struct FileContextMenuButtons: View {
             } label: {
                 Label("Set Password", systemImage: "key")
             }
-            
+
+//            Divider()
 //            Button {
 //                addToAlbum()
 //            } label: {
 //                Label("Add To Album", systemImage: "rectangle.stack.badge.plus")
 //            }
-//            
-//            Button {
-//                manageAlbums()
-//            } label: {
-//                Label("Manage Albums", systemImage: "person.2.crop.square.stack")
-//            }
+//
             Divider()
             
             Button {
@@ -96,13 +93,37 @@ struct FileContextMenuButtons: View {
             }
         }
     }
-    
-    func notifyClipboard() {
-        // Generate haptic feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            ToastManager.shared.showToast(message: "Copied to clipboard")
+}
+
+
+struct FileShareMenu: View {
+    var onCopyShareLink: () -> Void = {}
+    var onCopyRawLink: () -> Void = {}
+    var openRawBrowser: () -> Void = {}
+
+    var body: some View {
+        Group {
+            Button {
+                onCopyShareLink()
+                notifyClipboard()
+            } label: {
+                Label("Copy Share Link", systemImage: "link")
+            }
+            Button {
+                onCopyRawLink()
+                notifyClipboard()
+            } label: {
+                Label("Copy Raw Link", systemImage: "link.circle")
+            }
         }
+    }
+}
+
+func notifyClipboard() {
+    // Generate haptic feedback
+    let generator = UINotificationFeedbackGenerator()
+    generator.notificationOccurred(.success)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        ToastManager.shared.showToast(message: "Copied to clipboard")
     }
 }

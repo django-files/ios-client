@@ -19,6 +19,7 @@ public struct AuthViewContainer: View {
 
     @State var selectedServer: DjangoFilesSession
     
+    var customURL: String? = nil
     
     var needsRefresh: Binding<Bool>
 
@@ -28,7 +29,7 @@ public struct AuthViewContainer: View {
         if selectedServer.url != "" {
             AuthView(
                 authController: authController,
-                httpsUrl: selectedServer.url,
+                httpsUrl: customURL ?? selectedServer.url,
                 doReset: authController.url?.absoluteString ?? ""
                     != selectedServer.url || !selectedServer.auth,
                 session: selectedServer
