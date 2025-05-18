@@ -431,6 +431,8 @@ struct DFAPI {
                 method: .get
             )
             
+            print(String(data: responseBody, encoding: String.Encoding.utf8))
+            
             // Use the default decoder since dates are now handled as strings
             let specialDecoder = JSONDecoder()
             specialDecoder.keyDecodingStrategy = .convertFromSnakeCase

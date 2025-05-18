@@ -103,11 +103,11 @@ class DFWebSocket: NSObject {
         setupPingTimer()
         
         // Post a notification that we're attempting connection
-        NotificationCenter.default.post(
-            name: Notification.Name("DFWebSocketToastNotification"),
-            object: nil,
-            userInfo: ["message": "Connecting to WebSocket..."]
-        )
+//        NotificationCenter.default.post(
+//            name: Notification.Name("DFWebSocketToastNotification"),
+//            object: nil,
+//            userInfo: ["message": "Connecting to WebSocket..."]
+//        )
         
         print("WebSocket: Connection attempt started")
     }

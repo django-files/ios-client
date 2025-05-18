@@ -543,13 +543,6 @@ struct FileRowView: View {
         return components?.url ?? serverURL
     }
     
-    init(file: DFFile, isPrivate: Bool, hasPassword: Bool, hasExpiration: Bool, serverURL: URL) {
-        self.file = file
-        self.isPrivate = isPrivate
-        self.hasPassword = hasPassword
-        self.hasExpiration = hasExpiration
-        self.serverURL = serverURL
-    }
     
     var body: some View {
         HStack {
@@ -579,14 +572,6 @@ struct FileRowView: View {
                     .foregroundColor(.blue)
                 
                 HStack(spacing: 5) {
-                    Label(file.mime, systemImage: getIcon())
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                    
-                    Label(file.userUsername!, systemImage: "person")
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                    
                     Label("", systemImage: "lock")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
@@ -601,6 +586,16 @@ struct FileRowView: View {
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .opacity(hasExpiration ? 1 : 0)
+                }
+                
+                HStack(spacing: 5) {
+                    Label(file.mime, systemImage: getIcon())
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                    
+                    Label(file.userUsername, systemImage: "person")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
                     
                     
                     Text(file.formattedDate())
@@ -608,6 +603,7 @@ struct FileRowView: View {
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+
             }
         }
     }
