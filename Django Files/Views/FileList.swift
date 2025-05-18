@@ -269,7 +269,7 @@ struct FileListView: View {
             },
             onCopyRawLink: {
                 UIPasteboard.general.string = file.raw
-            },
+            }
         )
     }
     
