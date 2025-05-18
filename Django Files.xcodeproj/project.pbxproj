@@ -13,6 +13,7 @@
 		4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */; };
 		4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */; };
 		4CE57E8B2D7C9F440073CFC1 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */; };
+		A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -129,6 +130,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */,
 				4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */,
 				4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */,
 			);
@@ -215,6 +217,7 @@
 			packageProductDependencies = (
 				4C82CB502D62372200C0893B /* HTTPTypes */,
 				4C82CB522D62372200C0893B /* HTTPTypesFoundation */,
+				A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */,
 			);
 			productName = "Django Files";
 			productReference = 4C5E20EC2D603C3B009EE83A /* Django Files.app */;
@@ -328,6 +331,7 @@
 			packageReferences = (
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
 				4CE57E892D7C9EB70073CFC1 /* XCRemoteSwiftPackageReference "fastlane" */,
+				A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -852,6 +856,14 @@
 				minimumVersion = 2.226.0;
 			};
 		};
+		A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/appstefan/highlightswift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -874,6 +886,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
 			productName = HTTPTypesFoundation;
+		};
+		A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */;
+			productName = HighlightSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,5 +1,7 @@
 import SwiftUI
 import AVKit
+import HighlightSwift
+import UIKit
 
 struct ContentPreview: View {
     let mimeType: String
@@ -56,7 +58,7 @@ struct ContentPreview: View {
     private var textPreview: some View {
         ScrollView {
             if let content = content, let text = String(data: content, encoding: .utf8) {
-                Text(text)
+                CodeText(text)
                     .padding()
             } else {
                 Text("Unable to decode text content")
@@ -68,38 +70,12 @@ struct ContentPreview: View {
     // Image Preview
     private var imagePreview: some View {
         GeometryReader { geometry in
-            ScrollView([.horizontal, .vertical]) {
-                if let content = content, let uiImage = UIImage(data: content) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: geometry.size.width)
-                        .scaleEffect(imageScale)
-                        .frame(
-                            minWidth: geometry.size.width * imageScale,
-                            minHeight: geometry.size.height * imageScale
-                        )
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    let delta = value / lastImageScale
-                                    lastImageScale = value
-                                    imageScale = min(max(imageScale * delta, 1), 5)
-                                }
-                                .onEnded { _ in
-                                    lastImageScale = 1.0
-                                }
-                        )
-                        .onTapGesture(count: 2) {
-                            withAnimation {
-                                imageScale = imageScale > 1 ? 1 : 2
-                            }
-                        }
-                } else {
-                    Text("Unable to load image")
-                }
+            if let content = content, let uiImage = UIImage(data: content) {
+                ImageScrollView(image: uiImage)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+            } else {
+                Text("Unable to load image")
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
     
@@ -147,6 +123,118 @@ struct ContentPreview: View {
                 self.content = data
             }
         }.resume()
+    }
+}
+
+struct ImageScrollView: UIViewRepresentable {
+    let image: UIImage
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        scrollView.addSubview(imageView)
+        
+        // Set the content size to match the image size
+         let imageSize = image.size
+         scrollView.contentSize = imageSize
+        
+        // Center image view in scroll view
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: imageSize.width),
+            imageView.heightAnchor.constraint(equalToConstant: imageSize.height),
+            imageView.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor)
+        ])
+        
+        context.coordinator.imageView = imageView
+        context.coordinator.scrollView = scrollView
+        
+        let doubleTapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
+        doubleTapGesture.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTapGesture)
+        
+        return scrollView
+    }
+    
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.imageView?.image = image
+        context.coordinator.updateZoomScaleForSize(scrollView.bounds.size)
+    }
+    
+    class Coordinator: NSObject, UIScrollViewDelegate {
+        let parent: ImageScrollView
+        weak var imageView: UIImageView?
+        weak var scrollView: UIScrollView?
+        
+        init(_ parent: ImageScrollView) {
+            self.parent = parent
+        }
+        
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            return imageView
+        }
+        
+         func updateZoomScaleForSize(_ size: CGSize) {
+             guard let imageView = imageView,
+                   let image = imageView.image,
+                   let scrollView = scrollView,
+                   size.width > 0,
+                   size.height > 0,
+                   image.size.width > 0,
+                   image.size.height > 0 else { return }
+            
+             let widthScale = size.width / image.size.width
+             let heightScale = size.height / image.size.height
+             let minScale = min(widthScale, heightScale)
+            
+             scrollView.minimumZoomScale = minScale
+             scrollView.maximumZoomScale = max(minScale * 5, 5.0)
+         }
+        
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+            
+            if scrollView.zoomScale > scrollView.minimumZoomScale {
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                let point = gesture.location(in: imageView)
+                let size = scrollView.bounds.size
+                let w = size.width / scrollView.maximumZoomScale
+                let h = size.height / scrollView.maximumZoomScale
+                let x = point.x - (w / 2.0)
+                let y = point.y - (h / 2.0)
+                let rect = CGRect(x: x, y: y, width: w, height: h)
+                scrollView.zoom(to: rect, animated: true)
+            }
+        }
+        
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            guard let imageView = imageView else { return }
+            
+            let boundsSize = scrollView.bounds.size
+            var frameToCenter = imageView.frame
+            
+            if frameToCenter.size.width < boundsSize.width {
+                frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
+            } else {
+                frameToCenter.origin.x = 0
+            }
+            
+            if frameToCenter.size.height < boundsSize.height {
+                frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
+            } else {
+                frameToCenter.origin.y = 0
+            }
+            
+            imageView.frame = frameToCenter
+        }
     }
 }
 
