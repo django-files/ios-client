@@ -18,6 +18,7 @@ struct FileListView: View {
     @State private var hasNextPage = false
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
+    @State private var showingUploadSheet = false
     
     @State private var previewFile: Bool = true
     @State private var selectedFile: DFFile? = nil
@@ -146,9 +147,16 @@ struct FileListView: View {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Menu {
                                 Button(action: {
-                                    // Upload action
+                                    showingUploadSheet = true
                                 }) {
                                     Label("Upload File", systemImage: "arrow.up.doc")
+                                }
+                                Button(action: {
+                                    Task {
+                                        await uploadClipboard()
+                                    }
+                                }) {
+                                    Label("Upload Clipboard", systemImage: "clipboard")
                                 }
                                 Button(action: {
                                     // Upload action
@@ -159,11 +167,6 @@ struct FileListView: View {
                                     // Upload action
                                 }) {
                                     Label("Create Album", systemImage: "photo.badge.plus")
-                                }
-                                Button(action: {
-                                    // Upload action
-                                }) {
-                                    Label("Select", systemImage: "checkmark.circle")
                                 }
                             } label: {
                                 Image(systemName: "plus")
@@ -259,6 +262,11 @@ struct FileListView: View {
         }
         .onAppear {
             loadFiles()
+        }
+        .sheet(isPresented: $showingUploadSheet, onDismiss: { Task { await refreshFiles()} }) {
+            if let serverInstance = server.wrappedValue {
+                FileUploadView(server: serverInstance)
+            }
         }
     }
     
@@ -507,6 +515,66 @@ struct FileListView: View {
         
         await refreshFiles()
     }
+    
+    @MainActor
+    private func uploadClipboard() async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let pasteboard = UIPasteboard.general
+        
+        // Handle text content
+        if let text = pasteboard.string {
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempURL = tempDir.appendingPathComponent("ios-clip.txt")
+            do {
+                try text.write(to: tempURL, atomically: true, encoding: .utf8)
+                let delegate = UploadProgressDelegate { _ in }
+                _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                try? FileManager.default.removeItem(at: tempURL)
+                await refreshFiles()
+            } catch {
+                print("Error uploading clipboard text: \(error)")
+            }
+            return
+        }
+        
+        // Handle image content
+        if let image = pasteboard.image {
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempURL = tempDir.appendingPathComponent("image.jpg")
+            if let imageData = image.jpegData(compressionQuality: 0.8) {
+                do {
+                    try imageData.write(to: tempURL)
+                    let delegate = UploadProgressDelegate { _ in }
+                    _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                    try? FileManager.default.removeItem(at: tempURL)
+                    await refreshFiles()
+                } catch {
+                    print("Error uploading clipboard image: \(error)")
+                }
+            }
+            return
+        }
+        
+        // Handle video content
+        if let videoData = pasteboard.data(forPasteboardType: "public.mpeg-4"),
+           let tempURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("video.mp4") {
+            do {
+                try videoData.write(to: tempURL)
+                let delegate = UploadProgressDelegate { _ in }
+                _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                try? FileManager.default.removeItem(at: tempURL)
+                await refreshFiles()
+            } catch {
+                print("Error uploading clipboard video: \(error)")
+            }
+            return
+        }
+    }
 }
     
 struct CustomLabel: LabelStyle {
@@ -560,7 +628,7 @@ struct FileRowView: View {
                 Label("", systemImage: getIcon())
                     .font(.system(size: 32))
                     .frame(width: 64, height: 64)
-                    .foregroundColor(.white)
+                    .foregroundColor(Color.primary)
                     
             }
             
