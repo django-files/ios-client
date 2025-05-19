@@ -61,33 +61,39 @@ struct FileRowView: View {
     
     
     var body: some View {
-        HStack {
-            if file.mime.hasPrefix("image/") {
-                AsyncImage(url: thumbnailURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    ProgressView()
-                }
-                .frame(width: 64, height: 64)
-                .clipped()
-            } else {
-                Label("", systemImage: getIcon())
-                    .font(.system(size: 32))
+        HStack(alignment: .center) {
+            VStack(spacing: 0) {
+                if file.mime.hasPrefix("image/") {
+                    AsyncImage(url: thumbnailURL) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        ProgressView()
+                    }
                     .frame(width: 64, height: 64)
-                    .foregroundColor(Color.primary)
-                    
+                    .clipped()
+                } else {
+                    Image(systemName: getIcon())
+                        .font(.system(size: 50))
+                        .frame(width: 64, height: 64)
+                        .foregroundColor(Color.primary)
+                        .clipped()
+                }
             }
+            .listRowSeparator(.visible)
             
-            VStack(alignment: .leading, spacing: 2) {
-                
-                Text(file.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundColor(.blue)
+            VStack(alignment: .leading, spacing: 5) {
                 
                 HStack(spacing: 5) {
+                    Text(file.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .foregroundColor(.blue)
+                }
+                
+                
+                HStack(spacing: 6) {
                     Label("", systemImage: "lock")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
@@ -108,16 +114,19 @@ struct FileRowView: View {
                     Label(file.mime, systemImage: getIcon())
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
+                        .lineLimit(1)
                     
                     Label(file.userUsername, systemImage: "person")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
+                        .lineLimit(1)
                     
                     
                     Text(file.formattedDate())
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
+                        .lineLimit(1)
                 }
 
             }
@@ -495,6 +504,7 @@ struct FileListView: View {
     }
     
     private func loadFiles() {
+        if (files.count > 0) { return }
         isLoading = true
         errorMessage = nil
         currentPage = 1
@@ -641,8 +651,9 @@ struct FileListView: View {
             return
         }
         let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.renameFile(fileID: file.id, name: name)
-        await refreshFiles()
+        if await api.renameFile(fileID: file.id, name: name) {
+            await refreshFiles()
+        }
     }
     
 }
