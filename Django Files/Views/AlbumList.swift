@@ -94,7 +94,7 @@ struct AlbumListView: View {
                         }
                     }
                     .navigationDestination(for: DFAlbum.self) { album in
-                        Text("Album: \(album.name)")
+                        FileListView(server: server, albumID: album.id)
                     }
                     .listStyle(.plain)
                     .refreshable {

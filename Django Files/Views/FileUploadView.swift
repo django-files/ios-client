@@ -14,13 +14,18 @@ struct FileUploadView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedFiles: [URL] = []
-    @State private var isUploading = false
+    @State private var isUploading: Bool = false
     @State private var uploadProgress: Double = 0.0
-    @State private var showingFilePicker = false
+    @State private var showingFilePicker: Bool = false
+    
+    @State private var uploadPrivate: Bool = false
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
+                Toggle("Make Private", isOn: $uploadPrivate)
+
+                
                 // Photo Picker
                 PhotosPicker(
                     selection: $selectedItems,
@@ -99,7 +104,7 @@ struct FileUploadView: View {
                     uploadProgress = (Double(index) + progress) / totalItems
                 }
                 
-                _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
                 try? FileManager.default.removeItem(at: tempURL)
             }
         }
@@ -120,7 +125,7 @@ struct FileUploadView: View {
                 uploadProgress = (Double(index) + progress) / totalFiles
             }
             
-            _ = await api.uploadFile(url: url, taskDelegate: delegate)
+            _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
         }
         
         isUploading = false

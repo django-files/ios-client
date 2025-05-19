@@ -168,7 +168,6 @@ struct DFAPI {
     public func renameFile(fileID: Int, name: String) async -> Bool {
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: ["name": name])
-            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
             
             let _ = try await makeAPIRequest(
                 body: jsonData,
@@ -183,7 +182,9 @@ struct DFAPI {
         }
     }
     
-    public func uploadFile(url: URL, fileName: String? = nil, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
+
+    
+    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
         
@@ -201,9 +202,16 @@ struct DFAPI {
         data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
         do{
-            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [.contentType: "multipart/form-data; boundary=\(boundary)"], taskDelegate: taskDelegate)
+            var headers: [HTTPField.Name: String] = [.contentType: "multipart/form-data; boundary=\(boundary)"]
+            if !albums.isEmpty {
+                headers[HTTPField.Name("Albums")!] = albums
+            }
+            if privateUpload {
+                headers[HTTPField.Name("Private")!] = "true"
+            }
+            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: headers, taskDelegate: taskDelegate)
             return try decoder.decode(DFUploadResponse.self, from: responseBody)
-        }catch {
+        } catch {
             print("Request failed \(error)")
             return nil;
         }
@@ -281,6 +289,16 @@ struct DFAPI {
         let token: String
     }
 
+    @MainActor
+    private func updateSessionCookies(_ selectedServer: DjangoFilesSession, _ cookies: [HTTPCookie]) {
+        selectedServer.cookies = cookies
+    }
+
+    @MainActor
+    private func updateSessionToken(_ selectedServer: DjangoFilesSession, _ token: String) {
+        selectedServer.token = token
+    }
+
     public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {
         let request = DFLocalLoginRequest(username: username, password: password)
         do {
@@ -309,17 +327,13 @@ struct DFAPI {
                 cookies.forEach { cookie in
                     HTTPCookieStorage.shared.setCookie(cookie)
                 }
-                await MainActor.run {
-                    selectedServer.cookies = cookies
-                }
+                await updateSessionCookies(selectedServer, cookies)
             }
             
             let userToken = try JSONDecoder().decode(UserToken.self, from: data)
             
             // Update the token in the server object
-            await MainActor.run {
-                selectedServer.token = userToken.token
-            }
+            await updateSessionToken(selectedServer, userToken.token)
             return true
         } catch {
             print("Local login request failed \(error)")
@@ -406,15 +420,11 @@ struct DFAPI {
                     HTTPCookieStorage.shared.setCookie(cookie)
                     print("Received cookie from response: \(cookie)")
                 }
-                await MainActor.run {
-                    selectedServer.cookies = cookies
-                }
+                await updateSessionCookies(selectedServer, cookies)
             }
             
-            // Update the token in the server object
-            await MainActor.run {
-                selectedServer.token = token
-            }
+            // Update the token in the server object using the MainActor method
+            await updateSessionToken(selectedServer, token)
             
             return true
         } catch {
@@ -423,17 +433,18 @@ struct DFAPI {
         }
     }
 
-    public func getFiles(page: Int = 1) async -> DFFilesResponse? {
+    public func getFiles(page: Int = 1, album: Int? = nil) async -> DFFilesResponse? {
         do {
+            var parameters: [String: String] = [:]
+            if let album = album {
+                parameters["album"] = String(album)
+            }
+            
             let responseBody = try await makeAPIRequest(
                 path: getAPIPath(.files) + "\(page)/",
-                parameters: [:],
+                parameters: parameters,
                 method: .get
             )
-            
-            print(String(data: responseBody, encoding: String.Encoding.utf8))
-            
-            // Use the default decoder since dates are now handled as strings
             let specialDecoder = JSONDecoder()
             specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
             return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)

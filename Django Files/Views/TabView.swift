@@ -16,14 +16,18 @@ struct TabViewWindow: View {
     @Query private var sessions: [DjangoFilesSession]
     @State private var needsRefresh = false
     
-    init(sessionManager: SessionManager) {
-        self.sessionManager = sessionManager
-    }
+
+//
+//    
+//    init(server: Binding<DjangoFilesSession?>, sessionManager: SessionManager) {
+//        self.sessionManager = sessionManager
+//        self.server = server
+//    }
     
     var body: some View {
         TabView {
             Tab("Files", systemImage: "document.fill") {
-                FileListView(server: $sessionManager.selectedSession)
+                FileListNavStack(server: $sessionManager.selectedSession)
             }
             
             Tab("Gallery", systemImage: "photo.artframe") {
@@ -88,8 +92,6 @@ struct TabViewWindow: View {
                 }
             }
         }
-        .navigationTitle(Text("Servers"))
-
     }
     
     // Helper function to connect to WebSocket
@@ -101,6 +103,7 @@ struct TabViewWindow: View {
         print("TabViewWindow: Connecting to WebSocket for session \(session.url)")
         _ = api.connectToWebSocket()
     }
+    
 }
 
 struct ServerSelector: View {
