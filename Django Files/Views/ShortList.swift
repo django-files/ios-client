@@ -19,60 +19,51 @@ struct ShortListView: View {
     private let shortsPerPage = 50
     
     var body: some View {
-        if server.wrappedValue != nil {
-            NavigationStack {
-                List {
-                    ForEach(shorts) { short in
-                        ShortRow(short: short)
-                            .onTapGesture {
-                                UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
-                                ToastManager.shared.showToast(message: "Short URL copied to clipboard")
-                            }
-                    }
-                    
-                    if hasMoreResults && !shorts.isEmpty {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .onAppear {
-                                loadMoreShorts()
-                            }
-                    }
-                    
-                    if isLoading && shorts.isEmpty {
-                        loadingView
-                    }
-                }
-                .listStyle(.plain)
-                .refreshable{
-                    await refreshShorts()
-                }
-                .overlay {
-                    if shorts.isEmpty && !isLoading {
-                        emptyView
-                    }
-                    
-                    if let error = error {
-                        errorView(message: error)
-                    }
-                }
-                .navigationTitle("Short URLs \(server.wrappedValue?.url ?? "")")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            // Create album action
-                        } label: {
-                            Label("Create Short", systemImage: "plus")
+        ZStack{
+            if server.wrappedValue != nil {
+                NavigationStack {
+                    List {
+                        ForEach(shorts) { short in
+                            ShortRow(short: short)
+                                .onTapGesture {
+                                    UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
+                                    ToastManager.shared.showToast(message: "Short URL copied to clipboard")
+                                }
                         }
                     }
-                }
-                .onAppear {
-                    if shorts.isEmpty {
-                        loadInitialShorts()
+                    .listStyle(.plain)
+                    .refreshable{
+                        await refreshShorts()
                     }
+                    .overlay {
+                        if shorts.isEmpty && !isLoading {
+                            emptyView
+                        }
+                        
+                        if let error = error {
+                            errorView(message: error)
+                        }
+                    }
+                    .navigationTitle(server.wrappedValue != nil ? "Short URLS (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                // Create album action
+                            } label: {
+                                Label("Create Short", systemImage: "plus")
+                            }
+                        }
+                    }
+
                 }
+            } else {
+                Label("No server selected.", systemImage: "exclamationmark.triangle")
             }
-        } else {
-            Label("No server selected.", systemImage: "exclamationmark.triangle")
+        }
+        .onAppear {
+            if shorts.isEmpty {
+                loadInitialShorts()
+            }
         }
     }
     
@@ -135,30 +126,23 @@ struct ShortListView: View {
     }
     
     private func loadInitialShorts() {
-        isLoading = true
-        error = nil
-        shorts = []
-        
-        Task {
-            await fetchShorts()
-            await MainActor.run {
-                isLoading = false
+        if shorts.count == 0 && !isLoading {
+            error = nil
+            shorts = []
+            
+            Task {
+                await fetchShorts()
             }
         }
     }
     
     private func refreshShorts() async {
         await MainActor.run {
-            isLoading = true
             error = nil
             shorts = []
-            hasMoreResults = true
         }
-        
-        await fetchShorts()
-        
-        await MainActor.run {
-            isLoading = false
+        Task {
+            await fetchShorts()
         }
     }
     
@@ -174,8 +158,6 @@ struct ShortListView: View {
         await MainActor.run {
             isLoading = true
         }
-        
-        // Create API client from session URL and token
         guard let url = URL(string: server.wrappedValue!.url) else {
             await MainActor.run {
                 error = "Invalid session URL"
@@ -185,16 +167,11 @@ struct ShortListView: View {
         }
         
         let api = DFAPI(url: url, token: server.wrappedValue!.token)
-        
-        // Get the ID of the last short for pagination
         let lastShortId = shorts.last?.id
         
         if let response = await api.getShorts(amount: shortsPerPage, start: lastShortId, selectedServer: server.wrappedValue) {
             await MainActor.run {
-                // Append new shorts to the existing list
                 shorts.append(contentsOf: response.shorts)
-                
-                // Check if there might be more results
                 hasMoreResults = response.shorts.count >= shortsPerPage
                 error = nil
             }
