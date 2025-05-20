@@ -84,7 +84,6 @@
 				API/DFAPI.swift,
 				API/Error.swift,
 				API/Files.swift,
-				API/Gallery.swift,
 				API/Short.swift,
 				API/Stats.swift,
 				API/Upload.swift,

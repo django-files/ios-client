@@ -15,63 +15,88 @@ struct TabViewWindow: View {
     @State private var showingServerSelector = false
     @Query private var sessions: [DjangoFilesSession]
     @State private var needsRefresh = false
+    @State private var serverChangeRefreshTrigger = UUID()
+    @State private var serverNeedsAuth: DjangoFilesSession?
     
-
-//
-//    
-//    init(server: Binding<DjangoFilesSession?>, sessionManager: SessionManager) {
-//        self.sessionManager = sessionManager
-//        self.server = server
-//    }
+    @State private var selectedTab: Tab = .files
+    @State private var showLoginSheet = false
+    
+    enum Tab {
+        case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb
+    }
     
     var body: some View {
-        TabView {
-            Tab("Files", systemImage: "document.fill") {
-                FileListNavStack(server: $sessionManager.selectedSession)
-            }
-            
-            Tab("Gallery", systemImage: "photo.artframe") {
-                //                ReceivedView()
-            }
-            
-            Tab("Albums", systemImage: "square.stack") {
-                AlbumListView(server: $sessionManager.selectedSession)
-            }
-            
-            Tab("Shorts", systemImage: "link") {
-                ShortListView(server: $sessionManager.selectedSession)
-            }
-            Tab("Server List", systemImage: "server.rack") {
-                ServerSelector(selectedSession: $sessionManager.selectedSession)
-            }
-            Tab("User Settings", systemImage: "person") {
-                if let selectedSession = sessionManager.selectedSession {
-                    AuthViewContainer(
-                        selectedServer: selectedSession,
-                        customURL: selectedSession.url + "/settings/user/",
-                        needsRefresh: $needsRefresh
-                    )
+        TabView(selection: $selectedTab) {
+            FileListNavStack(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("Files", systemImage: "document.fill")
                 }
-            }
-            Tab("Server Settings", systemImage: "person.2.badge.gearshape") {
-                if let selectedSession = sessionManager.selectedSession {
-                    AuthViewContainer(
-                        selectedServer: selectedSession,
-                        customURL: selectedSession.url + "/settings/site/",
-                        needsRefresh: $needsRefresh
-                    )
+                .tag(Tab.files)
+            
+            AlbumListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("Albums", systemImage: "square.stack")
                 }
-            }
-            Tab("Mobile Web (Legacy)", systemImage: "globe"){
-                if let selectedSession = sessionManager.selectedSession {
-                    AuthViewContainer(
-                        selectedServer: selectedSession,
-                        needsRefresh: $needsRefresh
-                    )
-                    .id(selectedSession.url)
-                } else {
-                    Text("Please select a server")
+                .tag(Tab.albums)
+            
+            ShortListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("Shorts", systemImage: "link")
                 }
+                .tag(Tab.shorts)
+            
+            ServerSelector(selectedSession: $sessionManager.selectedSession)
+                .tabItem {
+                    Label("Server List", systemImage: "server.rack")
+                }
+                .tag(Tab.serverList)
+                .sheet(isPresented: $showLoginSheet) {
+                    if let session = sessionManager.selectedSession {
+                        LoginView(selectedServer: session, onLoginSuccess: {
+                            showLoginSheet = false
+                            // Return to previous tab after successful login
+                            if selectedTab == .serverList {
+                                selectedTab = .files
+                            }
+                        })
+                    }
+                }
+            
+            if let selectedSession = sessionManager.selectedSession {
+                AuthViewContainer(
+                    selectedServer: selectedSession,
+                    customURL: selectedSession.url + "/settings/user/",
+                    needsRefresh: .constant(true)
+                )
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("User Settings", systemImage: "person")
+                }
+                .tag(Tab.userSettings)
+                
+                AuthViewContainer(
+                    selectedServer: selectedSession,
+                    customURL: selectedSession.url + "/settings/site/",
+                    needsRefresh: .constant(true)
+                )
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("Server Settings", systemImage: "person.2.badge.gearshape")
+                }
+                .tag(Tab.serverSettings)
+                
+                AuthViewContainer(
+                    selectedServer: selectedSession,
+                    needsRefresh: $needsRefresh
+                )
+                .id(serverChangeRefreshTrigger)
+                .tabItem {
+                    Label("Mobile Web (Legacy)", systemImage: "globe")
+                }
+                .tag(Tab.mobileWeb)
             }
         }
         .onAppear {
@@ -83,13 +108,22 @@ struct TabViewWindow: View {
             }
         }
         .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
-            if newValue != nil {
+            if let session = newValue {
                 sessionManager.saveSelectedSession()
+                connectToWebSocket(session: session)
+                serverChangeRefreshTrigger = UUID()
                 
-                // Connect to WebSocket when session changes
-                if let session = newValue {
-                    connectToWebSocket(session: session)
+                // Handle auth state
+                if !session.auth {
+                    selectedTab = .serverList
+                    showLoginSheet = true
                 }
+            }
+        }
+        .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
+            if let isAuth = newValue, !isAuth {
+                selectedTab = .serverList
+                showLoginSheet = true
             }
         }
     }
@@ -111,43 +145,46 @@ struct ServerSelector: View {
     @Environment(\.dismiss) private var dismiss
     
     @Binding var selectedSession: DjangoFilesSession?
-    @State private var itemToDelete: DjangoFilesSession?  // Track item to be deleted
-    @State private var showingDeleteAlert = false  // Track if delete alert is showing
-    @State private var showingEditor = false
+    @State private var itemToDelete: DjangoFilesSession?
+    @State private var showingDeleteAlert = false
+    @State private var showAddServerSheet = false
     @State private var editSession: DjangoFilesSession?
     @State private var authSession: DjangoFilesSession?
     
-    @State private var showLoginSheet: Bool = false
+    @State private var navigationPath = NavigationPath()
     
     @Query private var items: [DjangoFilesSession]
     
     var body: some View {
+        NavigationStack(path: $navigationPath) {
             List(selection: $selectedSession) {
                 ForEach(items, id: \.self) { item in
-                    HStack {
+                    HStack(spacing: 0) {
                         Label("", systemImage: item.defaultSession ? "star.fill" : "")
+                        Label("", systemImage: item.auth ? "person.fill" : "person")
                         Text(item.url)
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                itemToDelete = item
-                                showingDeleteAlert = true
-                            } label: {
-                                Label("Delete", systemImage: "trash.fill")
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    itemToDelete = item
+                                    showingDeleteAlert = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash.fill")
+                                }
+                                Button {
+                                    editSession = item
+                                } label: {
+                                    Label("Settings", systemImage: "gear")
+                                }
+                                .tint(.indigo)
                             }
-                            Button {
-                                editSession = item
-                            } label: {
-                                Label("Settings", systemImage: "gear")
+                            .onTapGesture {
+                                if !item.auth {
+                                    authSession = item
+                                } else {
+                                    selectedSession = item
+                                }
                             }
-                            .tint(.indigo)
-                        }
-                        .onTapGesture {
-                            if !item.auth {
-                                authSession = item
-                            } else {
-                                selectedSession = item
-                            }
-                        }
+                        
                     }
                 }
             }
@@ -161,14 +198,14 @@ struct ServerSelector: View {
             .sheet(item: $editSession) { session in
                 SessionSelector(session: session)
             }
-            .sheet(isPresented: $showingEditor) {
+            .sheet(isPresented: $showAddServerSheet) {
                 SessionEditor(session: nil)
             }
             .confirmationDialog("Delete Server", isPresented: $showingDeleteAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
                     if let item = itemToDelete,
-                        let index = items.firstIndex(of: item)
+                       let index = items.firstIndex(of: item)
                     {
                         deleteItems(offsets: [index])
                         if selectedSession == item {
@@ -177,20 +214,21 @@ struct ServerSelector: View {
                     }
                 }
             } message: {
-                 Text(
-                     "Are you sure you want to delete \(URL(string: itemToDelete?.url ?? "")?.host ?? "this server")? This action cannot be undone."
-                 )
-             }
+                Text(
+                    "Are you sure you want to delete \(URL(string: itemToDelete?.url ?? "")?.host ?? "this server")? This action cannot be undone."
+                )
+            }
             .toolbar {
                 ToolbarItem {
                     Button(action: {
-                        self.showingEditor.toggle()
+                        self.showAddServerSheet.toggle()
                     }) {
                         Label("Add Item", systemImage: "plus")
                     }
                 }
             }
-            .navigationTitle("Servers")
+            .navigationTitle("Server List")
+        }
 
 
     }

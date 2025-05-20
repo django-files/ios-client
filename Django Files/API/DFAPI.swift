@@ -60,17 +60,27 @@ struct DFAPI {
         return DFAPI.API_PATH + api.rawValue
     }
     
-    private func handleError(_ status: HTTPResponse.Status, data: Data?){
+    @MainActor
+    private func updateSessionAuth(_ selectedServer: DjangoFilesSession, _ isAuthenticated: Bool) {
+        selectedServer.auth = isAuthenticated
+    }
+
+    private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async {
         print("Server response status code: \(status)")
-        do{
+        do {
             let e = try decoder.decode(DFErrorResponse.self, from: data!)
             print("\(e.error): \(e.message)")
-        }catch {
+            
+            // Check for 401 Unauthorized and update session auth status
+            if status.code == 401, let server = selectedServer {
+                await updateSessionAuth(server, false)
+            }
+        } catch {
             print("Invalid error response.")
         }
     }
     
-    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data
+    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data
     {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.authorization] = token
@@ -80,14 +90,17 @@ struct DFAPI {
         }
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: body)
-        guard response.status == .ok else {
-            handleError(response.status, data: responseBody)
+        
+        // Handle error responses
+        if response.status != .ok {
+            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
+        
         return responseBody
     }
     
-    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data {
+    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
@@ -97,10 +110,13 @@ struct DFAPI {
         
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate ?? nil, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: Data())
-        guard response.status != .created else {
-            handleError(response.status, data: responseBody)
+        
+        // Handle error responses
+        if response.status != .ok {
+            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
+        
         return responseBody
     }
     private func makeAPIRequestStreamed(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionStreamDelegate) throws -> URLSessionUploadTask{
@@ -115,48 +131,48 @@ struct DFAPI {
         return session.uploadTask(withStreamedRequest: URLRequest(httpRequest: request)!)
     }
     
-    public func getStats(amount: Int? = nil) async -> DFStatsResponse?{
-        do{
-            let responseBody = try await makeAPIRequest(path: getAPIPath(.stats), parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""])
+    public func getStats(amount: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFStatsResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.stats), 
+                parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""],
+                selectedServer: selectedServer
+            )
             return try decoder.decode(DFStatsResponse.self, from: responseBody)
-        }catch {
+        } catch {
             print("Request failed \(error)")
-            return nil;
+            return nil
         }
     }
     
-    public func deleteFiles(fileIDs: [Int]) async {
+    public func deleteFiles(fileIDs: [Int], selectedServer: DjangoFilesSession? = nil) async {
         do {
-            // Convert array to JSON string
             let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
-
             let _ = try await makeAPIRequest(
                 body: fileIDsData,
                 path: getAPIPath(.delete_file),
                 parameters: [:],
-                method: .delete
+                method: .delete,
+                selectedServer: selectedServer
             )
         } catch {
             print("File Delete Failed \(error)")
         }
     }
     
-    public func editFiles(fileIDs: [Int], changes: [String: Any]) async -> Bool {
+    public func editFiles(fileIDs: [Int], changes: [String: Any], selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {
-            // Combine the file IDs and changes into a single dictionary
             var requestData: [String: Any] = ["ids": fileIDs]
             for (key, value) in changes {
                 requestData[key] = value
             }
-                        
-            // Convert combined dictionary to JSON data
             let jsonData = try JSONSerialization.data(withJSONObject: requestData)
-            
             let _ = try await makeAPIRequest(
                 body: jsonData,
                 path: getAPIPath(.edit_file),
                 parameters: [:],
-                method: .post
+                method: .post,
+                selectedServer: selectedServer
             )
             return true
         } catch {
@@ -165,15 +181,15 @@ struct DFAPI {
         }
     }
     
-    public func renameFile(fileID: Int, name: String) async -> Bool {
+    public func renameFile(fileID: Int, name: String, selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: ["name": name])
-            
             let _ = try await makeAPIRequest(
                 body: jsonData,
                 path: getAPIPath(.file) + "\(fileID)",
                 parameters: [:],
-                method: .post
+                method: .post,
+                selectedServer: selectedServer
             )
             return true
         } catch {
@@ -182,9 +198,7 @@ struct DFAPI {
         }
     }
     
-
-    
-    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
+    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
         
@@ -192,16 +206,15 @@ struct DFAPI {
         data.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
         data.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         data.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        do{
+        do {
             try data.append(Data(contentsOf: url))
-        }
-        catch{
+        } catch {
             print("Error reading file \(error)")
             return nil
         }
         data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
-        do{
+        do {
             var headers: [HTTPField.Name: String] = [.contentType: "multipart/form-data; boundary=\(boundary)"]
             if !albums.isEmpty {
                 headers[HTTPField.Name("Albums")!] = albums
@@ -209,11 +222,20 @@ struct DFAPI {
             if privateUpload {
                 headers[HTTPField.Name("Private")!] = "true"
             }
-            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: headers, taskDelegate: taskDelegate)
+            let responseBody = try await makeAPIRequest(
+                body: data,
+                path: getAPIPath(.upload),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: headers,
+                taskDelegate: taskDelegate,
+                selectedServer: selectedServer
+            )
             return try decoder.decode(DFUploadResponse.self, from: responseBody)
         } catch {
             print("Request failed \(error)")
-            return nil;
+            return nil
         }
     }
     
@@ -231,19 +253,28 @@ struct DFAPI {
         }
     }
     
-    public func createShort(url: URL, short: String, maxViews: Int? = nil) async -> DFShortResponse?{
+    public func createShort(url: URL, short: String, maxViews: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFShortResponse? {
         let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
-        do{
+        do {
             let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: getAPIPath(.short),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: [:],
+                taskDelegate: nil,
+                selectedServer: selectedServer
+            )
             return try decoder.decode(DFShortResponse.self, from: responseBody)
-        }catch {
+        } catch {
             print("Request failed \(error)")
-            return nil;
+            return nil
         }
     }
     
-    public func getShorts(amount: Int = 50, start: Int? = nil) async -> ShortsResponse? {
+    public func getShorts(amount: Int = 50, start: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
         var parameters: [String: String] = ["amount": "\(amount)"]
         if let start = start {
             parameters["start"] = "\(start)"
@@ -253,7 +284,8 @@ struct DFAPI {
             let responseBody = try await makeAPIRequest(
                 path: getAPIPath(.shorts),
                 parameters: parameters,
-                method: .get
+                method: .get,
+                selectedServer: selectedServer
             )
             
             let shorts = try decoder.decode([DFShort].self, from: responseBody)
@@ -433,7 +465,7 @@ struct DFAPI {
         }
     }
 
-    public func getFiles(page: Int = 1, album: Int? = nil) async -> DFFilesResponse? {
+    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFFilesResponse? {
         do {
             var parameters: [String: String] = [:]
             if let album = album {
@@ -443,7 +475,8 @@ struct DFAPI {
             let responseBody = try await makeAPIRequest(
                 path: getAPIPath(.files) + "\(page)/",
                 parameters: parameters,
-                method: .get
+                method: .get,
+                selectedServer: selectedServer
             )
             let specialDecoder = JSONDecoder()
             specialDecoder.keyDecodingStrategy = .convertFromSnakeCase

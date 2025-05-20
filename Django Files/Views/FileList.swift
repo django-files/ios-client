@@ -16,12 +16,15 @@ struct FileListNavStack: View {
     @State private var navigationPath = NavigationPath()
     
     var body: some View {
-        ZStack {
-            NavigationStack(path: $navigationPath) {
-                FileListView(server: server, albumID: nil)
+        if (server.wrappedValue != nil) {
+            ZStack {
+                NavigationStack(path: $navigationPath) {
+                    FileListView(server: server, albumID: nil)
+                }
             }
-        }
-
+        } else {
+           Label("No server selected.", systemImage: "exclamationmark.triangle")
+       }
     }
 }
     
@@ -169,6 +172,7 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     var body: some View {
+        if server.wrappedValue != nil {
             List {
                 ForEach(files, id: \.id) { file in
                     NavigationLink(value: file) {
@@ -357,6 +361,9 @@ struct FileListView: View {
             .onAppear {
                 loadFiles()
             }
+        } else {
+            Label("No server selected.", systemImage: "exclamationmark.triangle")
+        }
     }
     
     @MainActor
@@ -542,7 +549,7 @@ struct FileListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         
-        if let filesResponse = await api.getFiles(page: page, album: albumID) {
+        if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance) {
             if append {
                 files.append(contentsOf: filesResponse.files)
             } else {
@@ -569,7 +576,7 @@ struct FileListView: View {
         }
         
         let api = DFAPI(url: url, token: serverInstance.token)
-        await api.deleteFiles(fileIDs: fileIDs)
+        await api.deleteFiles(fileIDs: fileIDs, selectedServer: serverInstance)
         
         // Remove the deleted files from the local array
         files.removeAll { file in
@@ -616,7 +623,7 @@ struct FileListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         // Toggle the private status (if currently private, make it public and vice versa)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private])
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
         
         await refreshFiles()
     }
@@ -629,7 +636,7 @@ struct FileListView: View {
         }
         
         let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""])
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
         await refreshFiles()
     }
     
@@ -640,7 +647,7 @@ struct FileListView: View {
             return
         }
         let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""])
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
         await refreshFiles()
     }
     
@@ -651,7 +658,7 @@ struct FileListView: View {
             return
         }
         let api = DFAPI(url: url, token: serverInstance.token)
-        if await api.renameFile(fileID: file.id, name: name) {
+        if await api.renameFile(fileID: file.id, name: name, selectedServer: serverInstance) {
             await refreshFiles()
         }
     }

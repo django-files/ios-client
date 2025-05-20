@@ -286,6 +286,9 @@ struct LoginView: View {
                                 )
                                 if status {
                                     selectedServer.auth = true
+                                    Task {
+                                        self.dismiss()
+                                    }
                                     onLoginSuccess()
                                 }
                             } else {

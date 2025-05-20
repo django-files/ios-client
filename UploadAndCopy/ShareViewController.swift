@@ -245,7 +245,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         let shortLink: String = (self.shortText.text == nil || self.shortText.text == "") ? randomString(length: 5) : self.shortText.text!
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         Task{
-            let response = await api.createShort(url: shareURL!, short: shortLink)
+            let response = await api.createShort(url: shareURL!, short: shortLink, selectedServer: session)
             self.activityIndicator.stopAnimating()
             
             if response == nil{

@@ -19,52 +19,56 @@ struct ShortListView: View {
     private let shortsPerPage = 50
     
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(shorts) { short in
-                    ShortRow(short: short)
+        if server.wrappedValue != nil {
+            NavigationStack {
+                List {
+                    ForEach(shorts) { short in
+                        ShortRow(short: short)
+                    }
+                    
+                    if hasMoreResults && !shorts.isEmpty {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .onAppear {
+                                loadMoreShorts()
+                            }
+                    }
+                    
+                    if isLoading && shorts.isEmpty {
+                        loadingView
+                    }
                 }
-                
-                if hasMoreResults && !shorts.isEmpty {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .onAppear {
-                            loadMoreShorts()
+                .listStyle(.plain)
+                .refreshable{
+                    await refreshShorts()
+                }
+                .overlay {
+                    if shorts.isEmpty && !isLoading {
+                        emptyView
+                    }
+                    
+                    if let error = error {
+                        errorView(message: error)
+                    }
+                }
+                .navigationTitle("Short URLs")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            // Create album action
+                        } label: {
+                            Label("Create Short", systemImage: "plus")
                         }
+                    }
                 }
-                
-                if isLoading && shorts.isEmpty {
-                    loadingView
-                }
-            }
-            .listStyle(.plain)
-            .refreshable{
-                await refreshShorts()
-            }
-            .overlay {
-                if shorts.isEmpty && !isLoading {
-                    emptyView
-                }
-                
-                if let error = error {
-                    errorView(message: error)
-                }
-            }
-            .navigationTitle("Short URLs")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        // Create album action
-                    } label: {
-                        Label("Create Short", systemImage: "plus")
+                .onAppear {
+                    if shorts.isEmpty {
+                        loadInitialShorts()
                     }
                 }
             }
-            .onAppear {
-                if shorts.isEmpty {
-                    loadInitialShorts()
-                }
-            }
+        } else {
+            Label("No server selected.", systemImage: "exclamationmark.triangle")
         }
     }
     
@@ -181,7 +185,7 @@ struct ShortListView: View {
         // Get the ID of the last short for pagination
         let lastShortId = shorts.last?.id
         
-        if let response = await api.getShorts(amount: shortsPerPage, start: lastShortId) {
+        if let response = await api.getShorts(amount: shortsPerPage, start: lastShortId, selectedServer: server.wrappedValue) {
             await MainActor.run {
                 // Append new shorts to the existing list
                 shorts.append(contentsOf: response.shorts)
