@@ -24,6 +24,10 @@ struct ShortListView: View {
                 List {
                     ForEach(shorts) { short in
                         ShortRow(short: short)
+                            .onTapGesture {
+                                UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
+                                ToastManager.shared.showToast(message: "Short URL copied to clipboard")
+                            }
                     }
                     
                     if hasMoreResults && !shorts.isEmpty {
@@ -51,7 +55,7 @@ struct ShortListView: View {
                         errorView(message: error)
                     }
                 }
-                .navigationTitle("Short URLs")
+                .navigationTitle("Short URLs \(server.wrappedValue?.url ?? "")")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {

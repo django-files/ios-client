@@ -9,25 +9,6 @@ import SwiftUI
 import SwiftData
 import Foundation
 
-
-struct FileListNavStack: View {
-    let server: Binding<DjangoFilesSession?>
-    
-    @State private var navigationPath = NavigationPath()
-    
-    var body: some View {
-        if (server.wrappedValue != nil) {
-            ZStack {
-                NavigationStack(path: $navigationPath) {
-                    FileListView(server: server, albumID: nil)
-                }
-            }
-        } else {
-           Label("No server selected.", systemImage: "exclamationmark.triangle")
-       }
-    }
-}
-    
 struct CustomLabel: LabelStyle {
     var spacing: Double = 0.0
     
@@ -141,6 +122,7 @@ struct FileRowView: View {
 struct FileListView: View {
     let server: Binding<DjangoFilesSession?>
     let albumID: Int?
+    let navigationPath: Binding<NavigationPath>
     
     @State private var files: [DFFile] = []
     @State private var currentPage = 1
@@ -151,7 +133,6 @@ struct FileListView: View {
     
     @State private var previewFile: Bool = true
     @State private var selectedFile: DFFile? = nil
-    @State private var navigationPath = NavigationPath()
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -172,197 +153,184 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     var body: some View {
-        if server.wrappedValue != nil {
-            List {
-                ForEach(files, id: \.id) { file in
-                    NavigationLink(value: file) {
-                        FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
-                            .contextMenu {
-                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                            }
-                    }
-                    .id(file.id)
-                    
-                    // If this is the last item and we have more pages, load more when it appears
-                    if hasNextPage && file.id == files.last?.id {
-                        Color.clear
-                            .frame(height: 20)
-                            .onAppear {
-                                loadNextPage()
-                            }
-                    }
+        List {
+            ForEach(files, id: \.id) { file in
+                NavigationLink(value: file) {
+                    FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
+                        .contextMenu {
+                            fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        }
                 }
+                .id(file.id)
                 
-                if isLoading && hasNextPage {
-                    HStack {
-                        ProgressView()
-                    }
-                }
-            }
-            .navigationDestination(for: DFFile.self) { file in
-                ZStack {
-                    if redirectURLs[file.raw] == nil {
-                        ProgressView()
-                            .onAppear {
-                                Task {
-                                    await loadRedirectURL(for: file)
-                                }
-                            }
-                    } else {
-                        ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!))
-                            .navigationTitle(file.name)
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .navigationBarTrailing) {
-                                    Menu {
-                                        fileShareMenu(for: file)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                }
-                                ToolbarItem(placement: .navigationBarTrailing) {
-                                    Menu {
-                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
-                                    }
-                                }
-                            }
-                    }
-                }
-            }
-            .onChange(of: selectedFile) { oldValue, newValue in
-                if let file = newValue {
-                    navigationPath.append(file)
-                    selectedFile = nil // Reset after navigation
-                }
-            }
-            .alert("Delete File", isPresented: $showingDeleteConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    Task {
-                        await deleteFiles(fileIDs: fileIDsToDelete)
-                        
-                        // Return to the file list if we're in a detail view
-                        if navigationPath.count > 0 {
-                            navigationPath.removeLast()
+                if hasNextPage && file.id == files.last?.id {
+                    Color.clear
+                        .frame(height: 20)
+                        .onAppear {
+                            loadNextPage()
                         }
-                    }
-                }
-            } message: {
-                Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
-            }
-            .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
-                TextField("Enter expiration", text: $expirationText)
-                Button("Cancel", role: .cancel) {
-                    fileToExpire = nil
-                }
-                Button("Set") {
-                    if let file = fileToExpire {
-                        let expirationValue = expirationText
-                        Task {
-                            await setFileExpr(file: file, expr: expirationValue)
-                            await MainActor.run {
-                                expirationText = ""
-                                fileToExpire = nil
-                            }
-                        }
-                    }
-                }
-            } message: {
-                Text("Enter time until file expiration. Examples: 1h, 5days, 2y")
-            }
-            .alert("Set File Password", isPresented: $showingPasswordDialog) {
-                TextField("Enter password", text: $passwordText)
-                Button("Cancel", role: .cancel) {
-                    fileToPassword = nil
-                }
-                Button("Set") {
-                    if let file = fileToPassword {
-                        let passwordValue = passwordText // Capture the value
-                        Task {
-                            await setFilePassword(file: file, password: passwordValue)
-                            // Only clear after the API call completes
-                            await MainActor.run {
-                                passwordText = ""
-                                fileToPassword = nil
-                            }
-                        }
-                    }
-                }
-            } message: {
-                Text("Enter a password for the file.")
-            }
-            .alert("Rename File", isPresented: $showingRenameDialog) {
-                TextField("New File Name", text: $fileNameText)
-                Button("Cancel", role: .cancel) {
-                    fileToRename = nil
-                }
-                Button("Set") {
-                    if let file = fileToRename {
-                        let fileNameValue = fileNameText // Capture the value
-                        Task {
-                            await renameFile(file: file, name: fileNameValue)
-                            // Only clear after the API call completes
-                            await MainActor.run {
-                                fileNameText = ""
-                                fileToRename = nil
-                            }
-                        }
-                    }
-                }
-            } message: {
-                Text("Enter a new name for this file.")
-            }
-            .sheet(isPresented: $showingUploadSheet,
-                   onDismiss: { Task { await refreshFiles()} }
-            ) {
-                if let serverInstance = server.wrappedValue {
-                    FileUploadView(server: serverInstance)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button(action: {
-                            showingUploadSheet = true
-                        }) {
-                            Label("Upload File", systemImage: "arrow.up.doc")
-                        }
-                        Button(action: {
+            
+            if isLoading && hasNextPage {
+                HStack {
+                    ProgressView()
+                }
+            }
+        }
+        .navigationDestination(for: DFFile.self) { file in
+            ZStack {
+                if redirectURLs[file.raw] == nil {
+                    ProgressView()
+                        .onAppear {
                             Task {
-                                await uploadClipboard()
+                                await loadRedirectURL(for: file)
                             }
-                        }) {
-                            Label("Upload Clipboard", systemImage: "clipboard")
                         }
-                        Button(action: {
-                            // Create a short
-                        }) {
-                            Label("Create Short", systemImage: "link.badge.plus")
+                } else {
+                    ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!))
+                        .navigationTitle(file.name)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Menu {
+                                    fileShareMenu(for: file)
+                                } label: {
+                                    Image(systemName: "square.and.arrow.up")
+                                }
+                            }
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Menu {
+                                    fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                }
+                            }
                         }
-                        Button(action: {
-                            // Create an Album
-                        }) {
-                            Label("Create Album", systemImage: "photo.badge.plus")
+                }
+            }
+        }
+        .listStyle(.plain)
+        .refreshable {
+            Task {
+                await refreshFiles()
+            }
+        }
+        .navigationTitle(server.wrappedValue != nil ? "Files (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Files")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: {
+                        showingUploadSheet = true
+                    }) {
+                        Label("Upload File", systemImage: "arrow.up.doc")
+                    }
+                    Button(action: {
+                        Task {
+                            await uploadClipboard()
                         }
-                    } label: {
-                        Image(systemName: "plus")
+                    }) {
+                        Label("Upload Clipboard", systemImage: "clipboard")
+                    }
+                    Button(action: {
+                        // Create a short
+                    }) {
+                        Label("Create Short", systemImage: "link.badge.plus")
+                    }
+                    Button(action: {
+                        // Create an Album
+                    }) {
+                        Label("Create Album", systemImage: "photo.badge.plus")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingUploadSheet,
+               onDismiss: { Task { await refreshFiles()} }
+        ) {
+            if let serverInstance = server.wrappedValue {
+                FileUploadView(server: serverInstance)
+            }
+        }
+        .alert("Delete File", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Task {
+                    await deleteFiles(fileIDs: fileIDsToDelete)
+                    
+                    // Return to the file list if we're in a detail view
+                    if navigationPath.wrappedValue.count > 0 {
+                        navigationPath.wrappedValue.removeLast()
                     }
                 }
             }
-            .listStyle(.plain)
-            .refreshable {
-                Task {
-                    await refreshFiles()
+        } message: {
+            Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
+        }
+        .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
+            TextField("Enter expiration", text: $expirationText)
+            Button("Cancel", role: .cancel) {
+                fileToExpire = nil
+            }
+            Button("Set") {
+                if let file = fileToExpire {
+                    let expirationValue = expirationText
+                    Task {
+                        await setFileExpr(file: file, expr: expirationValue)
+                        await MainActor.run {
+                            expirationText = ""
+                            fileToExpire = nil
+                        }
+                    }
                 }
             }
-            .navigationTitle(server.wrappedValue != nil ? "Files (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Files")
-            .onAppear {
-                loadFiles()
+        } message: {
+            Text("Enter time until file expiration. Examples: 1h, 5days, 2y")
+        }
+        .alert("Set File Password", isPresented: $showingPasswordDialog) {
+            TextField("Enter password", text: $passwordText)
+            Button("Cancel", role: .cancel) {
+                fileToPassword = nil
             }
-        } else {
-            Label("No server selected.", systemImage: "exclamationmark.triangle")
+            Button("Set") {
+                if let file = fileToPassword {
+                    let passwordValue = passwordText
+                    Task {
+                        await setFilePassword(file: file, password: passwordValue)
+                        await MainActor.run {
+                            passwordText = ""
+                            fileToPassword = nil
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text("Enter a password for the file.")
+        }
+        .alert("Rename File", isPresented: $showingRenameDialog) {
+            TextField("New File Name", text: $fileNameText)
+            Button("Cancel", role: .cancel) {
+                fileToRename = nil
+            }
+            Button("Set") {
+                if let file = fileToRename {
+                    let fileNameValue = fileNameText
+                    Task {
+                        await renameFile(file: file, name: fileNameValue)
+                        await MainActor.run {
+                            fileNameText = ""
+                            fileToRename = nil
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text("Enter a new name for this file.")
+        }
+        .onAppear {
+            loadFiles()
         }
     }
     

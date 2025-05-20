@@ -20,6 +20,7 @@ struct TabViewWindow: View {
     
     @State private var selectedTab: Tab = .files
     @State private var showLoginSheet = false
+    @State private var filesNavigationPath = NavigationPath()
     
     enum Tab {
         case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb
@@ -27,12 +28,18 @@ struct TabViewWindow: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            FileListNavStack(server: $sessionManager.selectedSession)
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("Files", systemImage: "document.fill")
+            NavigationStack(path: $filesNavigationPath) {
+                if let server = sessionManager.selectedSession {
+                    FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath)
+                        .id(serverChangeRefreshTrigger)
+                } else {
+                    Label("No server selected.", systemImage: "exclamationmark.triangle")
                 }
-                .tag(Tab.files)
+            }
+            .tabItem {
+                Label("Files", systemImage: "document.fill")
+            }
+            .tag(Tab.files)
             
             AlbumListView(server: $sessionManager.selectedSession)
                 .id(serverChangeRefreshTrigger)
