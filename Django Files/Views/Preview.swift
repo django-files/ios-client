@@ -14,7 +14,8 @@ struct ContentPreview: View {
     @State private var error: Error?
     @State private var imageScale: CGFloat = 1.0
     @State private var lastImageScale: CGFloat = 1.0
-
+    @State private var isPreviewing: Bool = false
+    
     var body: some View {
         Group {
             if isLoading {
@@ -33,6 +34,10 @@ struct ContentPreview: View {
         }
         .onAppear {
             loadContent()
+            isPreviewing = true
+        }
+        .onDisappear {
+            isPreviewing = false
         }
     }
 

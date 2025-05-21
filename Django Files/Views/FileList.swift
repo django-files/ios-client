@@ -58,6 +58,7 @@ struct FileRowView: View {
                     }
                     .frame(width: 64, height: 64)
                     .clipped()
+                    .cornerRadius(8)
                 } else {
                     Image(systemName: getIcon())
                         .font(.system(size: 50))
@@ -79,6 +80,11 @@ struct FileRowView: View {
                 
                 
                 HStack(spacing: 6) {
+                    Label(file.mime, systemImage: "")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                        .lineLimit(1)
+                    
                     Label("", systemImage: "lock")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
@@ -96,10 +102,7 @@ struct FileRowView: View {
                 }
                 
                 HStack(spacing: 5) {
-                    Label(file.mime, systemImage: getIcon())
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .lineLimit(1)
+
                     
                     Label(file.userUsername, systemImage: "person")
                         .font(.caption)
@@ -127,15 +130,13 @@ struct FileListView: View {
     
     @State private var files: [DFFile] = []
     @State private var currentPage = 1
-    @State private var hasNextPage = false
-    @State private var isLoading = true
+    @State private var hasNextPage: Bool = false
+    @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
-    @State private var showingUploadSheet = false
-    @State private var showingShortCreator = false
-    @State private var showingAlbumCreator = false
-    
-    @State private var previewFile: Bool = true
-    @State private var selectedFile: DFFile? = nil
+    @State private var showingUploadSheet: Bool = false
+    @State private var showingShortCreator: Bool = false
+    @State private var showingAlbumCreator: Bool = false
+    @State private var showingPreview: Bool = false
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -183,6 +184,8 @@ struct FileListView: View {
                 }
             }
         }
+        .toolbar(showingPreview ? .hidden : .visible, for: .tabBar)
+        .animation(.easeInOut(duration: 0.3), value: showingPreview)
         .navigationDestination(for: DFFile.self) { file in
             ZStack {
                 if redirectURLs[file.raw] == nil {
@@ -198,26 +201,31 @@ struct FileListView: View {
                             .navigationBarTitleDisplayMode(.inline)
                             .toolbar {
                                 ToolbarItem(placement: .navigationBarTrailing) {
-                                        Button(action: {
-                                            showFileInfo = true
-                                        }) {
-                                            Label("File Info", systemImage: "info.circle")
-                                        }
-                                }
-                                ToolbarItem(placement: .navigationBarTrailing) {
-                                    Menu {
-                                        fileShareMenu(for: file)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                }
-                                ToolbarItem(placement: .navigationBarTrailing) {
                                     Menu {
                                         fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     } label: {
                                         Image(systemName: "ellipsis.circle")
                                     }
                                 }
+                                ToolbarItemGroup(placement: .bottomBar) {
+                                    Menu {
+                                        fileShareMenu(for: file)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.up")
+                                    }
+                                    Spacer()
+                                    Button(action: {
+                                        showFileInfo = true
+                                    }) {
+                                        Label("File Info", systemImage: "info.circle")
+                                    }
+                                }
+                            }
+                            .onAppear {
+                                showingPreview = true
+                            }
+                            .onDisappear {
+                                showingPreview = false
                             }
                 }
             }
@@ -422,7 +430,7 @@ struct FileListView: View {
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
             onPreview: {
-                selectedFile = file
+                navigationPath.wrappedValue.append(file)
             },
             onCopyShareLink: {
                 UIPasteboard.general.string = file.url
