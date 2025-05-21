@@ -30,7 +30,7 @@ struct TabViewWindow: View {
         TabView(selection: $selectedTab) {
             NavigationStack(path: $filesNavigationPath) {
                 if let server = sessionManager.selectedSession {
-                    FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath)
+                    FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
                         .id(serverChangeRefreshTrigger)
                 } else {
                     Label("No server selected.", systemImage: "exclamationmark.triangle")

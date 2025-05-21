@@ -20,6 +20,10 @@ struct AlbumListView: View {
     
     @State private var selectedAlbum: DFAlbum? = nil
     @State private var navigationPath = NavigationPath()
+    @State private var isDeleting = false
+    @State private var showDeleteConfirmation = false
+    @State private var albumToDelete: DFAlbum? = nil
+    @State private var showingAlbumCreator: Bool = false
         
     var body: some View {
         ZStack {
@@ -66,6 +70,13 @@ struct AlbumListView: View {
                                         }) {
                                             Label("Copy Link", systemImage: "link")
                                         }
+                                        
+                                        Button(role: .destructive, action: {
+                                            albumToDelete = album
+                                            showDeleteConfirmation = true
+                                        }) {
+                                            Label("Delete Album", systemImage: "trash")
+                                        }
                                     }
                             }
                             .id(album.id)
@@ -86,7 +97,8 @@ struct AlbumListView: View {
                         }
                     }
                     .navigationDestination(for: DFAlbum.self) { album in
-                        FileListView(server: server, albumID: album.id, navigationPath: $navigationPath)
+                        FileListView(server: server, albumID: album.id, navigationPath: $navigationPath, albumName: album.name)
+                            .navigationTitle("test")
                     }
                     .listStyle(.plain)
                     .refreshable {
@@ -98,16 +110,20 @@ struct AlbumListView: View {
                     .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            Menu {
-                                Button(action: {
-                                    // Create album action
-                                }) {
-                                    Label("Create Album", systemImage: "plus")
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
+                            Button(action: {
+                                showingAlbumCreator = true
+                            }) {
+                                Label("Create Album", systemImage: "plus")
                             }
                         }
+                    }
+                }
+                .sheet(isPresented: $showingAlbumCreator) {
+                    if let serverInstance = server.wrappedValue {
+                        CreateAlbumView(server: serverInstance)
+                            .onDisappear {
+                                showingAlbumCreator = false
+                            }
                     }
                 }
                 .onChange(of: selectedAlbum) { oldValue, newValue in
@@ -115,6 +131,20 @@ struct AlbumListView: View {
                         navigationPath.append(album)
                         selectedAlbum = nil // Reset after navigation
                     }
+                }
+                .alert("Delete Album", isPresented: $showDeleteConfirmation) {
+                    Button("Cancel", role: .cancel) {
+                        albumToDelete = nil
+                    }
+                    Button("Delete", role: .destructive) {
+                        if let album = albumToDelete {
+                            Task {
+                                await deleteAlbum(album)
+                            }
+                        }
+                    }
+                } message: {
+                    Text("Are you sure you want to delete this album? This action cannot be undone.")
                 }
             }
         }
@@ -180,6 +210,26 @@ struct AlbumListView: View {
             errorMessage = "Failed to load albums from server"
             isLoading = false
         }
+    }
+    
+    @MainActor
+    private func deleteAlbum(_ album: DFAlbum) async {
+        guard let serverInstance = server.wrappedValue else { return }
+        
+        isDeleting = true
+        let api = DFAPI(url: URL(string: serverInstance.url)!, token: serverInstance.token)
+        
+        if await api.deleteAlbum(albumId: album.id) {
+            // Remove just the specific album from the list
+            if let index = albums.firstIndex(where: { $0.id == album.id }) {
+                albums.remove(at: index)
+            }
+        } else {
+            ToastManager.shared.showToast(message: "Failed to delete album")
+        }
+        
+        isDeleting = false
+        albumToDelete = nil
     }
 }
 

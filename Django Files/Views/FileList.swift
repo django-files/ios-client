@@ -80,7 +80,7 @@ struct FileRowView: View {
                 
                 
                 HStack(spacing: 6) {
-                    Label(file.mime, systemImage: "")
+                    Text(file.mime)
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .lineLimit(1)
@@ -127,6 +127,7 @@ struct FileListView: View {
     let server: Binding<DjangoFilesSession?>
     let albumID: Int?
     let navigationPath: Binding<NavigationPath>
+    let albumName: String?
     
     @State private var files: [DFFile] = []
     @State private var currentPage = 1
@@ -157,6 +158,16 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     @State private var showFileInfo: Bool = false
+    
+    private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
+        if server.wrappedValue != nil && albumName == nil {
+            return "Files (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
+        } else if server.wrappedValue != nil && albumName != nil {
+            return "\(String(describing: albumName!)) (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
+        } else {
+            return "Files"
+        }
+    }
     
     var body: some View {
         List {
@@ -236,7 +247,7 @@ struct FileListView: View {
                 await refreshFiles()
             }
         }
-        .navigationTitle(server.wrappedValue != nil ? "Files (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Files")
+        .navigationTitle(getTitle(server: server, albumName: albumName))
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {

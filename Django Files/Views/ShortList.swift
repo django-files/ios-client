@@ -16,6 +16,8 @@ struct ShortListView: View {
     @State private var hasMoreResults = true
     @State private var error: String? = nil
     
+    @State private var showingShortCreator: Bool = false
+    
     private let shortsPerPage = 50
     
     var body: some View {
@@ -48,10 +50,18 @@ struct ShortListView: View {
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button {
-                                // Create album action
+                                showingShortCreator = true
                             } label: {
                                 Label("Create Short", systemImage: "plus")
                             }
+                        }
+                    }
+                    .sheet(isPresented: $showingShortCreator) {
+                        if let serverInstance = server.wrappedValue {
+                            ShortCreatorView(server: serverInstance)
+                                .onDisappear {
+                                    showingShortCreator = false
+                                }
                         }
                     }
 

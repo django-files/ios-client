@@ -138,5 +138,23 @@ extension DFAPI {
             return nil
         }
     }
+    
+    // Delete an album by ID
+    func deleteAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
+        do {
+            let path = "\(getAPIPath(.albums))\(albumId)"
+            _ = try await makeAPIRequest(
+                path: path,
+                parameters: [:],
+                method: .delete,
+                expectedResponse: .noContent,
+                selectedServer: selectedServer
+            )
+            return true
+        } catch {
+            print("Error deleting album: \(error)")
+            return false
+        }
+    }
 }
 

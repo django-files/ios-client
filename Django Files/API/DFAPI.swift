@@ -92,8 +92,8 @@ struct DFAPI {
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: body)
         
-        // Handle error responses
-        if response.status != .ok {
+        // Handle non-2xx responses
+        if response.status.code < 200 || response.status.code >= 300 {
             await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
@@ -101,7 +101,7 @@ struct DFAPI {
         return responseBody
     }
     
-    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data {
+    internal func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
@@ -112,8 +112,8 @@ struct DFAPI {
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate ?? nil, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: Data())
         
-        // Handle error responses
-        if response.status != .ok {
+        // Handle non-2xx responses
+        if response.status.code < 200 || response.status.code >= 300 {
             await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
