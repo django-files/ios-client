@@ -132,6 +132,7 @@ struct FileListView: View {
     @State private var errorMessage: String? = nil
     @State private var showingUploadSheet = false
     @State private var showingShortCreator = false
+    @State private var showingAlbumCreator = false
     
     @State private var previewFile: Bool = true
     @State private var selectedFile: DFFile? = nil
@@ -240,7 +241,7 @@ struct FileListView: View {
                         Label("Create Short", systemImage: "link.badge.plus")
                     }
                     Button(action: {
-                        // Create an Album
+                        showingAlbumCreator = true
                     }) {
                         Label("Create Album", systemImage: "photo.badge.plus")
                     }
@@ -259,6 +260,11 @@ struct FileListView: View {
         .sheet(isPresented: $showingShortCreator) {
             if let serverInstance = server.wrappedValue {
                 ShortCreatorView(server: serverInstance)
+            }
+        }
+        .sheet(isPresented: $showingAlbumCreator) {
+            if let serverInstance = server.wrappedValue {
+                CreateAlbumView(server: serverInstance)
             }
         }
         .alert("Delete File", isPresented: $showingDeleteConfirmation) {

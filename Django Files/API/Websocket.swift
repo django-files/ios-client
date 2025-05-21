@@ -153,7 +153,7 @@ class DFWebSocket: NSObject {
     
     private func ping() {
         webSocketTask?.sendPing { [weak self] error in
-            print("websocket ping")
+//            print("websocket ping")
             if let error = error {
                 print("WebSocket ping error: \(error)")
                 self?.reconnect()
@@ -310,6 +310,29 @@ extension DFWebSocket: URLSessionWebSocketDelegate {
 // MARK: - Extension to DFAPI
 
 extension DFAPI {
+    // Create and connect to a WebSocket, also setting up WebSocketToastObserver
+    public func connectToWebSocket() -> DFWebSocket {
+        let webSocket = self.createWebSocket()
+        
+        // Instead of directly accessing WebSocketToastObserver, post a notification
+        // that the observer will pick up
+        NotificationCenter.default.post(
+            name: Notification.Name("DFWebSocketConnectionRequest"),
+            object: nil,
+            userInfo: ["api": self]
+        )
+        
+        // Store as the shared instance
+        DFAPI.sharedWebSocket = webSocket
+        
+        return webSocket
+    }
+    
+    // Get the shared WebSocket or create a new one if none exists
+    public static func getSharedWebSocket() -> DFWebSocket? {
+        return sharedWebSocket
+    }
+    
     func createWebSocket() -> DFWebSocket {
         return DFWebSocket(server: self.url, token: self.token)
     }

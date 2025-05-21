@@ -66,3 +66,50 @@ struct ShortsResponse: Codable {
         case shorts
     }
 }
+
+extension DFAPI {
+    public func createShort(url: URL, short: String, maxViews: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFShortResponse? {
+        let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
+        do {
+            let json = try JSONEncoder().encode(request)
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: getAPIPath(.short),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: [:],
+                taskDelegate: nil,
+                selectedServer: selectedServer
+            )
+            return try decoder.decode(DFShortResponse.self, from: responseBody)
+        } catch {
+            print("Request failed \(error)")
+            return nil
+        }
+    }
+    
+    public func getShorts(amount: Int = 50, start: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
+        var parameters: [String: String] = ["amount": "\(amount)"]
+        if let start = start {
+            parameters["start"] = "\(start)"
+        }
+        
+        do {
+            let responseBody = try await makeAPIRequest(
+                body: Data(),
+                path: getAPIPath(.shorts),
+                parameters: parameters,
+                method: .get,
+                selectedServer: selectedServer
+            )
+            
+            let shorts = try decoder.decode([DFShort].self, from: responseBody)
+            return ShortsResponse(shorts: shorts)
+            
+        } catch {
+            print("Error fetching shorts: \(error)")
+            return nil
+        }
+    }
+}

@@ -10,14 +10,14 @@ import Foundation
 // Album model that matches the JSON payload
 struct DFAlbum: Identifiable, Decodable, Hashable {
     let id: Int
-    let user: Int
+    let user: Int?
     let name: String
-    let password: String
+    let password: String?
     let `private`: Bool
-    let info: String
+    let info: String?
     let view: Int
-    let maxv: Int
-    let expr: String
+    let maxv: Int?
+    let expr: String?
     let date: String
     let url: String
     
@@ -42,6 +42,32 @@ struct AlbumsResponse: Decodable {
     let albums: [DFAlbum]
     let next: Int?
     let count: Int
+}
+
+// Request structure for album creation
+struct CreateAlbumRequest: Codable {
+    let name: String
+    let maxv: Int?
+    let expr: String?
+    let password: String?
+    let `private`: Bool?
+    let info: String?
+}
+
+// Response structure for album creation
+struct CreateAlbumResponse: Decodable {
+    let url: String
+    
+    // Extract album ID from the URL
+    var albumId: Int? {
+        guard let urlComponents = URLComponents(string: url),
+              let queryItems = urlComponents.queryItems,
+              let albumQuery = queryItems.first(where: { $0.name == "album" }),
+              let albumId = Int(albumQuery.value ?? "") else {
+            return nil
+        }
+        return albumId
+    }
 }
 
 extension DFAPI {
@@ -75,6 +101,40 @@ extension DFAPI {
             
         } catch {
             print("Error fetching albums: \(error)")
+            return nil
+        }
+    }
+    
+    // Create a new album
+    func createAlbum(name: String, maxViews: Int? = nil, expiration: String? = nil, 
+                    password: String? = nil, isPrivate: Bool? = nil, description: String? = nil, 
+                    selectedServer: DjangoFilesSession? = nil) async -> CreateAlbumResponse? {
+        let request = CreateAlbumRequest(
+            name: name,
+            maxv: maxViews,
+            expr: expiration,
+            password: password,
+            private: isPrivate,
+            info: description
+        )
+        
+        do {
+            let json = try JSONEncoder().encode(request)
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: getAPIPath(.albums),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: [.contentType: "application/json"],
+                selectedServer: selectedServer
+            )
+            
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try decoder.decode(CreateAlbumResponse.self, from: responseBody)
+        } catch {
+            print("Error creating album: \(error)")
             return nil
         }
     }

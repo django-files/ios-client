@@ -128,3 +128,20 @@ struct DFStatType: Codable{
         count = try container.decode(Int.self, forKey: .count)
     }
 }
+
+extension DFAPI {
+    public func getStats(amount: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFStatsResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                body: Data(),
+                path: getAPIPath(.stats),
+                parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""],
+                selectedServer: selectedServer
+            )
+            return try decoder.decode(DFStatsResponse.self, from: responseBody)
+        } catch {
+            print("Request failed \(error)")
+            return nil
+        }
+    }
+}

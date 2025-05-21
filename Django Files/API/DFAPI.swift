@@ -21,7 +21,7 @@ struct DFAPI {
     private static let API_PATH = "/api/"
     
     // Add a shared WebSocket instance
-    private static var sharedWebSocket: DFWebSocket?
+    internal static var sharedWebSocket: DFWebSocket?
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
@@ -35,6 +35,7 @@ struct DFAPI {
         case edit_file = "files/edit/"
         case file = "file/"
         case raw = "raw/"
+        case albums = "album/"
     }
     
     let url: URL
@@ -56,7 +57,7 @@ struct DFAPI {
         return components.url!
     }
     
-    private func getAPIPath(_ api: DjangoFilesAPIs) -> String {
+    internal func getAPIPath(_ api: DjangoFilesAPIs) -> String {
         return DFAPI.API_PATH + api.rawValue
     }
     
@@ -80,7 +81,7 @@ struct DFAPI {
         }
     }
     
-    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data
+    internal func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data
     {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.authorization] = token
@@ -130,74 +131,7 @@ struct DFAPI {
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         return session.uploadTask(withStreamedRequest: URLRequest(httpRequest: request)!)
     }
-    
-    public func getStats(amount: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFStatsResponse? {
-        do {
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.stats), 
-                parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""],
-                selectedServer: selectedServer
-            )
-            return try decoder.decode(DFStatsResponse.self, from: responseBody)
-        } catch {
-            print("Request failed \(error)")
-            return nil
-        }
-    }
-    
-    public func deleteFiles(fileIDs: [Int], selectedServer: DjangoFilesSession? = nil) async {
-        do {
-            let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
-            let _ = try await makeAPIRequest(
-                body: fileIDsData,
-                path: getAPIPath(.delete_file),
-                parameters: [:],
-                method: .delete,
-                selectedServer: selectedServer
-            )
-        } catch {
-            print("File Delete Failed \(error)")
-        }
-    }
-    
-    public func editFiles(fileIDs: [Int], changes: [String: Any], selectedServer: DjangoFilesSession? = nil) async -> Bool {
-        do {
-            var requestData: [String: Any] = ["ids": fileIDs]
-            for (key, value) in changes {
-                requestData[key] = value
-            }
-            let jsonData = try JSONSerialization.data(withJSONObject: requestData)
-            let _ = try await makeAPIRequest(
-                body: jsonData,
-                path: getAPIPath(.edit_file),
-                parameters: [:],
-                method: .post,
-                selectedServer: selectedServer
-            )
-            return true
-        } catch {
-            print("File Edit Failed \(error)")
-            return false
-        }
-    }
-    
-    public func renameFile(fileID: Int, name: String, selectedServer: DjangoFilesSession? = nil) async -> Bool {
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: ["name": name])
-            let _ = try await makeAPIRequest(
-                body: jsonData,
-                path: getAPIPath(.file) + "\(fileID)",
-                parameters: [:],
-                method: .post,
-                selectedServer: selectedServer
-            )
-            return true
-        } catch {
-            print("File Edit Failed \(error)")
-            return false
-        }
-    }
-    
+
     public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
@@ -252,51 +186,7 @@ struct DFAPI {
             return nil;
         }
     }
-    
-    public func createShort(url: URL, short: String, maxViews: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFShortResponse? {
-        let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
-        do {
-            let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest(
-                body: json,
-                path: getAPIPath(.short),
-                parameters: [:],
-                method: .post,
-                expectedResponse: .ok,
-                headerFields: [:],
-                taskDelegate: nil,
-                selectedServer: selectedServer
-            )
-            return try decoder.decode(DFShortResponse.self, from: responseBody)
-        } catch {
-            print("Request failed \(error)")
-            return nil
-        }
-    }
-    
-    public func getShorts(amount: Int = 50, start: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
-        var parameters: [String: String] = ["amount": "\(amount)"]
-        if let start = start {
-            parameters["start"] = "\(start)"
-        }
-        
-        do {
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.shorts),
-                parameters: parameters,
-                method: .get,
-                selectedServer: selectedServer
-            )
-            
-            let shorts = try decoder.decode([DFShort].self, from: responseBody)
-            return ShortsResponse(shorts: shorts)
-            
-        } catch {
-            print("Error fetching shorts: \(error)")
-            return nil
-        }
-    }
-    
+
     public func getAuthMethods() async -> DFAuthMethodsResponse? {
         do {
             let responseBody = try await makeAPIRequest(
@@ -316,7 +206,7 @@ struct DFAPI {
         let username: String
         let password: String
     }
-    
+
     struct UserToken: Codable {
         let token: String
     }
@@ -465,30 +355,6 @@ struct DFAPI {
         }
     }
 
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFFilesResponse? {
-        do {
-            var parameters: [String: String] = [:]
-            if let album = album {
-                parameters["album"] = String(album)
-            }
-            
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.files) + "\(page)/",
-                parameters: parameters,
-                method: .get,
-                selectedServer: selectedServer
-            )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
-        } catch let DecodingError.keyNotFound(key, context) {
-            print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
-        } catch {
-            print("Request failed \(error)")
-        }
-        return nil
-    }
-
     public func checkRedirect(url: String) async -> String? {
         do {
             guard let targetURL = URL(string: url) else { return nil }
@@ -520,28 +386,8 @@ struct DFAPI {
         }
     }
 
-    // Create and connect to a WebSocket, also setting up WebSocketToastObserver
-    public func connectToWebSocket() -> DFWebSocket {
-        let webSocket = self.createWebSocket()
-        
-        // Instead of directly accessing WebSocketToastObserver, post a notification
-        // that the observer will pick up
-        NotificationCenter.default.post(
-            name: Notification.Name("DFWebSocketConnectionRequest"),
-            object: nil,
-            userInfo: ["api": self]
-        )
-        
-        // Store as the shared instance
-        DFAPI.sharedWebSocket = webSocket
-        
-        return webSocket
-    }
+
     
-    // Get the shared WebSocket or create a new one if none exists
-    public static func getSharedWebSocket() -> DFWebSocket? {
-        return sharedWebSocket
-    }
 }
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
