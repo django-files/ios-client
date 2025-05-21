@@ -79,7 +79,7 @@ struct ShortListView: View {
     
     private var emptyView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "link.slash")
+            Image(systemName: "personalhotspot.slash")
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
             

@@ -6,18 +6,15 @@ import UIKit
 struct ContentPreview: View {
     let mimeType: String
     let fileURL: URL
-    
-    init(mimeType: String, fileURL: URL?) {
-        self.mimeType = mimeType
-        self.fileURL = fileURL ?? URL(string: "about:blank")!
-    }
-    
+    let file: DFFile
+    var showFileInfo: Binding<Bool>
+
     @State private var content: Data?
     @State private var isLoading = true
     @State private var error: Error?
     @State private var imageScale: CGFloat = 1.0
     @State private var lastImageScale: CGFloat = 1.0
-    
+
     var body: some View {
         Group {
             if isLoading {
@@ -38,7 +35,7 @@ struct ContentPreview: View {
             loadContent()
         }
     }
-    
+
     // Determine the appropriate view based on MIME type
     private var contentView: some View {
         Group {
@@ -52,8 +49,15 @@ struct ContentPreview: View {
                 genericFilePreview
             }
         }
+        .sheet(isPresented: showFileInfo, onDismiss: { showFileInfo.wrappedValue = false }) {
+            PreviewFileInfo(file: file)
+                .presentationBackground(.ultraThinMaterial)
+
+        }
+
+        
     }
-    
+
     // Text Preview
     private var textPreview: some View {
         ScrollView {
@@ -66,7 +70,7 @@ struct ContentPreview: View {
             }
         }
     }
-    
+
     // Image Preview
     private var imagePreview: some View {
         GeometryReader { geometry in
@@ -123,6 +127,35 @@ struct ContentPreview: View {
                 self.content = data
             }
         }.resume()
+    }
+}
+
+struct PreviewFileInfo: View {
+    let file: DFFile
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("\(file.name)")
+                .font(.title)
+            Label("\(file.mime)", systemImage: "document")
+            HStack {
+                Label("\(file.userUsername)", systemImage: "person")
+                Label("\(file.view)", systemImage: "eye")
+                Label("\(file.size)", systemImage: "internaldrive")
+            }
+            HStack {
+                Label("", systemImage: (file.password != "") ? "key" : "")
+                Label("", systemImage: file.private ? "lock" : "")
+                Label("", systemImage: (file.expr != "") ? "calendar.badge.exclamationmark" : "")
+                if file.maxv != 0 {
+                    Label("Max Views: \(String(file.maxv))", systemImage: "eye.circle")
+                }
+            }
+            Label("\(file.formattedDate())", systemImage: "calendar")
+            
+            Text("\(file.info)")
+        }
+        .padding(50)
     }
 }
 
@@ -262,41 +295,6 @@ class CustomScrollView: UIScrollView {
             }
             
             imageView.frame = frameToCenter
-        }
-    }
-}
-
-// Preview
-struct ContentPreview_Previews: PreviewProvider {
-    static var previews: some View {
-        Group {
-            // Text Preview
-            ContentPreview(
-                mimeType: "text/plain",
-                fileURL: URL(string: "https://example.com/sample.txt")!
-            )
-            .previewDisplayName("Text Preview")
-            
-            // Image Preview
-            ContentPreview(
-                mimeType: "image/jpeg",
-                fileURL: URL(string: "https://example.com/sample.jpg")!
-            )
-            .previewDisplayName("Image Preview")
-            
-            // Video Preview
-            ContentPreview(
-                mimeType: "video/mp4",
-                fileURL: URL(string: "https://example.com/sample.mp4")!
-            )
-            .previewDisplayName("Video Preview")
-            
-            // Generic File Preview
-            ContentPreview(
-                mimeType: "application/pdf",
-                fileURL: URL(string: "https://example.com/sample.pdf")!
-            )
-            .previewDisplayName("Generic File Preview")
         }
     }
 }

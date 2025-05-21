@@ -66,18 +66,10 @@ struct AlbumListView: View {
                                         }) {
                                             Label("Copy Link", systemImage: "link")
                                         }
-                                        
-                                        Button(action: {
-                                            // Toggle private action
-                                        }) {
-                                            Label(album.private ? "Make Public" : "Make Private", 
-                                                  systemImage: album.private ? "lock.open" : "lock")
-                                        }
                                     }
                             }
                             .id(album.id)
                             
-                            // If this is the last item and we have more pages, load more when it appears
                             if hasNextPage && album.id == albums.last?.id {
                                 Color.clear
                                     .frame(height: 20)
@@ -98,7 +90,9 @@ struct AlbumListView: View {
                     }
                     .listStyle(.plain)
                     .refreshable {
-                        refreshAlbums()
+                        Task {
+                            await refreshAlbumsAsync()
+                        }
                     }
                     .listStyle(.plain)
                     .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
@@ -146,12 +140,6 @@ struct AlbumListView: View {
         
         Task {
             await fetchAlbums(page: currentPage + 1, append: true)
-        }
-    }
-    
-    private func refreshAlbums() {
-        Task {
-            await refreshAlbumsAsync()
         }
     }
     
@@ -210,13 +198,20 @@ struct AlbumRowView: View {
                     .labelStyle(CustomLabel(spacing: 3))
                 
                 if album.private {
-                    Label("Private", systemImage: "lock")
+                    Label("", systemImage: "lock")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
+                }
+                if album.password != "" {
+                    Label("", systemImage: "key")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                 }
                 Text(album.formattedDate())
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .lineLimit(1)
             }
         }
     }

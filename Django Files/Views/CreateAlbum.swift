@@ -81,7 +81,7 @@ struct CreateAlbumView: View {
         
         let maxViewsInt = Int(maxViews)
         
-        if let response = await api.createAlbum(
+        if let _ = await api.createAlbum(
             name: albumName,
             maxViews: maxViewsInt,
             expiration: expiration.isEmpty ? nil : expiration,

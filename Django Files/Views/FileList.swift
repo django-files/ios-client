@@ -155,6 +155,8 @@ struct FileListView: View {
     
     @State private var redirectURLs: [String: String] = [:]
     
+    @State private var showFileInfo: Bool = false
+    
     var body: some View {
         List {
             ForEach(files, id: \.id) { file in
@@ -191,25 +193,32 @@ struct FileListView: View {
                             }
                         }
                 } else {
-                    ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!))
-                        .navigationTitle(file.name)
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Menu {
-                                    fileShareMenu(for: file)
-                                } label: {
-                                    Image(systemName: "square.and.arrow.up")
+                    ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
+                            .navigationTitle(file.name)
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbar {
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                        Button(action: {
+                                            showFileInfo = true
+                                        }) {
+                                            Label("File Info", systemImage: "info.circle")
+                                        }
+                                }
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                    Menu {
+                                        fileShareMenu(for: file)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.up")
+                                    }
+                                }
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                    Menu {
+                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                    } label: {
+                                        Image(systemName: "ellipsis.circle")
+                                    }
                                 }
                             }
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Menu {
-                                    fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                }
-                            }
-                        }
                 }
             }
         }

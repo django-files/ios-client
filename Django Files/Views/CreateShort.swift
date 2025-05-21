@@ -64,8 +64,7 @@ struct ShortCreatorView: View {
         }
         
         let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        if let response = await api.createShort(url: urlObj, short: vanityPath) {
-            // Success - close the sheet
+        if let _ = await api.createShort(url: urlObj, short: vanityPath) {
             dismiss()
         } else {
             errorMessage = "Failed to create short URL"
