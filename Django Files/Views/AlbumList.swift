@@ -106,7 +106,6 @@ struct AlbumListView: View {
                             await refreshAlbumsAsync()
                         }
                     }
-                    .listStyle(.plain)
                     .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {

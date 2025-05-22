@@ -50,6 +50,8 @@ struct ContentPreview: View {
                 imagePreview
             } else if mimeType.starts(with: "video/") {
                 videoPreview
+            } else if mimeType.starts(with: "audio/") {
+                audioPreview
             } else {
                 genericFilePreview
             }
@@ -57,10 +59,7 @@ struct ContentPreview: View {
         .sheet(isPresented: showFileInfo, onDismiss: { showFileInfo.wrappedValue = false }) {
             PreviewFileInfo(file: file)
                 .presentationBackground(.ultraThinMaterial)
-
         }
-
-        
     }
 
     // Text Preview
@@ -94,6 +93,12 @@ struct ContentPreview: View {
             .aspectRatio(contentMode: .fit)
     }
     
+    // Audio Preview
+    private var audioPreview: some View {
+        AudioPlayerView(url: fileURL)
+            .padding()
+    }
+    
     // Generic File Preview
     private var genericFilePreview: some View {
         VStack {
@@ -114,8 +119,8 @@ struct ContentPreview: View {
     private func loadContent() {
         isLoading = true
         
-        // For video, we don't need to download the content as we'll use the URL directly
-        if mimeType.starts(with: "video/") {
+        // For video, audio, and audio, we don't need to download the content as we'll use the URL directly
+        if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") {
             isLoading = false
             return
         }
@@ -301,5 +306,138 @@ class CustomScrollView: UIScrollView {
             
             imageView.frame = frameToCenter
         }
+    }
+}
+
+// Custom Audio Player View
+struct AudioPlayerView: View {
+    let url: URL
+    @StateObject private var playerViewModel = AudioPlayerViewModel()
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "waveform")
+                .font(.system(size: 50))
+                .foregroundColor(.gray)
+                .padding(.bottom)
+            
+            // Time and Progress
+            HStack {
+                Text(playerViewModel.currentTimeString)
+                    .font(.caption)
+                    .monospacedDigit()
+                
+                Slider(value: $playerViewModel.progress, in: 0...1) { editing in
+                    if !editing {
+                        playerViewModel.seek(to: playerViewModel.progress)
+                    }
+                }
+                
+                Text(playerViewModel.durationString)
+                    .font(.caption)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal)
+            
+            // Playback Controls
+            HStack(spacing: 30) {
+                Button(action: { playerViewModel.skipBackward() }) {
+                    Image(systemName: "gobackward.15")
+                        .font(.title2)
+                }
+                
+                Button(action: { playerViewModel.togglePlayback() }) {
+                    Image(systemName: playerViewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44))
+                }
+                
+                Button(action: { playerViewModel.skipForward() }) {
+                    Image(systemName: "goforward.15")
+                        .font(.title2)
+                }
+            }
+        }
+        .onAppear {
+            playerViewModel.setupPlayer(with: url)
+        }
+        .onDisappear {
+            playerViewModel.cleanup()
+        }
+    }
+}
+
+// Audio Player View Model
+class AudioPlayerViewModel: ObservableObject {
+    private var player: AVPlayer?
+    private var timeObserver: Any?
+    
+    @Published var isPlaying = false
+    @Published var progress: Double = 0
+    @Published var currentTimeString = "00:00"
+    @Published var durationString = "00:00"
+    
+    func setupPlayer(with url: URL) {
+        player = AVPlayer(url: url)
+        
+        // Add periodic time observer
+        timeObserver = player?.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
+            guard let self = self,
+                  let duration = self.player?.currentItem?.duration.seconds,
+                  !duration.isNaN else { return }
+            
+            let currentTime = time.seconds
+            self.progress = currentTime / duration
+            self.currentTimeString = self.formatTime(currentTime)
+            self.durationString = self.formatTime(duration)
+        }
+        
+        // Update duration when item is ready
+        player?.currentItem?.asset.loadValuesAsynchronously(forKeys: ["duration"]) {
+            DispatchQueue.main.async {
+                if let duration = self.player?.currentItem?.duration.seconds,
+                   !duration.isNaN {
+                    self.durationString = self.formatTime(duration)
+                }
+            }
+        }
+    }
+    
+    func togglePlayback() {
+        if isPlaying {
+            player?.pause()
+        } else {
+            player?.play()
+        }
+        isPlaying.toggle()
+    }
+    
+    func seek(to progress: Double) {
+        guard let duration = player?.currentItem?.duration else { return }
+        let time = CMTime(seconds: progress * duration.seconds, preferredTimescale: 600)
+        player?.seek(to: time)
+    }
+    
+    func skipForward() {
+        guard let currentTime = player?.currentTime().seconds else { return }
+        seek(to: (currentTime + 15) / (player?.currentItem?.duration.seconds ?? currentTime + 15))
+    }
+    
+    func skipBackward() {
+        guard let currentTime = player?.currentTime().seconds else { return }
+        seek(to: (currentTime - 15) / (player?.currentItem?.duration.seconds ?? currentTime))
+    }
+    
+    func cleanup() {
+        if let timeObserver = timeObserver {
+            player?.removeTimeObserver(timeObserver)
+        }
+        player?.pause()
+        player = nil
+    }
+    
+    private func formatTime(_ timeInSeconds: Double) -> String {
+        let minutes = Int(timeInSeconds / 60)
+        let seconds = Int(timeInSeconds.truncatingRemainder(dividingBy: 60))
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
