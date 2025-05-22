@@ -321,6 +321,9 @@ struct AudioPlayerView: View {
                 .foregroundColor(.gray)
                 .padding(.bottom)
             
+            // Speaker Toggle
+
+            
             // Time and Progress
             HStack {
                 Text(playerViewModel.currentTimeString)
@@ -341,6 +344,9 @@ struct AudioPlayerView: View {
             
             // Playback Controls
             HStack(spacing: 30) {
+                Button(action: {}) {
+
+                }
                 Button(action: { playerViewModel.skipBackward() }) {
                     Image(systemName: "gobackward.15")
                         .font(.title2)
@@ -355,6 +361,12 @@ struct AudioPlayerView: View {
                     Image(systemName: "goforward.15")
                         .font(.title2)
                 }
+                Button(action: { playerViewModel.toggleSpeaker() }) {
+                    Image(systemName: playerViewModel.isSpeakerOn ? "speaker.wave.2.fill" : "speaker.wave.2")
+                        .font(.title2)
+                        .foregroundColor(playerViewModel.isSpeakerOn ? .blue : .gray)
+                }
+                .padding(.bottom, 5)
             }
         }
         .onAppear {
@@ -370,13 +382,43 @@ struct AudioPlayerView: View {
 class AudioPlayerViewModel: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var playerItemObserver: NSKeyValueObservation?
     
     @Published var isPlaying = false
     @Published var progress: Double = 0
     @Published var currentTimeString = "00:00"
     @Published var durationString = "00:00"
+    @Published var isSpeakerOn = true
+    
+    private func configureAudioSession() {
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .default)
+            try audioSession.setActive(true)
+            updateSpeakerState()
+        } catch {
+            print("Failed to configure audio session: \(error)")
+        }
+    }
+    
+    private func updateSpeakerState() {
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.overrideOutputAudioPort(
+                isSpeakerOn ? .speaker : .none
+            )
+        } catch {
+            print("Failed to switch audio output: \(error)")
+        }
+    }
+    
+    func toggleSpeaker() {
+        isSpeakerOn.toggle()
+        updateSpeakerState()
+    }
     
     func setupPlayer(with url: URL) {
+        configureAudioSession()
         player = AVPlayer(url: url)
         
         // Add periodic time observer
@@ -391,24 +433,44 @@ class AudioPlayerViewModel: ObservableObject {
             self.durationString = self.formatTime(duration)
         }
         
+        // Observe player item status for completion
+        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
+                                             object: player?.currentItem,
+                                             queue: .main) { [weak self] _ in
+            self?.handlePlaybackCompletion()
+        }
+        
         // Update duration when item is ready
-        player?.currentItem?.asset.loadValuesAsynchronously(forKeys: ["duration"]) {
-            DispatchQueue.main.async {
-                if let duration = self.player?.currentItem?.duration.seconds,
-                   !duration.isNaN {
-                    self.durationString = self.formatTime(duration)
+        Task {
+            if let duration = try? await player?.currentItem?.asset.load(.duration) as? CMTime,
+               !duration.seconds.isNaN {
+                await MainActor.run {
+                    self.durationString = self.formatTime(duration.seconds)
                 }
             }
         }
     }
     
+    private func handlePlaybackCompletion() {
+        isPlaying = false
+        // Reset to beginning
+        seek(to: 0)
+    }
+    
     func togglePlayback() {
         if isPlaying {
             player?.pause()
+            isPlaying = false
         } else {
+            // If we're at the end, seek to beginning before playing
+            if let currentTime = player?.currentTime().seconds,
+               let duration = player?.currentItem?.duration.seconds,
+               currentTime >= duration {
+                seek(to: 0)
+            }
             player?.play()
+            isPlaying = true
         }
-        isPlaying.toggle()
     }
     
     func seek(to progress: Double) {
@@ -431,6 +493,7 @@ class AudioPlayerViewModel: ObservableObject {
         if let timeObserver = timeObserver {
             player?.removeTimeObserver(timeObserver)
         }
+        NotificationCenter.default.removeObserver(self)
         player?.pause()
         player = nil
     }
