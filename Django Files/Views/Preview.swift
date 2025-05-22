@@ -205,34 +205,81 @@ struct PreviewFileInfo: View {
             Text("\(file.name)")
                 .font(.title)
             HStack {
-                Label("\(file.mime)", systemImage: "document")
-                Label("", systemImage: (file.password != "") ? "key" : "")
-                Label("", systemImage: file.private ? "lock" : "")
-                Label("", systemImage: (file.expr != "") ? "calendar.badge.exclamationmark" : "")
+                HStack {
+                    Image(systemName: "document")
+                        .frame(width: 20, height: 20)
+                    Text("\(file.mime)")
+                }
+                if file.password != "" {
+                    Image(systemName: "key")
+                        .frame(width: 20, height: 20)
+                }
+                if file.private {
+                    Image(systemName: "lock")
+                        .frame(width: 20, height: 20)
+                }
+                if file.expr != "" {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .frame(width: 20, height: 20)
+                }
                 if file.maxv != 0 {
-                    Label("Max Views: \(String(file.maxv))", systemImage: "eye.circle")
+                    HStack {
+                        Image(systemName: "eye.circle")
+                            .frame(width: 20, height: 20)
+                        Text("Max Views: \(String(file.maxv))")
+                    }
                 }
             }
             HStack {
-                Label("\(file.userUsername)", systemImage: "person")
-                Label("\(file.view)", systemImage: "eye")
-                Label("\(file.size)", systemImage: "internaldrive")
+                HStack {
+                    Image(systemName: "person")
+                        .frame(width: 20, height: 20)
+                    Text("\(file.userUsername)")
+                }
+                Spacer()
+                HStack {
+                    Image(systemName: "eye")
+                        .frame(width: 20, height: 20)
+                    Text("\(file.view)")
+                }
+                Spacer()
+                HStack {
+                    Image(systemName: "internaldrive")
+                        .frame(width: 20, height: 20)
+                    Text(file.formatSize())
+                }
             }
 
-            Label("\(file.formattedDate())", systemImage: "calendar")
+            HStack {
+                Image(systemName: "calendar")
+                    .frame(width: 20, height: 20)
+                Text("\(file.formattedDate())")
+            }
             
             // Photo Information Section
             if let dateTime = file.exif?["DateTimeOriginal"]?.value as? String {
-                Label("Captured: \(formatExifDate(dateTime))", systemImage: "camera")
+                HStack {
+                    Image(systemName: "camera")
+                        .frame(width: 20, height: 20)
+                    Text("Captured: \(formatExifDate(dateTime))")
+                }
             }
             
             if let gpsArea = file.meta?["GPSArea"]?.value as? String {
-                Label(gpsArea, systemImage: "location")
+                HStack {
+                    Image(systemName: "location")
+                        .frame(width: 20, height: 20)
+                    Text(gpsArea)
+                }
             }
             
             if let elevation = file.exif?["GPSInfo"]?.value as? [String: Any],
                let altitude = elevation["6"] as? Double {
-                Label(String(format: "Elevation: %.1f m", altitude), systemImage: "mountain.2")
+                HStack{
+                    Image(systemName: "mountain.2")
+                        .frame(width: 20, height: 20)
+                    Text(String(format: "Elevation: %.1f m", altitude))
+                }
             }
             
             // Camera Information Section
@@ -240,31 +287,59 @@ struct PreviewFileInfo: View {
                 if let model = file.exif?["Model"]?.value as? String {
                     let make = file.exif?["Make"]?.value as? String ?? ""
                     let cameraName = make.isEmpty || model.contains(make) ? model : "\(make) \(model)"
-                    Label("Camera: \(cameraName)", systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text("Camera: \(cameraName)")
+                    }
                 }
                 
                 if let lens = file.exif?["LensModel"]?.value as? String {
-                    Label("Lens: \(lens)", systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text("Lens: \(lens)")
+                    }
                 }
                 
                 if let focalLength = file.exif?["FocalLength"]?.value as? Double {
-                    Label(String(format: "Focal Length: %.0fmm", focalLength), systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text(String(format: "Focal Length: %.0fmm", focalLength))
+                    }
                 }
                 
                 if let fNumber = file.exif?["FNumber"]?.value as? Double {
-                    Label(String(format: "Aperture: 𝑓%.1f", fNumber), systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text(String(format: "Aperture: 𝑓%.1f", fNumber))
+                    }
                 }
                 
                 if let iso = file.exif?["ISOSpeedRatings"]?.value as? Int {
-                    Label("ISO: \(iso)", systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text("ISO: \(iso)")
+                    }
                 }
                 
                 if let exposureTime = file.exif?["ExposureTime"]?.value as? String {
-                    Label("Exposure: \(formatExposureTime(exposureTime))s", systemImage: "camera.aperture")
+                    HStack {
+                        Image(systemName: "camera.aperture")
+                            .frame(width: 20, height: 20)
+                        Text("Exposure: \(formatExposureTime(exposureTime))s")
+                    }
                 }
                 
                 if let software = file.exif?["Software"]?.value as? String {
-                    Label("Software: \(software)", systemImage: "app")
+                    HStack {
+                        Image(systemName: "app")
+                            .frame(width: 20, height: 20)
+                        Text("Software: \(software)")
+                    }
                 }
             }
             
@@ -272,7 +347,7 @@ struct PreviewFileInfo: View {
                 Text(file.info)
             }
         }
-        .padding(50)
+        .padding(40)
     }
 }
 

@@ -179,6 +179,26 @@ struct FileListView: View {
                         }
                 }
                 .id(file.id)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        fileIDsToDelete = [file.id]
+                        fileNameToDelete = file.name
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+//                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+//                    Button {
+//                        Task {
+//                            await toggleFilePrivacy(file: file)
+//                        }
+//                    } label: {
+//                        Label(file.private ? "Make Public" : "Make Private", 
+//                              systemImage: file.private ? "lock.open" : "lock")
+//                    }
+//                    .tint(.blue)
+//                }
                 
                 if hasNextPage && file.id == files.last?.id {
                     Color.clear

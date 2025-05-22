@@ -130,6 +130,26 @@ public struct DFFile: Codable, Hashable, Equatable {
         return formatter.string(from: date)
     }
     
+    // Format file size to human readable string
+    public func formatSize() -> String {
+        let bytes = Double(size)
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var index = 0
+        var value = bytes
+        
+        while value >= 1024 && index < units.count - 1 {
+            value /= 1024
+            index += 1
+        }
+        
+        // Format with appropriate decimal places
+        if index == 0 {
+            return "\(Int(value)) \(units[index])"
+        } else {
+            return String(format: "%.1f %@", value, units[index])
+        }
+    }
+    
     // Add hash implementation for Hashable conformance
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
