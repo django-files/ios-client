@@ -33,7 +33,7 @@
 	<array>
 		<string>arm64</string>
 		<string>microphone</string>
-		<string>camera</string>
+		<string>still-camera</string>
 	</array>
 </dict>
 </plist>
