@@ -23,6 +23,13 @@ struct FileUploadView: View {
     
     @State private var uploadPrivate: Bool = false
     
+    // Album selection states
+    @State private var albums: [DFAlbum] = []
+    @State private var searchText: String = ""
+    @State private var selectedAlbum: DFAlbum?
+    @State private var isLoadingAlbums: Bool = false
+    @FocusState private var isSearchFocused: Bool
+    
     // Audio recording states
     @State private var audioRecorder: AVAudioRecorder?
     @State private var isRecording: Bool = false
@@ -32,6 +39,60 @@ struct FileUploadView: View {
         NavigationView {
             VStack(spacing: 20) {
                 Toggle("Make Private", isOn: $uploadPrivate)
+                
+                // Album Selection
+                VStack(alignment: .leading) {
+                    TextField("Search Albums", text: $searchText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused($isSearchFocused)
+                        .onChange(of: searchText) { _, _ in
+                            if searchText.isEmpty {
+                                selectedAlbum = nil
+                            }
+                        }
+                    
+                    if !searchText.isEmpty && (isSearchFocused || selectedAlbum == nil) {
+                        ScrollView {
+                            LazyVStack(alignment: .leading) {
+                                ForEach(albums.filter { album in
+                                    album.name.localizedCaseInsensitiveContains(searchText)
+                                }) { album in
+                                    Button(action: {
+                                        selectedAlbum = album
+                                        searchText = album.name
+                                        isSearchFocused = false
+                                    }) {
+                                        Text(album.name)
+                                            .foregroundColor(.primary)
+                                            .padding(.vertical, 8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    Divider()
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 200)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(8)
+                        .shadow(radius: 2)
+                    }
+                    
+                    if let album = selectedAlbum {
+                        HStack {
+                            Text("Selected Album: \(album.name)")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button(action: {
+                                selectedAlbum = nil
+                                searchText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
 
                 // Audio Recording Button
                 Button(action: {
@@ -133,6 +194,9 @@ struct FileUploadView: View {
                     await uploadPhotos(newValue)
                 }
             }
+            .task {
+                await loadAlbums()
+            }
         }
     }
     
@@ -147,7 +211,11 @@ struct FileUploadView: View {
                 uploadProgress = progress
             }
             
-            _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+            if let albumId = selectedAlbum?.id {
+                _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+            } else {
+                _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+            }
             try? FileManager.default.removeItem(at: tempURL)
         }
         
@@ -170,7 +238,11 @@ struct FileUploadView: View {
                     uploadProgress = (Double(index) + progress) / totalItems
                 }
                 
-                _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+                if let albumId = selectedAlbum?.id {
+                    _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+                } else {
+                    _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+                }
                 try? FileManager.default.removeItem(at: tempURL)
             }
         }
@@ -191,7 +263,11 @@ struct FileUploadView: View {
                 uploadProgress = (Double(index) + progress) / totalFiles
             }
             
-            _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+            if let albumId = selectedAlbum?.id {
+                _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+            } else {
+                _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+            }
         }
         
         isUploading = false
@@ -256,12 +332,25 @@ struct FileUploadView: View {
             uploadProgress = progress
         }
         
-        _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+        if let albumId = selectedAlbum?.id {
+            _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+        } else {
+            _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+        }
         try? FileManager.default.removeItem(at: url)
         
         isUploading = false
         recordingURL = nil
         dismiss()
+    }
+    
+    private func loadAlbums() async {
+        isLoadingAlbums = true
+        let api = DFAPI(url: URL(string: server.url)!, token: server.token)
+        if let response = await api.getAlbums() {
+            albums = response.albums
+        }
+        isLoadingAlbums = false
     }
 }
 
