@@ -15,6 +15,7 @@ struct ContentPreview: View {
     @State private var imageScale: CGFloat = 1.0
     @State private var lastImageScale: CGFloat = 1.0
     @State private var isPreviewing: Bool = false
+    @State private var fileDetails: DFFile?
     
     var body: some View {
         Group {
@@ -34,6 +35,7 @@ struct ContentPreview: View {
         }
         .onAppear {
             loadContent()
+            loadFileDetails()
             isPreviewing = true
         }
         .onDisappear {
@@ -57,8 +59,17 @@ struct ContentPreview: View {
             }
         }
         .sheet(isPresented: showFileInfo, onDismiss: { showFileInfo.wrappedValue = false }) {
-            PreviewFileInfo(file: file)
-                .presentationBackground(.ultraThinMaterial)
+            if let details = fileDetails {
+                PreviewFileInfo(file: details)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            } else {
+                PreviewFileInfo(file: file)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -138,22 +149,63 @@ struct ContentPreview: View {
             }
         }.resume()
     }
+
+    private func loadFileDetails() {
+        guard let serverURL = URL(string: file.url)?.host else { return }
+        
+        // Construct the base URL from the file's URL
+        let baseURL = URL(string: "https://\(serverURL)")!
+        
+        // Create DFAPI instance
+        let api = DFAPI(url: baseURL, token: "")  // Token will be handled by cookies
+        
+        Task {
+            if let details = await api.getFileDetails(fileID: file.id) {
+                await MainActor.run {
+                    self.fileDetails = details
+                }
+            }
+        }
+    }
 }
 
 struct PreviewFileInfo: View {
     let file: DFFile
     
+    // Helper function to format EXIF date string
+    private func formatExifDate(_ dateString: String) -> String {
+        let exifFormatter = DateFormatter()
+        exifFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        
+        guard let date = exifFormatter.date(from: dateString) else {
+            return dateString
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    // Helper function to convert decimal to fraction string
+    private func formatExposureTime(_ exposure: String) -> String {
+        if let value = Double(exposure) {
+            if value >= 1 {
+                return "\(Int(value))"
+            } else {
+                let denominator = Int(round(1.0 / value))
+                return "1/\(denominator)"
+            }
+        }
+        return exposure
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(file.name)")
                 .font(.title)
-            Label("\(file.mime)", systemImage: "document")
             HStack {
-                Label("\(file.userUsername)", systemImage: "person")
-                Label("\(file.view)", systemImage: "eye")
-                Label("\(file.size)", systemImage: "internaldrive")
-            }
-            HStack {
+                Label("\(file.mime)", systemImage: "document")
                 Label("", systemImage: (file.password != "") ? "key" : "")
                 Label("", systemImage: file.private ? "lock" : "")
                 Label("", systemImage: (file.expr != "") ? "calendar.badge.exclamationmark" : "")
@@ -161,9 +213,64 @@ struct PreviewFileInfo: View {
                     Label("Max Views: \(String(file.maxv))", systemImage: "eye.circle")
                 }
             }
+            HStack {
+                Label("\(file.userUsername)", systemImage: "person")
+                Label("\(file.view)", systemImage: "eye")
+                Label("\(file.size)", systemImage: "internaldrive")
+            }
+
             Label("\(file.formattedDate())", systemImage: "calendar")
             
-            Text("\(file.info)")
+            // Photo Information Section
+            if let dateTime = file.exif?["DateTimeOriginal"]?.value as? String {
+                Label("Captured: \(formatExifDate(dateTime))", systemImage: "camera")
+            }
+            
+            if let gpsArea = file.meta?["GPSArea"]?.value as? String {
+                Label(gpsArea, systemImage: "location")
+            }
+            
+            if let elevation = file.exif?["GPSInfo"]?.value as? [String: Any],
+               let altitude = elevation["6"] as? Double {
+                Label(String(format: "Elevation: %.1f m", altitude), systemImage: "mountain.2")
+            }
+            
+            // Camera Information Section
+            Group {
+                if let model = file.exif?["Model"]?.value as? String {
+                    let make = file.exif?["Make"]?.value as? String ?? ""
+                    let cameraName = make.isEmpty || model.contains(make) ? model : "\(make) \(model)"
+                    Label("Camera: \(cameraName)", systemImage: "camera.aperture")
+                }
+                
+                if let lens = file.exif?["LensModel"]?.value as? String {
+                    Label("Lens: \(lens)", systemImage: "camera.aperture")
+                }
+                
+                if let focalLength = file.exif?["FocalLength"]?.value as? Double {
+                    Label(String(format: "Focal Length: %.0fmm", focalLength), systemImage: "camera.aperture")
+                }
+                
+                if let fNumber = file.exif?["FNumber"]?.value as? Double {
+                    Label(String(format: "Aperture: 𝑓%.1f", fNumber), systemImage: "camera.aperture")
+                }
+                
+                if let iso = file.exif?["ISOSpeedRatings"]?.value as? Int {
+                    Label("ISO: \(iso)", systemImage: "camera.aperture")
+                }
+                
+                if let exposureTime = file.exif?["ExposureTime"]?.value as? String {
+                    Label("Exposure: \(formatExposureTime(exposureTime))s", systemImage: "camera.aperture")
+                }
+                
+                if let software = file.exif?["Software"]?.value as? String {
+                    Label("Software: \(software)", systemImage: "app")
+                }
+            }
+            
+            if !file.info.isEmpty {
+                Text(file.info)
+            }
         }
         .padding(50)
     }
@@ -320,11 +427,7 @@ struct AudioPlayerView: View {
                 .font(.system(size: 50))
                 .foregroundColor(.gray)
                 .padding(.bottom)
-            
-            // Speaker Toggle
 
-            
-            // Time and Progress
             HStack {
                 Text(playerViewModel.currentTimeString)
                     .font(.caption)
@@ -344,9 +447,6 @@ struct AudioPlayerView: View {
             
             // Playback Controls
             HStack(spacing: 30) {
-                Button(action: {}) {
-
-                }
                 Button(action: { playerViewModel.skipBackward() }) {
                     Image(systemName: "gobackward.15")
                         .font(.title2)
@@ -361,12 +461,6 @@ struct AudioPlayerView: View {
                     Image(systemName: "goforward.15")
                         .font(.title2)
                 }
-                Button(action: { playerViewModel.toggleSpeaker() }) {
-                    Image(systemName: playerViewModel.isSpeakerOn ? "speaker.wave.2.fill" : "speaker.wave.2")
-                        .font(.title2)
-                        .foregroundColor(playerViewModel.isSpeakerOn ? .blue : .gray)
-                }
-                .padding(.bottom, 5)
             }
         }
         .onAppear {
@@ -388,35 +482,18 @@ class AudioPlayerViewModel: ObservableObject {
     @Published var progress: Double = 0
     @Published var currentTimeString = "00:00"
     @Published var durationString = "00:00"
-    @Published var isSpeakerOn = true
     
     private func configureAudioSession() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, mode: .default)
+            try audioSession.overrideOutputAudioPort(.speaker)
             try audioSession.setActive(true)
-            updateSpeakerState()
         } catch {
             print("Failed to configure audio session: \(error)")
         }
     }
-    
-    private func updateSpeakerState() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.overrideOutputAudioPort(
-                isSpeakerOn ? .speaker : .none
-            )
-        } catch {
-            print("Failed to switch audio output: \(error)")
-        }
-    }
-    
-    func toggleSpeaker() {
-        isSpeakerOn.toggle()
-        updateSpeakerState()
-    }
-    
+
     func setupPlayer(with url: URL) {
         configureAudioSession()
         player = AVPlayer(url: url)
