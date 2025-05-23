@@ -40,14 +40,12 @@ struct LoginView: View {
         print("Fetching auth methods \(selectedServer.url)")
         isLoading = true
         if let response = await dfapi.getAuthMethods() {
-            print("methods fetched")
             authMethods = response.authMethods
             siteName = response.siteName
         } else {
             error =
                 "Failed to fetch authentication methods, is this a Django Files server?"
         }
-        print("done")
         isLoading = false
     }
 
@@ -94,7 +92,6 @@ struct LoginView: View {
     }
 
     private func handleOAuthLogin(url: String) {
-        print("handleOAuthLogin received URL string: '\(url)'")
         if URL(string: url) != nil {
             print("Valid OAuth URL, showing web view")
             oauthSheetURL = OAuthURL(url: url)

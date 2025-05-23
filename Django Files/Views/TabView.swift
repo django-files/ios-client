@@ -119,8 +119,6 @@ struct TabViewWindow: View {
                 sessionManager.saveSelectedSession()
                 connectToWebSocket(session: session)
                 serverChangeRefreshTrigger = UUID()
-                
-                // Handle auth state
                 if !session.auth {
                     selectedTab = .serverList
                     showLoginSheet = true
@@ -171,12 +169,13 @@ struct ServerSelector: View {
                         Label("", systemImage: item.auth ? "person.fill" : "person")
                         Text(item.url)
                             .swipeActions {
-                                Button(role: .destructive) {
+                                Button {
                                     itemToDelete = item
                                     showingDeleteAlert = true
                                 } label: {
                                     Label("Delete", systemImage: "trash.fill")
                                 }
+                                .tint(.red)
                                 Button {
                                     editSession = item
                                 } label: {
@@ -191,7 +190,6 @@ struct ServerSelector: View {
                                     selectedSession = item
                                 }
                             }
-                        
                     }
                 }
             }
@@ -243,7 +241,6 @@ struct ServerSelector: View {
     
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
-                print("Deleting items: \(offsets)")
             for index in offsets {
                 modelContext.delete(items[index])
             }

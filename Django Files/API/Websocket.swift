@@ -153,7 +153,6 @@ class DFWebSocket: NSObject {
     
     private func ping() {
         webSocketTask?.sendPing { [weak self] error in
-//            print("websocket ping")
             if let error = error {
                 print("WebSocket ping error: \(error)")
                 self?.reconnect()
@@ -211,13 +210,25 @@ class DFWebSocket: NSObject {
                 NotificationCenter.default.post(
                     name: Notification.Name("DFWebSocketToastNotification"),
                     object: nil,
-                    userInfo: ["message": "New file (\(message.name ?? "Untitled.file"))"]
+                    userInfo: ["message": "New file \(message.name ?? "Untitled.file") uploaded."]
                 )
             } else if message.event == "file-delete" {
                 NotificationCenter.default.post(
                     name: Notification.Name("DFWebSocketToastNotification"),
                     object: nil,
-                    userInfo: ["message": "File (\(message.name ?? "Untitled.file")) deleted."]
+                    userInfo: ["message": "File \(message.name ?? "Untitled.file") deleted."]
+                )
+            } else if message.event == "album-new" {
+                NotificationCenter.default.post(
+                    name: Notification.Name("DFWebSocketToastNotification"),
+                    object: nil,
+                    userInfo: ["message": "Album \(message.name ?? "Untitled.file") created."]
+                )
+            } else if message.event == "album-delete"{
+                NotificationCenter.default.post(
+                    name: Notification.Name("DFWebSocketToastNotification"),
+                    object: nil,
+                    userInfo: ["message": "Album (\(message.name ?? "Untitled.file")) deleted."]
                 )
             } else {
                 // For debugging - post a notification for all message types

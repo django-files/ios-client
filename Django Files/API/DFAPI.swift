@@ -282,7 +282,7 @@ struct DFAPI {
             if let url = urlRequest.url {
                 // Set the cookie directly in the request header
                 urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
-                print("Using session key cookie: \(sessionKey) on \(url)")
+                //print("Using session key cookie: \(sessionKey) on \(url)")
                 
                 // Also set it in the cookie storage
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
@@ -296,7 +296,7 @@ struct DFAPI {
                 
                 if let cookie = HTTPCookie(properties: cookieProperties) {
                     HTTPCookieStorage.shared.setCookie(cookie)
-                    print("Set cookie: \(cookie)")
+                    // print("Set cookie: \(cookie)")
                 }
             }
             
@@ -306,15 +306,15 @@ struct DFAPI {
             configuration.httpCookieAcceptPolicy = .always
             
             // Print all cookies before making the request
-            print("Cookies before request:")
-            HTTPCookieStorage.shared.cookies?.forEach { cookie in
-                print(" - \(cookie.name): \(cookie.value)")
-            }
+            // print("Cookies before request:")
+//            HTTPCookieStorage.shared.cookies?.forEach { cookie in
+//                print(" - \(cookie.name): \(cookie.value)")
+//            }
             
             let session = URLSession(configuration: configuration)
             let (_, response) = try await session.data(for: urlRequest)
             
-            print("response: \(response)")
+            // print("response: \(response)")
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -323,16 +323,16 @@ struct DFAPI {
             }
             
             // Print request headers for debugging
-            print("Request headers:")
-            urlRequest.allHTTPHeaderFields?.forEach { key, value in
-                print(" - \(key): \(value)")
-            }
+//            print("Request headers:")
+//            urlRequest.allHTTPHeaderFields?.forEach { key, value in
+//                print(" - \(key): \(value)")
+//            }
             
             // Print response headers for debugging
-            print("Response headers:")
-            (response as? HTTPURLResponse)?.allHeaderFields.forEach { key, value in
-                print(" - \(key): \(value)")
-            }
+//            print("Response headers:")
+//            (response as? HTTPURLResponse)?.allHeaderFields.forEach { key, value in
+//                print(" - \(key): \(value)")
+//            }
             
             // Extract cookies from response
             if let headerFields = httpResponse.allHeaderFields as? [String: String] {
@@ -340,7 +340,7 @@ struct DFAPI {
                 // Store cookies in the shared cookie storage
                 cookies.forEach { cookie in
                     HTTPCookieStorage.shared.setCookie(cookie)
-                    print("Received cookie from response: \(cookie)")
+                    // print("Received cookie from response: \(cookie)")
                 }
                 await updateSessionCookies(selectedServer, cookies)
             }

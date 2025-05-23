@@ -50,58 +50,32 @@ struct Django_FilesApp: App {
 
     @StateObject private var sessionManager = SessionManager()
     @State private var hasExistingSessions = false
+    @State private var isLoading = true
 
     init() {
         // Initialize WebSocket debugging
-        print("📱 App initializing - WebSocket toast system will use direct approach")
+        // print("📱 App initializing - WebSocket toast system will use direct approach")
         
         // Initialize WebSocket toast observer - make sure this runs at startup
-        print("📱 Setting up WebSocketToastObserver")
+        // print("📱 Setting up WebSocketToastObserver")
         let _ = WebSocketToastObserver.shared
-        
-        // Handle reset arguments
-        if CommandLine.arguments.contains("--DeleteAllData") {
-            // Clear UserDefaults
-            if let bundleID = Bundle.main.bundleIdentifier {
-                UserDefaults.standard.removePersistentDomain(forName: bundleID)
-            }
-            // Clear SwiftData store
-            do {
-                let context = sharedModelContainer.mainContext
-                // Delete all DjangoFilesSession objects
-                try context.delete(model: DjangoFilesSession.self)
-                try context.save()
-            } catch {
-                print("Error clearing SwiftData store: \(error)")
-            }
-            // Clear any files in the app's documents directory
-            if let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                do {
-                    let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath, 
-                                                                             includingPropertiesForKeys: nil)
-                    for fileURL in fileURLs {
-                        try FileManager.default.removeItem(at: fileURL)
-                    }
-                } catch {
-                    print("Error clearing documents directory: \(error)")
-                }
-            }
-        }
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if hasExistingSessions {
+                if isLoading {
+                    ProgressView()
+                        .onAppear {
+                            checkForExistingSessions()
+                        }
+                } else if hasExistingSessions {
                     TabViewWindow(sessionManager: sessionManager)
                 } else {
                     SessionEditor(session: nil, onSessionCreated: { newSession in
                         sessionManager.selectedSession = newSession
                         hasExistingSessions = true
                     })
-                    .onAppear {
-                        checkForExistingSessions()
-                    }
                 }
             }
         }
@@ -120,8 +94,10 @@ struct Django_FilesApp: App {
         do {
             let sessionsCount = try context.fetchCount(descriptor)
             hasExistingSessions = sessionsCount > 0
+            isLoading = false  // Set loading to false after check completes
         } catch {
             print("Error checking for existing sessions: \(error)")
+            isLoading = false  // Ensure we exit loading state even on error
         }
     }
 }

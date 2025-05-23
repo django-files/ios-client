@@ -180,13 +180,14 @@ struct FileListView: View {
                 }
                 .id(file.id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
+                    Button() {
                         fileIDsToDelete = [file.id]
                         fileNameToDelete = file.name
                         showingDeleteConfirmation = true
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .tint(.red)
                 }
 //                .swipeActions(edge: .leading, allowsFullSwipe: false) {
 //                    Button {
@@ -315,17 +316,18 @@ struct FileListView: View {
                 CreateAlbumView(server: serverInstance)
             }
         }
-        .alert("Delete File", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
+        .confirmationDialog("Are you sure?", isPresented: $showingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 Task {
                     await deleteFiles(fileIDs: fileIDsToDelete)
-                    
                     // Return to the file list if we're in a detail view
                     if navigationPath.wrappedValue.count > 0 {
                         navigationPath.wrappedValue.removeLast()
                     }
                 }
+            }
+            Button("Cancel", role: .cancel) {
+                // Optional: No action needed for cancel
             }
         } message: {
             Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
@@ -608,9 +610,12 @@ struct FileListView: View {
         await api.deleteFiles(fileIDs: fileIDs, selectedServer: serverInstance)
         
         // Remove the deleted files from the local array
-        files.removeAll { file in
-            fileIDs.contains(file.id)
+        withAnimation {
+            files.removeAll { file in
+                fileIDs.contains(file.id)
+            }
         }
+
     }
     
     @MainActor
@@ -627,7 +632,6 @@ struct FileListView: View {
             redirectURLs[file.raw] = redirectURL
         } else {
             // If redirect fails, use the original URL
-            print("fail")
             redirectURLs[file.raw] = file.raw
         }
     }

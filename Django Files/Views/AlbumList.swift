@@ -20,7 +20,6 @@ struct AlbumListView: View {
     
     @State private var selectedAlbum: DFAlbum? = nil
     @State private var navigationPath = NavigationPath()
-    @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
     @State private var albumToDelete: DFAlbum? = nil
     @State private var showingAlbumCreator: Bool = false
@@ -80,6 +79,15 @@ struct AlbumListView: View {
                                     }
                             }
                             .id(album.id)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button() {
+                                    albumToDelete = album
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.red)
+                            }
                             
                             if hasNextPage && album.id == albums.last?.id {
                                 Color.clear
@@ -131,10 +139,7 @@ struct AlbumListView: View {
                         selectedAlbum = nil // Reset after navigation
                     }
                 }
-                .alert("Delete Album", isPresented: $showDeleteConfirmation) {
-                    Button("Cancel", role: .cancel) {
-                        albumToDelete = nil
-                    }
+                .confirmationDialog("Are you sure?", isPresented: $showDeleteConfirmation) {
                     Button("Delete", role: .destructive) {
                         if let album = albumToDelete {
                             Task {
@@ -142,9 +147,26 @@ struct AlbumListView: View {
                             }
                         }
                     }
+                    Button("Cancel", role: .cancel) {
+                        // Optional: No action needed for cancel
+                    }
                 } message: {
-                    Text("Are you sure you want to delete this album? This action cannot be undone.")
+                    Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
                 }
+//                .alert("Delete Album", isPresented: $showDeleteConfirmation) {
+//                    Button("Cancel", role: .cancel) {
+//                        albumToDelete = nil
+//                    }
+//                    Button("Delete", role: .destructive) {
+//                        if let album = albumToDelete {
+//                            Task {
+//                                await deleteAlbum(album)
+//                            }
+//                        }
+//                    }
+//                } message: {
+//                    Text("Are you sure you want to delete this album? This action cannot be undone.")
+//                }
             }
         }
         .onAppear {
@@ -215,19 +237,18 @@ struct AlbumListView: View {
     private func deleteAlbum(_ album: DFAlbum) async {
         guard let serverInstance = server.wrappedValue else { return }
         
-        isDeleting = true
         let api = DFAPI(url: URL(string: serverInstance.url)!, token: serverInstance.token)
         
         if await api.deleteAlbum(albumId: album.id) {
-            // Remove just the specific album from the list
-            if let index = albums.firstIndex(where: { $0.id == album.id }) {
-                albums.remove(at: index)
+            withAnimation{
+                if let index = albums.firstIndex(where: { $0.id == album.id }) {
+                    albums.remove(at: index)
+                }
             }
         } else {
             ToastManager.shared.showToast(message: "Failed to delete album")
         }
         
-        isDeleting = false
         albumToDelete = nil
     }
 }
