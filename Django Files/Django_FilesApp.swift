@@ -8,6 +8,32 @@
 import SwiftUI
 import SwiftData
 
+class SessionManager: ObservableObject {
+    @Published var selectedSession: DjangoFilesSession?
+    private let userDefaultsKey = "lastSelectedSessionURL"
+    
+    func saveSelectedSession() {
+        if let session = selectedSession {
+            UserDefaults.standard.set(session.url, forKey: userDefaultsKey)
+        }
+    }
+    
+    func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
+        // Return if we already have a session loaded
+        if selectedSession != nil { return }
+        
+        if let lastSessionURL = UserDefaults.standard.string(forKey: userDefaultsKey) {
+            selectedSession = sessions.first(where: { $0.url == lastSessionURL })
+        } else if let defaultSession = sessions.first(where: { $0.defaultSession }) {
+            // Fall back to any session marked as default
+            selectedSession = defaultSession
+        } else if let firstSession = sessions.first {
+            // Fall back to the first available session
+            selectedSession = firstSession
+        }
+    }
+}
+
 @main
 struct Django_FilesApp: App {
     var sharedModelContainer: ModelContainer = {
@@ -22,40 +48,36 @@ struct Django_FilesApp: App {
         }
     }()
 
+    @StateObject private var sessionManager = SessionManager()
+    @State private var hasExistingSessions = false
+    @State private var isLoading = true
+
     init() {
-        // Handle reset arguments
-        if CommandLine.arguments.contains("--DeleteAllData") {
-            // Clear UserDefaults
-            if let bundleID = Bundle.main.bundleIdentifier {
-                UserDefaults.standard.removePersistentDomain(forName: bundleID)
-            }
-            // Clear SwiftData store
-            do {
-                let context = sharedModelContainer.mainContext
-                // Delete all DjangoFilesSession objects
-                try context.delete(model: DjangoFilesSession.self)
-                try context.save()
-            } catch {
-                print("Error clearing SwiftData store: \(error)")
-            }
-            // Clear any files in the app's documents directory
-            if let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                do {
-                    let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath, 
-                                                                             includingPropertiesForKeys: nil)
-                    for fileURL in fileURLs {
-                        try FileManager.default.removeItem(at: fileURL)
-                    }
-                } catch {
-                    print("Error clearing documents directory: \(error)")
-                }
-            }
-        }
+        // Initialize WebSocket debugging
+        // print("📱 App initializing - WebSocket toast system will use direct approach")
+        
+        // Initialize WebSocket toast observer - make sure this runs at startup
+        // print("📱 Setting up WebSocketToastObserver")
+        let _ = WebSocketToastObserver.shared
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .onAppear {
+                            checkForExistingSessions()
+                        }
+                } else if hasExistingSessions {
+                    TabViewWindow(sessionManager: sessionManager)
+                } else {
+                    SessionEditor(session: nil, onSessionCreated: { newSession in
+                        sessionManager.selectedSession = newSession
+                        hasExistingSessions = true
+                    })
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
@@ -63,5 +85,19 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
+    }
+    
+    private func checkForExistingSessions() {
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        do {
+            let sessionsCount = try context.fetchCount(descriptor)
+            hasExistingSessions = sessionsCount > 0
+            isLoading = false  // Set loading to false after check completes
+        } catch {
+            print("Error checking for existing sessions: \(error)")
+            isLoading = false  // Ensure we exit loading state even on error
+        }
     }
 }

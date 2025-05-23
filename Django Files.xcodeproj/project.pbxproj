@@ -13,6 +13,7 @@
 		4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */; };
 		4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */; };
 		4CE57E8B2D7C9F440073CFC1 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */; };
+		A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -79,11 +80,14 @@
 		4CA2E47D2D6D22CA006EF3F0 /* Exceptions for "Django Files" folder in "UploadAndCopy" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				API/Albums.swift,
 				API/DFAPI.swift,
 				API/Error.swift,
+				API/Files.swift,
 				API/Short.swift,
 				API/Stats.swift,
 				API/Upload.swift,
+				API/Websocket.swift,
 				Models/DjangoFilesSession.swift,
 			);
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
@@ -125,6 +129,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */,
 				4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */,
 				4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */,
 			);
@@ -211,6 +216,7 @@
 			packageProductDependencies = (
 				4C82CB502D62372200C0893B /* HTTPTypes */,
 				4C82CB522D62372200C0893B /* HTTPTypesFoundation */,
+				A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */,
 			);
 			productName = "Django Files";
 			productReference = 4C5E20EC2D603C3B009EE83A /* Django Files.app */;
@@ -324,6 +330,7 @@
 			packageReferences = (
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
 				4CE57E892D7C9EB70073CFC1 /* XCRemoteSwiftPackageReference "fastlane" */,
+				A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -445,7 +452,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This lets you save or upload photos to your Django Files";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -491,7 +498,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This lets you save or upload photos to your Django Files";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -848,6 +855,14 @@
 				minimumVersion = 2.226.0;
 			};
 		};
+		A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/appstefan/highlightswift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -870,6 +885,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
 			productName = HTTPTypesFoundation;
+		};
+		A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */;
+			productName = HighlightSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
