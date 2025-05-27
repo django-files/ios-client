@@ -519,7 +519,8 @@ struct FileListView: View {
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
             onPreview: {
-                navigationPath.wrappedValue.append(file)
+                selectedFile = file
+                showingPreview = true
             },
             onCopyShareLink: {
                 UIPasteboard.general.string = file.url
