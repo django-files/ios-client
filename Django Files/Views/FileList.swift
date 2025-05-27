@@ -178,6 +178,25 @@ struct FileListView: View {
     
     var body: some View {
         List {
+            if files.count == 0 {
+                HStack {
+                    Spacer()
+                    VStack {
+                        Spacer()
+                        Image(systemName: "document.on.document.fill")
+                            .font(.system(size: 50))
+                            .padding(.bottom)
+                        Text("No files found")
+                            .font(.headline)
+                        Text("Upload a file to get start")
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    Spacer()
+                }
+                .listRowSeparator(.hidden)
+            }
+
             ForEach(files, id: \.id) { file in
                 Button {
                     selectedFile = file

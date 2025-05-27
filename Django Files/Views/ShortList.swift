@@ -25,6 +25,24 @@ struct ShortListView: View {
             if server.wrappedValue != nil {
                 NavigationStack {
                     List {
+                        if shorts.isEmpty {
+                            HStack {
+                                Spacer()
+                                VStack {
+                                    Spacer()
+                                    Image(systemName: "personalhotspot.slash")
+                                        .font(.system(size: 50))
+                                        .padding(.bottom)
+                                    Text("No shorts found")
+                                        .font(.headline)
+                                    Text("Create a short URL to get started.")
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                Spacer()
+                            }
+                            .listRowSeparator(.hidden)
+                        }
                         ForEach(shorts) { short in
                             ShortRow(short: short)
                                 .onTapGesture {
@@ -38,10 +56,6 @@ struct ShortListView: View {
                         await refreshShorts()
                     }
                     .overlay {
-                        if shorts.isEmpty && !isLoading {
-                            emptyView
-                        }
-                        
                         if let error = error {
                             errorView(message: error)
                         }
@@ -85,30 +99,6 @@ struct ShortListView: View {
                 .padding(.top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    private var emptyView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "personalhotspot.slash")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
-            
-            Text("No short URLs found")
-                .font(.headline)
-            
-            Text("Create your first short URL to get started")
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button("Create Short URL") {
-                // TODO: Implement create new short URL action
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
     }
     
     private func errorView(message: String) -> some View {

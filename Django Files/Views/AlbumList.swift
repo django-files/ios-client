@@ -25,148 +25,143 @@ struct AlbumListView: View {
     @State private var showingAlbumCreator: Bool = false
         
     var body: some View {
-        ZStack {
-            if isLoading && albums.isEmpty {
-                LoadingView()
-                    .frame(width: 100, height: 100)
-            } else if let error = errorMessage {
-                VStack {
-                    Text("Error loading albums")
-                        .font(.headline)
-                        .padding(.bottom, 4)
-                    Text(error)
-                        .foregroundColor(.secondary)
-                    Button("Retry") {
-                        loadAlbums()
-                    }
-                    .padding(.top)
-                    .buttonStyle(.bordered)
-                }
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(10)
-                .shadow(radius: 5)
-            } else if albums.isEmpty {
-                VStack {
-                    Image(systemName: "photo.stack.fill")
-                        .font(.system(size: 50))
-                        .padding(.bottom)
-                    Text("No albums found")
-                        .font(.headline)
-                    Text("Create an album to get started")
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-            } else {
-                NavigationStack(path: $navigationPath) {
-                    List {
-                        ForEach(albums, id: \.id) { album in
-                            NavigationLink(value: album) {
-                                AlbumRowView(album: album)
-                                    .contextMenu {
-                                        Button(action: {
-                                            UIPasteboard.general.string = album.url
-                                        }) {
-                                            Label("Copy Link", systemImage: "link")
-                                        }
-                                        
-                                        Button(role: .destructive, action: {
-                                            albumToDelete = album
-                                            showDeleteConfirmation = true
-                                        }) {
-                                            Label("Delete Album", systemImage: "trash")
-                                        }
-                                    }
+            NavigationStack(path: $navigationPath) {
+                ZStack {
+                    if isLoading && albums.isEmpty {
+                        LoadingView()
+                            .frame(width: 100, height: 100)
+                    } else if let error = errorMessage {
+                        VStack {
+                            Text("Error loading albums")
+                                .font(.headline)
+                                .padding(.bottom, 4)
+                            Text(error)
+                                .foregroundColor(.secondary)
+                            Button("Retry") {
+                                loadAlbums()
                             }
-                            .id(album.id)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button() {
-                                    albumToDelete = album
-                                    showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                            .padding(.top)
+                            .buttonStyle(.bordered)
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(10)
+                        .shadow(radius: 5)
+                    } else {
+                        List {
+                            if albums.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    VStack {
+                                        Spacer()
+                                        Image(systemName: "photo.stack.fill")
+                                            .font(.system(size: 50))
+                                            .padding(.bottom)
+                                        Text("No albums found")
+                                            .font(.headline)
+                                        Text("Create an album to get started")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    Spacer()
                                 }
-                                .tint(.red)
+                                .listRowSeparator(.hidden)
+                            }
+                            ForEach(albums, id: \.id) { album in
+                                NavigationLink(value: album) {
+                                    AlbumRowView(album: album)
+                                        .contextMenu {
+                                            Button(action: {
+                                                UIPasteboard.general.string = album.url
+                                            }) {
+                                                Label("Copy Link", systemImage: "link")
+                                            }
+                                            
+                                            Button(role: .destructive, action: {
+                                                albumToDelete = album
+                                                showDeleteConfirmation = true
+                                            }) {
+                                                Label("Delete Album", systemImage: "trash")
+                                            }
+                                        }
+                                }
+                                .id(album.id)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button() {
+                                        albumToDelete = album
+                                        showDeleteConfirmation = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
+                                }
+                                
+                                if hasNextPage && album.id == albums.last?.id {
+                                    Color.clear
+                                        .frame(height: 20)
+                                        .onAppear {
+                                            loadNextPage()
+                                        }
+                                }
                             }
                             
-                            if hasNextPage && album.id == albums.last?.id {
-                                Color.clear
-                                    .frame(height: 20)
-                                    .onAppear {
-                                        loadNextPage()
-                                    }
+                            if isLoading && hasNextPage {
+                                HStack {
+                                    ProgressView()
+                                }
                             }
                         }
-                        
-                        if isLoading && hasNextPage {
-                            HStack {
-                                ProgressView()
-                            }
+                        .navigationDestination(for: DFAlbum.self) { album in
+                            FileListView(server: server, albumID: album.id, navigationPath: $navigationPath, albumName: album.name)
+                                .navigationTitle("test")
                         }
-                    }
-                    .navigationDestination(for: DFAlbum.self) { album in
-                        FileListView(server: server, albumID: album.id, navigationPath: $navigationPath, albumName: album.name)
-                            .navigationTitle("test")
-                    }
-                    .listStyle(.plain)
-                    .refreshable {
-                        Task {
-                            await refreshAlbumsAsync()
-                        }
-                    }
-                    .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: {
-                                showingAlbumCreator = true
-                            }) {
-                                Label("Create Album", systemImage: "plus")
-                            }
-                        }
-                    }
-                }
-                .sheet(isPresented: $showingAlbumCreator) {
-                    if let serverInstance = server.wrappedValue {
-                        CreateAlbumView(server: serverInstance)
-                            .onDisappear {
-                                showingAlbumCreator = false
-                            }
-                    }
-                }
-                .onChange(of: selectedAlbum) { oldValue, newValue in
-                    if let album = newValue {
-                        navigationPath.append(album)
-                        selectedAlbum = nil // Reset after navigation
-                    }
-                }
-                .confirmationDialog("Are you sure?", isPresented: $showDeleteConfirmation) {
-                    Button("Delete", role: .destructive) {
-                        if let album = albumToDelete {
+                        .listStyle(.plain)
+                        .refreshable {
                             Task {
-                                await deleteAlbum(album)
+                                await refreshAlbumsAsync()
                             }
                         }
                     }
-                    Button("Cancel", role: .cancel) {
-                        // Optional: No action needed for cancel
+
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showingAlbumCreator = true
+                    }) {
+                        Label("Create Album", systemImage: "plus")
                     }
-                } message: {
-                    Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
                 }
-//                .alert("Delete Album", isPresented: $showDeleteConfirmation) {
-//                    Button("Cancel", role: .cancel) {
-//                        albumToDelete = nil
-//                    }
-//                    Button("Delete", role: .destructive) {
-//                        if let album = albumToDelete {
-//                            Task {
-//                                await deleteAlbum(album)
-//                            }
-//                        }
-//                    }
-//                } message: {
-//                    Text("Are you sure you want to delete this album? This action cannot be undone.")
-//                }
+            }
+            .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
+
+            .sheet(isPresented: $showingAlbumCreator) {
+                if let serverInstance = server.wrappedValue {
+                    CreateAlbumView(server: serverInstance)
+                        .onDisappear {
+                            showingAlbumCreator = false
+                        }
+                }
+            }
+            .onChange(of: selectedAlbum) { oldValue, newValue in
+                if let album = newValue {
+                    navigationPath.append(album)
+                    selectedAlbum = nil // Reset after navigation
+                }
+            }
+            .confirmationDialog("Are you sure?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    if let album = albumToDelete {
+                        Task {
+                            await deleteAlbum(album)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    // Optional: No action needed for cancel
+                }
+            } message: {
+                Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
             }
         }
         .onAppear {
