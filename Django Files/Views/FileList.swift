@@ -178,7 +178,7 @@ struct FileListView: View {
     
     var body: some View {
         List {
-            if files.count == 0 {
+            if files.count == 0 && !isLoading {
                 HStack {
                     Spacer()
                     VStack {
@@ -257,9 +257,8 @@ struct FileListView: View {
             }
             
             if isLoading && hasNextPage {
-                HStack {
-                    ProgressView()
-                }
+                LoadingView()
+                    .frame(width: 100, height: 100)
             }
         }
         .toolbar(showingPreview ? .hidden : .visible, for: .tabBar)
