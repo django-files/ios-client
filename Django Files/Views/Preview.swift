@@ -208,8 +208,11 @@ struct PreviewFileInfo: View {
                 HStack {
                     Image(systemName: "document")
                         .frame(width: 20, height: 20)
+                        .foregroundColor(.teal)
                     Text("\(file.mime)")
+                        .foregroundColor(.teal)
                 }
+
                 if file.password != "" {
                     Image(systemName: "key")
                         .frame(width: 20, height: 20)
@@ -228,6 +231,12 @@ struct PreviewFileInfo: View {
                             .frame(width: 20, height: 20)
                         Text("Max Views: \(String(file.maxv))")
                     }
+                }
+                if let width = file.meta?["PILImageWidth"]?.value as? Int,
+                   let height = file.meta?["PILImageHeight"]?.value as? Int {
+                    Spacer()
+                    Text("\(width)×\(height)")
+                        .foregroundColor(.secondary)
                 }
             }
             HStack {
@@ -252,7 +261,7 @@ struct PreviewFileInfo: View {
 
             HStack {
                 Image(systemName: "calendar")
-                    .frame(width: 20, height: 20)
+                    .frame(width: 15, height: 15)
                 Text("\(file.formattedDate())")
             }
             
@@ -260,26 +269,33 @@ struct PreviewFileInfo: View {
             if let dateTime = file.exif?["DateTimeOriginal"]?.value as? String {
                 HStack {
                     Image(systemName: "camera")
-                        .frame(width: 20, height: 20)
+                        .frame(width: 15, height: 15)
+                        .font(.caption)
                     Text("Captured: \(formatExifDate(dateTime))")
+                        .font(.caption)
                 }
+                .foregroundColor(.secondary)
             }
             
             if let gpsArea = file.meta?["GPSArea"]?.value as? String {
                 HStack {
                     Image(systemName: "location")
-                        .frame(width: 20, height: 20)
+                        .frame(width: 15, height: 15)
                     Text(gpsArea)
+                        .font(.caption)
                 }
+                .foregroundColor(.secondary)
             }
             
             if let elevation = file.exif?["GPSInfo"]?.value as? [String: Any],
                let altitude = elevation["6"] as? Double {
                 HStack{
-                    Image(systemName: "mountain.2")
-                        .frame(width: 20, height: 20)
+                    Image(systemName: "mountain.2.circle")
+                        .frame(width: 15, height: 15)
                     Text(String(format: "Elevation: %.1f m", altitude))
+                        .font(.caption)
                 }
+                .foregroundColor(.secondary)
             }
             
             // Camera Information Section
@@ -289,33 +305,42 @@ struct PreviewFileInfo: View {
                     let cameraName = make.isEmpty || model.contains(make) ? model : "\(make) \(model)"
                     HStack {
                         Image(systemName: "camera.aperture")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text("Camera: \(cameraName)")
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
                 
                 if let lens = file.exif?["LensModel"]?.value as? String {
                     HStack {
                         Image(systemName: "camera.aperture")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text("Lens: \(lens)")
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
+                
                 
                 if let focalLength = file.exif?["FocalLength"]?.value as? Double {
                     HStack {
                         Image(systemName: "camera.aperture")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text(String(format: "Focal Length: %.0fmm", focalLength))
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
                 
                 if let fNumber = file.exif?["FNumber"]?.value as? Double {
                     HStack {
                         Image(systemName: "camera.aperture")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text(String(format: "Aperture: 𝑓%.1f", fNumber))
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
                 
                 if let iso = file.exif?["ISOSpeedRatings"]?.value as? Int {
@@ -323,28 +348,37 @@ struct PreviewFileInfo: View {
                         Image(systemName: "camera.aperture")
                             .frame(width: 20, height: 20)
                         Text("ISO: \(iso)")
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
+                    
                 }
                 
                 if let exposureTime = file.exif?["ExposureTime"]?.value as? String {
                     HStack {
                         Image(systemName: "camera.aperture")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text("Exposure: \(formatExposureTime(exposureTime))s")
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
                 
                 if let software = file.exif?["Software"]?.value as? String {
                     HStack {
                         Image(systemName: "app")
-                            .frame(width: 20, height: 20)
+                            .frame(width: 15, height: 15)
                         Text("Software: \(software)")
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
                 }
             }
             
             if !file.info.isEmpty {
                 Text(file.info)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(40)
