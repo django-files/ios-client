@@ -138,6 +138,7 @@ struct FileListView: View {
     @State private var showingShortCreator: Bool = false
     @State private var showingAlbumCreator: Bool = false
     @State private var showingPreview: Bool = false
+    @State private var selectedFile: DFFile? = nil
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -169,14 +170,40 @@ struct FileListView: View {
         }
     }
     
+    private func thumbnailURL(file: DFFile) ->  URL {
+        var components = URLComponents(url: URL(string: server.wrappedValue!.url)!.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? URL(string: server.wrappedValue!.url)!
+    }
+    
     var body: some View {
         List {
             ForEach(files, id: \.id) { file in
-                NavigationLink(value: file) {
-                    FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
-                        .contextMenu {
-                            fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                        }
+                Button {
+                    selectedFile = file
+                    showingPreview = true
+                } label: {
+                    if file.mime.starts(with: "image/") {
+                        FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
+                            .contextMenu {
+                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            } preview: {
+                                CachedAsyncImage(url: thumbnailURL(file: file)) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 512, height: 512)
+                                .cornerRadius(8)
+                            }
+                    } else {
+                        FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
+                            .contextMenu {
+                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            }
+                    }
                 }
                 .id(file.id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -218,49 +245,78 @@ struct FileListView: View {
         }
         .toolbar(showingPreview ? .hidden : .visible, for: .tabBar)
         .animation(.easeInOut(duration: 0.3), value: showingPreview)
-        .navigationDestination(for: DFFile.self) { file in
-            ZStack {
-                if redirectURLs[file.raw] == nil {
-                    ProgressView()
-                        .onAppear {
-                            Task {
-                                await loadRedirectURL(for: file)
+        .fullScreenCover(isPresented: $showingPreview) {
+            if let file = selectedFile {
+                ZStack {
+                    if redirectURLs[file.raw] == nil {
+                        ProgressView()
+                            .onAppear {
+                                Task {
+                                    await loadRedirectURL(for: file)
+                                }
                             }
-                        }
-                } else {
-                    ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
-                            .navigationTitle(file.name)
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .navigationBarTrailing) {
+                    } else {
+                        ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
+                            .onDisappear {
+                                showingPreview = false
+                            }
+                            .ignoresSafeArea()
+                        
+                        ZStack(alignment: .top) {
+                            VStack {
+                                HStack{
+                                    Button(action: {
+                                        showingPreview = false
+                                    }) {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 17))
+                                            .foregroundColor(.blue)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 5)
+                                    }
+                                    .frame(width: 64, height: 64)
+                                    .buttonStyle(.bordered)
+                                    .opacity(0.8)
+                                    
+                                    Text(file.name)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
                                     Menu {
                                         fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     } label: {
                                         Image(systemName: "ellipsis.circle")
+                                            .font(.system(size: 17))
                                     }
-                                }
-                                ToolbarItemGroup(placement: .bottomBar) {
                                     Menu {
                                         fileShareMenu(for: file)
                                     } label: {
                                         Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 17))
                                     }
+                                    .padding(.horizontal)
+                                }
+                                Spacer()
+                                // Bottom Navigation Bar
+                                HStack {
                                     Spacer()
+                                    
                                     Button(action: {
                                         showFileInfo = true
                                     }) {
-                                        Label("File Info", systemImage: "info.circle")
+                                        Label("", systemImage: "info.circle")
+                                            .font(.system(size: 17))
                                     }
+                                    .padding(.horizontal)
                                 }
                             }
-                            .onAppear {
-                                showingPreview = true
-                            }
-                            .onDisappear {
-                                showingPreview = false
-                            }
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+
         }
         .listStyle(.plain)
         .refreshable {
