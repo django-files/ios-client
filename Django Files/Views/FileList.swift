@@ -334,7 +334,6 @@ struct FileListView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
         }
         .listStyle(.plain)
         .refreshable {
@@ -468,6 +467,12 @@ struct FileListView: View {
         }
         .onAppear {
             loadFiles()
+        }
+        
+        if isLoading && hasNextPage {
+            HStack {
+                ProgressView()
+            }
         }
     }
     

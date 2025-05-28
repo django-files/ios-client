@@ -21,6 +21,7 @@ struct TabViewWindow: View {
     @State private var selectedTab: Tab = .files
     @State private var showLoginSheet = false
     @State private var filesNavigationPath = NavigationPath()
+    @State private var albumsNavigationPath = NavigationPath()
     
     enum Tab {
         case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb
@@ -41,12 +42,14 @@ struct TabViewWindow: View {
             }
             .tag(Tab.files)
             
-            AlbumListView(server: $sessionManager.selectedSession)
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("Albums", systemImage: "square.stack")
-                }
-                .tag(Tab.albums)
+            NavigationStack(path: $albumsNavigationPath) {
+                AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
+                    .id(serverChangeRefreshTrigger)
+            }
+            .tabItem {
+                Label("Albums", systemImage: "square.stack")
+            }
+            .tag(Tab.albums)
             
             ShortListView(server: $sessionManager.selectedSession)
                 .id(serverChangeRefreshTrigger)
