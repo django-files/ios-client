@@ -289,13 +289,13 @@ struct FileListView: View {
                                         Image(systemName: "xmark")
                                             .font(.system(size: 17))
                                             .foregroundColor(.blue)
-                                            .padding(.top, 5)
-                                            .padding(.bottom, 5)
+                                            .padding()
                                     }
-                                    .frame(width: 64, height: 64)
-                                    .buttonStyle(.bordered)
-                                    .opacity(0.8)
-                                    
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(8)
+                                    .padding(.leading, 20)
+                                    Spacer()
                                     Text(file.name)
                                         .font(.headline)
                                         .lineLimit(1)
@@ -303,17 +303,29 @@ struct FileListView: View {
                                     Spacer()
                                     Menu {
                                         fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                            .padding()
                                     } label: {
                                         Image(systemName: "ellipsis.circle")
                                             .font(.system(size: 17))
+                                            .padding()
                                     }
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(8)
+                                    
                                     Menu {
                                         fileShareMenu(for: file)
                                     } label: {
                                         Image(systemName: "square.and.arrow.up")
                                             .font(.system(size: 17))
+                                            .padding()
                                     }
-                                    .padding(.horizontal)
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(8)
+                                    .padding(.trailing, 20)
                                 }
                                 Spacer()
                                 // Bottom Navigation Bar
@@ -325,14 +337,20 @@ struct FileListView: View {
                                     }) {
                                         Label("", systemImage: "info.circle")
                                             .font(.system(size: 17))
+                                            .padding()
+                                            .padding(.leading, 8)
                                     }
-                                    .padding(.horizontal)
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(8)
+                                    .padding(.trailing, 20)
                                 }
+                                
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .listStyle(.plain)
