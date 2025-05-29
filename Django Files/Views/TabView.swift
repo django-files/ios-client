@@ -29,34 +29,34 @@ struct TabViewWindow: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack(path: $filesNavigationPath) {
-                if let server = sessionManager.selectedSession {
-                    FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
+            if let server = sessionManager.selectedSession {
+                if server.auth {
+                    NavigationStack(path: $filesNavigationPath) {
+                        FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
+                            .id(serverChangeRefreshTrigger)
+                    }
+                    .tabItem {
+                        Label("Files", systemImage: "document.fill")
+                    }
+                    .tag(Tab.files)
+
+                    NavigationStack(path: $albumsNavigationPath) {
+                    AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
                         .id(serverChangeRefreshTrigger)
-                } else {
-                    Label("No server selected.", systemImage: "exclamationmark.triangle")
+                    }
+                    .tabItem {
+                        Label("Albums", systemImage: "square.stack")
+                    }
+                    .tag(Tab.albums)
+                    
+                    ShortListView(server: $sessionManager.selectedSession)
+                        .id(serverChangeRefreshTrigger)
+                        .tabItem {
+                            Label("Shorts", systemImage: "link")
+                        }
+                        .tag(Tab.shorts)
                 }
             }
-            .tabItem {
-                Label("Files", systemImage: "document.fill")
-            }
-            .tag(Tab.files)
-            
-            NavigationStack(path: $albumsNavigationPath) {
-                AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
-                    .id(serverChangeRefreshTrigger)
-            }
-            .tabItem {
-                Label("Albums", systemImage: "square.stack")
-            }
-            .tag(Tab.albums)
-            
-            ShortListView(server: $sessionManager.selectedSession)
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("Shorts", systemImage: "link")
-                }
-                .tag(Tab.shorts)
             
             ServerSelector(selectedSession: $sessionManager.selectedSession)
                 .tabItem {

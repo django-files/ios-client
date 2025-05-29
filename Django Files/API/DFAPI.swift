@@ -36,6 +36,7 @@ struct DFAPI {
         case file = "file/"
         case raw = "raw/"
         case albums = "album/"
+        case auth_application = "auth/application/"
     }
     
     let url: URL
@@ -386,8 +387,34 @@ struct DFAPI {
         }
     }
 
+    struct DFApplicationAuthRequest: Codable {
+        let signature: String
+    }
 
-    
+    private struct DFApplicationAuthResponse: Codable {
+        let token: String
+    }
+
+    public func applicationAuth(signature: String) async -> String? {
+        let request = DFApplicationAuthRequest(signature: signature)
+        do {
+            let json = try JSONEncoder().encode(request)
+            print(json)
+            print("JSON Data: \(String(data: json, encoding: .utf8) ?? "invalid json")")
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: getAPIPath(.auth_application),
+                parameters: [:],
+                method: .post,
+                headerFields: [.contentType: "application/json"]
+            )
+            let response = try decoder.decode(DFApplicationAuthResponse.self, from: responseBody)
+            return response.token
+        } catch {
+            print("Application auth request failed \(error)")
+            return nil
+        }
+    }
 }
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
@@ -704,15 +731,15 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     }
 }
 
-struct DFAuthMethod: Codable {
-    let name: String
-    let url: String
-}
+    struct DFAuthMethod: Codable {
+        let name: String
+        let url: String
+    }
 
-struct DFAuthMethodsResponse: Codable {
-    let authMethods: [DFAuthMethod]
-    let siteName: String
-}
+    struct DFAuthMethodsResponse: Codable {
+        let authMethods: [DFAuthMethod]
+        let siteName: String
+    }
 
 class RedirectDelegate: NSObject, URLSessionTaskDelegate {
     func urlSession(

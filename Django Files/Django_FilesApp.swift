@@ -18,6 +18,31 @@ class SessionManager: ObservableObject {
         }
     }
     
+    func createAndAuthenticateSession(url: URL, signature: String, context: ModelContext) async -> DjangoFilesSession? {
+        // Create the base URL for the server
+        let serverURL = "\(url.scheme ?? "https")://\(url.host ?? "")"
+        
+        // Create a new session
+        let newSession = DjangoFilesSession(url: serverURL)
+        
+        // Create API instance
+        let api = DFAPI(url: URL(string: serverURL)!, token: "")
+        
+        // Get token using the signature
+        if let token = await api.applicationAuth(signature: signature) {
+            newSession.token = token
+            newSession.auth = true
+            
+            // Save the session
+            context.insert(newSession)
+            try? context.save()
+            
+            return newSession
+        }
+        
+        return nil
+    }
+    
     func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
         // Return if we already have a session loaded
         if selectedSession != nil { return }
@@ -78,6 +103,9 @@ struct Django_FilesApp: App {
                     })
                 }
             }
+            .onOpenURL { url in
+                handleDeepLink(url)
+            }
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
@@ -85,6 +113,48 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
+    }
+    
+    private func handleDeepLink(_ url: URL) {
+//        print("Deep link received: \(url)")
+        guard url.scheme == "djangofiles" else { return }
+        
+        // Extract the signature from the URL parameters
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+            print("Invalid deep link URL")
+            return
+        }
+        // eventually we need a case to handle multiple deep link types
+//        guard let root_path = components.host else {
+//            print("Invalid deep link URL: missing root path")
+//            return
+//        }
+    
+//        print("Deep link components: \(components)")
+//        print("Deep link path: \(components.path)")
+//        print("Deep link host: \(components.host)")
+//        print("Deep link query items: \(components.queryItems)")
+        guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
+              let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
+            print("Unable to parse auth deep link.")
+            return
+        }
+        let finalSignature = signature.replacingOccurrences(of: "+", with: "%20")
+
+        // Create and authenticate the session
+        Task {
+            if let newSession = await sessionManager.createAndAuthenticateSession(
+                url: serverURL,
+                signature: signature,
+                context: sharedModelContainer.mainContext
+            ) {
+                // Update the UI on the main thread
+                await MainActor.run {
+                    sessionManager.selectedSession = newSession
+                    hasExistingSessions = true
+                }
+            }
+        }
     }
     
     private func checkForExistingSessions() {
