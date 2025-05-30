@@ -8,57 +8,6 @@
 import SwiftUI
 import SwiftData
 
-class SessionManager: ObservableObject {
-    @Published var selectedSession: DjangoFilesSession?
-    private let userDefaultsKey = "lastSelectedSessionURL"
-    
-    func saveSelectedSession() {
-        if let session = selectedSession {
-            UserDefaults.standard.set(session.url, forKey: userDefaultsKey)
-        }
-    }
-    
-    func createAndAuthenticateSession(url: URL, signature: String, context: ModelContext) async -> DjangoFilesSession? {
-        // Create the base URL for the server
-        let serverURL = "\(url.scheme ?? "https")://\(url.host ?? "")"
-        
-        // Create a new session
-        let newSession = DjangoFilesSession(url: serverURL)
-        
-        // Create API instance
-        let api = DFAPI(url: URL(string: serverURL)!, token: "")
-        
-        // Get token using the signature
-        if let token = await api.applicationAuth(signature: signature) {
-            newSession.token = token
-            newSession.auth = true
-            
-            // Save the session
-            context.insert(newSession)
-            try? context.save()
-            
-            return newSession
-        }
-        
-        return nil
-    }
-    
-    func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
-        // Return if we already have a session loaded
-        if selectedSession != nil { return }
-        
-        if let lastSessionURL = UserDefaults.standard.string(forKey: userDefaultsKey) {
-            selectedSession = sessions.first(where: { $0.url == lastSessionURL })
-        } else if let defaultSession = sessions.first(where: { $0.defaultSession }) {
-            // Fall back to any session marked as default
-            selectedSession = defaultSession
-        } else if let firstSession = sessions.first {
-            // Fall back to the first available session
-            selectedSession = firstSession
-        }
-    }
-}
-
 @main
 struct Django_FilesApp: App {
     var sharedModelContainer: ModelContainer = {
@@ -78,10 +27,6 @@ struct Django_FilesApp: App {
     @State private var isLoading = true
 
     init() {
-        // Initialize WebSocket debugging
-        // print("📱 App initializing - WebSocket toast system will use direct approach")
-        
-        // Initialize WebSocket toast observer - make sure this runs at startup
         // print("📱 Setting up WebSocketToastObserver")
         let _ = WebSocketToastObserver.shared
     }
@@ -116,7 +61,7 @@ struct Django_FilesApp: App {
     }
     
     private func handleDeepLink(_ url: URL) {
-//        print("Deep link received: \(url)")
+        // print("Deep link received: \(url)")
         guard url.scheme == "djangofiles" else { return }
         
         // Extract the signature from the URL parameters
@@ -124,35 +69,51 @@ struct Django_FilesApp: App {
             print("Invalid deep link URL")
             return
         }
-        // eventually we need a case to handle multiple deep link types
-//        guard let root_path = components.host else {
-//            print("Invalid deep link URL: missing root path")
-//            return
-//        }
+        switch components.host {
+        case "authorize":
+            deepLinkAuth(components)
+        default:
+            print("Unsupported deep link type: \(components.host ?? "unknown")")
+        }
+    }
     
-//        print("Deep link components: \(components)")
-//        print("Deep link path: \(components.path)")
-//        print("Deep link host: \(components.host)")
-//        print("Deep link query items: \(components.queryItems)")
+    private func deepLinkAuth(_ components: URLComponents) {
         guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
             print("Unable to parse auth deep link.")
             return
         }
-        let finalSignature = signature.replacingOccurrences(of: "+", with: "%20")
 
-        // Create and authenticate the session
+        // Check if a session with this URL already exists
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
         Task {
-            if let newSession = await sessionManager.createAndAuthenticateSession(
-                url: serverURL,
-                signature: signature,
-                context: sharedModelContainer.mainContext
-            ) {
-                // Update the UI on the main thread
-                await MainActor.run {
-                    sessionManager.selectedSession = newSession
-                    hasExistingSessions = true
+            do {
+                let existingSessions = try context.fetch(descriptor)
+                if let existingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
+                    // If session exists, update it on the main thread
+                    await MainActor.run {
+                        sessionManager.selectedSession = existingSession
+                        hasExistingSessions = true
+                    }
+                    return
                 }
+                
+                // If no existing session, create and authenticate a new one
+                if let newSession = await sessionManager.createAndAuthenticateSession(
+                    url: serverURL,
+                    signature: signature,
+                    context: context
+                ) {
+                    // Update the UI on the main thread
+                    await MainActor.run {
+                        sessionManager.selectedSession = newSession
+                        hasExistingSessions = true
+                    }
+                }
+            } catch {
+                print("Error checking for existing sessions: \(error)")
             }
         }
     }
