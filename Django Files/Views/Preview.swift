@@ -84,6 +84,7 @@ struct ContentPreview: View {
                     .foregroundColor(.red)
             }
         }
+        .padding(.top, 35)
     }
 
     // Image Preview
@@ -96,6 +97,7 @@ struct ContentPreview: View {
                 Text("Unable to load image")
             }
         }
+        .ignoresSafeArea()
     }
     
     // Video Preview

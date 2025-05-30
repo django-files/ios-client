@@ -33,8 +33,10 @@ struct ShortListView: View {
                                     Image(systemName: "personalhotspot.slash")
                                         .font(.system(size: 50))
                                         .padding(.bottom)
+                                        .shadow(color: .purple, radius: 50)
                                     Text("No shorts found")
                                         .font(.headline)
+                                        .shadow(color: .purple, radius: 50)
                                     Text("Create a short URL to get started.")
                                         .foregroundColor(.secondary)
                                 }

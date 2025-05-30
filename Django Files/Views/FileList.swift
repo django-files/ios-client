@@ -129,6 +129,8 @@ struct FileListView: View {
     let navigationPath: Binding<NavigationPath>
     let albumName: String?
     
+    @Environment(\.dismiss) private var dismiss
+    
     @State private var files: [DFFile] = []
     @State private var currentPage = 1
     @State private var hasNextPage: Bool = false
@@ -186,9 +188,11 @@ struct FileListView: View {
                         Image(systemName: "document.on.document.fill")
                             .font(.system(size: 50))
                             .padding(.bottom)
+                            .shadow(color: .purple, radius: 50)
                         Text("No files found")
                             .font(.headline)
-                        Text("Upload a file to get start")
+                            .shadow(color: .purple, radius: 50)
+                        Text("Upload a file to get started")
                             .foregroundColor(.secondary)
                     }
                     .padding()
@@ -247,7 +251,7 @@ struct FileListView: View {
 //                    .tint(.blue)
 //                }
                 
-                if hasNextPage && file.id == files.last?.id {
+                if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
                     Color.clear
                         .frame(height: 20)
                         .onAppear {
@@ -257,8 +261,9 @@ struct FileListView: View {
             }
             
             if isLoading && hasNextPage {
+                Spacer()
                 LoadingView()
-                    .frame(width: 100, height: 100)
+                Spacer()
             }
         }
         .toolbar(showingPreview ? .hidden : .visible, for: .tabBar)
@@ -278,7 +283,13 @@ struct FileListView: View {
                             .onDisappear {
                                 showingPreview = false
                             }
-                            .ignoresSafeArea()
+                            .gesture(
+                                DragGesture().onEnded { value in
+                                    if value.location.y - value.startLocation.y > 150 {
+                                        showingPreview = false
+                                    }
+                                }
+                            )
                         
                         ZStack(alignment: .top) {
                             VStack {
@@ -301,13 +312,20 @@ struct FileListView: View {
                                         .lineLimit(1)
                                     
                                     Spacer()
-                                    Menu {
-                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                            .padding()
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
+
+                                }
+                                Spacer()
+                                // Bottom Navigation Bar
+                                HStack {
+                                    Spacer()
+
+                                    Button(action: {
+                                        showFileInfo = true
+                                    }) {
+                                        Label("", systemImage: "info.circle")
                                             .font(.system(size: 17))
                                             .padding()
+                                            .padding(.leading, 8)
                                     }
                                     .menuStyle(.button)
                                     .background(.ultraThinMaterial)
@@ -325,34 +343,32 @@ struct FileListView: View {
                                     .background(.ultraThinMaterial)
                                     .frame(width: 32, height: 32)
                                     .cornerRadius(8)
-                                    .padding(.trailing, 20)
-                                }
-                                Spacer()
-                                // Bottom Navigation Bar
-                                HStack {
-                                    Spacer()
+                                    .padding()
                                     
-                                    Button(action: {
-                                        showFileInfo = true
-                                    }) {
-                                        Label("", systemImage: "info.circle")
+                                    Menu {
+                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                            .padding()
+                                    } label: {
+                                        Image(systemName: "ellipsis.circle")
                                             .font(.system(size: 17))
                                             .padding()
-                                            .padding(.leading, 8)
                                     }
                                     .menuStyle(.button)
                                     .background(.ultraThinMaterial)
                                     .frame(width: 32, height: 32)
                                     .cornerRadius(8)
-                                    .padding(.trailing, 20)
+
+                                    Spacer()
                                 }
                                 
                             }
                         }
+
                     }
                 }
             }
         }
+
         .listStyle(.plain)
         .refreshable {
             Task {
