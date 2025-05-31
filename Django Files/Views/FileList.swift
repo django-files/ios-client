@@ -14,6 +14,12 @@ protocol FileListDelegate: AnyObject {
     func deleteFiles(fileIDs: [Int], onSuccess: (() -> Void)?) async -> Bool
     @MainActor
     func renameFile(fileID: Int, newName: String, onSuccess: (() -> Void)?) async -> Bool
+    @MainActor
+    func setFilePassword(fileID: Int, password: String, onSuccess: (() -> Void)?) async -> Bool
+    @MainActor
+    func setFilePrivate(fileID: Int, isPrivate: Bool, onSuccess: (() -> Void)?) async -> Bool
+    @MainActor
+    func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool
 }
 
 @MainActor
@@ -89,6 +95,69 @@ class FileListManager: ObservableObject, FileListDelegate {
         }
         return status
     }
+
+    func setFilePassword(fileID: Int, password: String, onSuccess: (() -> Void)?) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: [fileID], changes: ["password": password], selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                if let index = files.firstIndex(where: { $0.id == fileID }) {
+                    var updatedFiles = files
+                    updatedFiles[index].password = password
+                    files = updatedFiles
+                }
+                onSuccess?()
+            }
+        }
+        return status
+    }
+
+    func setFilePrivate(fileID: Int, isPrivate: Bool, onSuccess: (() -> Void)?) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: [fileID], changes: ["private": isPrivate], selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                if let index = files.firstIndex(where: { $0.id == fileID }) {
+                    var updatedFiles = files
+                    updatedFiles[index].private = isPrivate
+                    files = updatedFiles
+                }
+                onSuccess?()
+            }
+        }
+        return status
+    }
+
+    func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: [fileID], changes: ["expr": expr], selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                if let index = files.firstIndex(where: { $0.id == fileID }) {
+                    var updatedFiles = files
+                    updatedFiles[index].expr = expr
+                    files = updatedFiles
+                }
+                onSuccess?()
+            }
+        }
+        return status
+    }
 }
 
 struct CustomLabel: LabelStyle {
@@ -104,9 +173,9 @@ struct CustomLabel: LabelStyle {
 
 struct FileRowView: View {
     @Binding var file: DFFile
-    @State var isPrivate: Bool
-    @State var hasPassword: Bool
-    @State var hasExpiration: Bool
+    var isPrivate: Bool { file.private }
+    var hasPassword: Bool { file.password != "" }
+    var hasExpiration: Bool { file.expr != "" }
     let serverURL: URL
     
     private func getIcon() -> String {
@@ -303,9 +372,6 @@ struct FileListView: View {
                     if files[index].mime.starts(with: "image/") {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            isPrivate: files[index].private,
-                            hasPassword: (files[index].password != ""),
-                            hasExpiration: (files[index].expr != ""),
                             serverURL: URL(string: server.wrappedValue!.url)!
                         )
                         .contextMenu {
@@ -324,9 +390,6 @@ struct FileListView: View {
                     } else {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            isPrivate: files[index].private,
-                            hasPassword: (files[index].password != ""),
-                            hasExpiration: (files[index].expr != ""),
                             serverURL: URL(string: server.wrappedValue!.url)!
                         )
                         .contextMenu {
@@ -453,7 +516,7 @@ struct FileListView: View {
                 if let file = fileToExpire {
                     let expirationValue = expirationText
                     Task {
-                        await setFileExpr(file: file, expr: expirationValue)
+                        await setFileExpiration(file: file, expr: expirationValue)
                         await MainActor.run {
                             expirationText = ""
                             fileToExpire = nil
@@ -748,37 +811,17 @@ struct FileListView: View {
     
     @MainActor
     private func toggleFilePrivacy(file: DFFile) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
-        }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        // Toggle the private status (if currently private, make it public and vice versa)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
-        await refreshFiles() // TODO: update local data instead of refresh
+        let _ = await fileListManager.setFilePrivate(fileID: file.id, isPrivate: !file.private, onSuccess: nil)
     }
     
     @MainActor
-    private func setFileExpr(file: DFFile, expr: String?) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
-        await refreshFiles() // TODO: update local data instead of refresh
+    private func setFileExpiration(file: DFFile, expr: String) async {
+        let _ = await fileListManager.setFileExpiration(fileID: file.id, expr: expr, onSuccess: nil)
     }
     
     @MainActor
-    private func setFilePassword(file: DFFile, password: String?) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
-        }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
-        await refreshFiles() // TODO: update local data instead of refresh
+    private func setFilePassword(file: DFFile, password: String) async {
+        let _ = await fileListManager.setFilePassword(fileID: file.id, password: password, onSuccess: nil)
     }
     
     @MainActor

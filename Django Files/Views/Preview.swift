@@ -846,7 +846,7 @@ struct FilePreviewView: View {
                                 .shadow(color: .black, radius: 3)
                             Spacer()
                             Menu {
-                                fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: .constant(""), passwordText: .constant(""), fileNameText: .constant(""))
+                                fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     .padding()
                             } label: {
                                 Image(systemName: "ellipsis.circle")
@@ -942,39 +942,44 @@ struct FilePreviewView: View {
     
     @MainActor
     private func toggleFilePrivacy(file: DFFile) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
+        if let delegate = fileListDelegate {
+            let _ = await delegate.setFilePrivate(fileID: file.id, isPrivate: !file.private, onSuccess: nil)
+        } else {
+            guard let serverInstance = server.wrappedValue,
+                  let url = URL(string: serverInstance.url) else {
+                return
+            }
+            let api = DFAPI(url: url, token: serverInstance.token)
+            let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
         }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        // Toggle the private status (if currently private, make it public and vice versa)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
-        
-        // TODO: update private status
     }
     
     @MainActor
     private func setFileExpr(file: DFFile, expr: String?) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
+        if let delegate = fileListDelegate {
+            let _ = await delegate.setFileExpiration(fileID: file.id, expr: expr ?? "", onSuccess: nil)
+        } else {
+            guard let serverInstance = server.wrappedValue,
+                  let url = URL(string: serverInstance.url) else {
+                return
+            }
+            let api = DFAPI(url: url, token: serverInstance.token)
+            let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
         }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
-        // TODO: update local expr status
     }
     
     @MainActor
     private func setFilePassword(file: DFFile, password: String?) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
+        if let delegate = fileListDelegate {
+            let _ = await delegate.setFilePassword(fileID: file.id, password: password ?? "", onSuccess: nil)
+        } else {
+            guard let serverInstance = server.wrappedValue,
+                  let url = URL(string: serverInstance.url) else {
+                return
+            }
+            let api = DFAPI(url: url, token: serverInstance.token)
+            let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
         }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
-        // TODO:  update local password status
     }
     
     
