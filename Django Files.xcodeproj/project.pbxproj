@@ -13,6 +13,8 @@
 		4CA2E48A2D6D49D6006EF3F0 /* HTTPTypes in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E4892D6D49D6006EF3F0 /* HTTPTypes */; };
 		4CA2E48C2D6D49D6006EF3F0 /* HTTPTypesFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2E48B2D6D49D6006EF3F0 /* HTTPTypesFoundation */; };
 		4CE57E8B2D7C9F440073CFC1 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */; };
+		A21CC8852DEB967300EF776C /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = A21CC8842DEB967300EF776C /* FirebaseAnalytics */; };
+		A21CC88B2DEB991100EF776C /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = A21CC88A2DEB991100EF776C /* FirebaseCrashlytics */; };
 		A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */; };
 /* End PBXBuildFile section */
 
@@ -131,6 +133,8 @@
 			files = (
 				A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */,
 				4C82CB512D62372200C0893B /* HTTPTypes in Frameworks */,
+				A21CC88B2DEB991100EF776C /* FirebaseCrashlytics in Frameworks */,
+				A21CC8852DEB967300EF776C /* FirebaseAnalytics in Frameworks */,
 				4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -217,6 +221,8 @@
 				4C82CB502D62372200C0893B /* HTTPTypes */,
 				4C82CB522D62372200C0893B /* HTTPTypesFoundation */,
 				A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */,
+				A21CC8842DEB967300EF776C /* FirebaseAnalytics */,
+				A21CC88A2DEB991100EF776C /* FirebaseCrashlytics */,
 			);
 			productName = "Django Files";
 			productReference = 4C5E20EC2D603C3B009EE83A /* Django Files.app */;
@@ -331,6 +337,7 @@
 				4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */,
 				4CE57E892D7C9EB70073CFC1 /* XCRemoteSwiftPackageReference "fastlane" */,
 				A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */,
+				A21CC8832DEB950C00EF776C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -855,6 +862,14 @@
 				minimumVersion = 2.226.0;
 			};
 		};
+		A21CC8832DEB950C00EF776C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.13.0;
+			};
+		};
 		A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/appstefan/highlightswift";
@@ -885,6 +900,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4C82CB4F2D62372200C0893B /* XCRemoteSwiftPackageReference "swift-http-types" */;
 			productName = HTTPTypesFoundation;
+		};
+		A21CC8842DEB967300EF776C /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A21CC8832DEB950C00EF776C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		A21CC88A2DEB991100EF776C /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A21CC8832DEB950C00EF776C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 		A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -29,7 +29,7 @@ struct TabViewWindow: View {
     }
     
     enum Tab {
-        case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb
+        case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb, appSettings
     }
     
     var body: some View {
@@ -101,6 +101,12 @@ struct TabViewWindow: View {
                         Label("Server Settings", systemImage: "person.2.badge.gearshape")
                     }
                     .tag(Tab.serverSettings)
+                    
+                    AppSettings()
+                        .tabItem {
+                            Label("App Settings", systemImage: "gear")
+                        }
+                        .tag(Tab.appSettings)
                 }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
