@@ -218,6 +218,13 @@ class DFWebSocket: NSObject {
                     object: nil,
                     userInfo: ["message": "File \(message.name ?? "Untitled.file") deleted."]
                 )
+            } else if message.event == "file-update" {
+                print(message)
+                NotificationCenter.default.post(
+                    name: Notification.Name("DFWebSocketToastNotification"),
+                    object: nil,
+                    userInfo: ["message": "File \(String(describing: message.id!)) renamed to \(message.name ?? "unknown.file")."]
+                )
             } else if message.event == "album-new" {
                 NotificationCenter.default.post(
                     name: Notification.Name("DFWebSocketToastNotification"),
