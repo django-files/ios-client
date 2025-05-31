@@ -16,9 +16,10 @@ struct SessionEditor: View {
     @State private var showLoginSheet: Bool = false
     @State private var tempSession: DjangoFilesSession?
     
+    let onBoarding: Bool
     let session: DjangoFilesSession?
     var onSessionCreated: ((DjangoFilesSession) -> Void)?
-    
+
     private var editorTitle: String {
         session == nil ? "Add Server" : "Edit Server"
     }
@@ -41,7 +42,7 @@ struct SessionEditor: View {
             
             // Create a temporary DFAPI instance to check auth methods
             let api = DFAPI(url: url!, token: "")
-            if let authResponse = await api.getAuthMethods() {
+            if let _ = await api.getAuthMethods() {
                 isCheckingServer = false
                 
                 // Server is valid, proceed with login
@@ -73,6 +74,26 @@ struct SessionEditor: View {
     var body: some View {
         NavigationStack {
             Form {
+                if onBoarding {
+                    HStack {
+                        Spacer()
+                        Label("", systemImage: "hand.wave.fill")
+                            .font(.system(size: 50))
+                            .padding(.bottom)
+                            .shadow(color: .purple, radius: 20)
+                            .listRowSeparator(.hidden)
+                        Spacer()
+                    }
+                    Text("Welcome to Django Files!")
+                        .font(.system(size: 25))
+                        .padding(.bottom)
+                        .shadow(color: .purple, radius: 20)
+                        .listRowSeparator(.hidden)
+                    Text("Thanks for using our iOS app! If you don’t have a server set up yet, check out our GitHub README to get started.")
+                        .listRowSeparator(.hidden)
+                    Text("https://github.com/django-files/django-files")
+                        .listRowSeparator(.hidden)
+                }
                 Section(header: Text("Server URL")) {
                     TextField("", text: Binding(
                         get: {
@@ -197,5 +218,6 @@ struct SessionEditor: View {
                 }
             }
         }
+        .scrollDisabled(true)
     }
 }

@@ -222,7 +222,7 @@ struct ServerSelector: View {
                 SessionSelector(session: session)
             }
             .sheet(isPresented: $showAddServerSheet) {
-                SessionEditor(session: nil)
+                SessionEditor(onBoarding: false, session: nil)
             }
             .confirmationDialog("Delete Server", isPresented: $showingDeleteAlert) {
                 Button("Cancel", role: .cancel) {}

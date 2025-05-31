@@ -25,7 +25,7 @@ struct ShortListView: View {
             if server.wrappedValue != nil {
                 NavigationStack {
                     List {
-                        if shorts.isEmpty {
+                        if shorts.isEmpty && !isLoading {
                             HStack {
                                 Spacer()
                                 VStack {
@@ -51,6 +51,14 @@ struct ShortListView: View {
                                     UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
                                     ToastManager.shared.showToast(message: "Short URL copied to clipboard")
                                 }
+                        }
+                        if isLoading {
+                            HStack {
+                                Spacer()
+                                LoadingView()
+                                    .frame(width: 100, height: 100)
+                                Spacer()
+                            }
                         }
                     }
                     .listStyle(.plain)

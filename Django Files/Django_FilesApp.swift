@@ -42,7 +42,7 @@ struct Django_FilesApp: App {
                 } else if hasExistingSessions {
                     TabViewWindow(sessionManager: sessionManager)
                 } else {
-                    SessionEditor(session: nil, onSessionCreated: { newSession in
+                    SessionEditor(onBoarding: true, session: nil, onSessionCreated: { newSession in
                         sessionManager.selectedSession = newSession
                         hasExistingSessions = true
                     })

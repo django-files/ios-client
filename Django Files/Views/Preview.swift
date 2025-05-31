@@ -2,6 +2,7 @@ import SwiftUI
 import AVKit
 import HighlightSwift
 import UIKit
+import PDFKit
 
 struct ContentPreview: View {
     let mimeType: String
@@ -54,6 +55,8 @@ struct ContentPreview: View {
                 videoPreview
             } else if mimeType.starts(with: "audio/") {
                 audioPreview
+            } else if mimeType == "application/pdf" {
+                pdfPreview
             } else {
                 genericFilePreview
             }
@@ -112,6 +115,14 @@ struct ContentPreview: View {
             .padding()
     }
     
+    // PDF Preview
+    private var pdfPreview: some View {
+        PDFView(url: fileURL)
+            .padding(.top, 45)
+            .background(.black)
+
+    }
+    
     // Generic File Preview
     private var genericFilePreview: some View {
         VStack {
@@ -132,8 +143,8 @@ struct ContentPreview: View {
     private func loadContent() {
         isLoading = true
         
-        // For video, audio, and audio, we don't need to download the content as we'll use the URL directly
-        if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") {
+        // For video, audio, and PDF, we don't need to download the content as we'll use the URL directly
+        if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") || mimeType == "application/pdf" {
             isLoading = false
             return
         }
@@ -759,7 +770,7 @@ struct FilePreviewView: View {
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 20))
-                                    .offset(y: -3)
+                                    .offset(y: -2)
                                     .padding()
                             }
                             .menuStyle(.button)
@@ -849,6 +860,25 @@ struct FilePreviewView: View {
                 // We'll handle this in the parent view
             }
         )
+    }
+}
+
+// PDF View SwiftUI Wrapper
+struct PDFView: UIViewRepresentable {
+    let url: URL
+    
+    func makeUIView(context: Context) -> PDFKit.PDFView {
+        let pdfView = PDFKit.PDFView()
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        return pdfView
+    }
+    
+    func updateUIView(_ pdfView: PDFKit.PDFView, context: Context) {
+        if let document = PDFDocument(url: url) {
+            pdfView.document = document
+        }
     }
 }
 

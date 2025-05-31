@@ -262,9 +262,12 @@ struct FileListView: View {
             }
             
             if isLoading && hasNextPage {
-                Spacer()
-                LoadingView()
-                Spacer()
+                HStack {
+                    Spacer()
+                    LoadingView()
+                        .frame(width: 100, height: 100)
+                    Spacer()
+                }
             }
         }
         .fullScreenCover(isPresented: $showingPreview) {
@@ -409,12 +412,6 @@ struct FileListView: View {
         }
         .onAppear {
             loadFiles()
-        }
-        
-        if isLoading && hasNextPage {
-            HStack {
-                ProgressView()
-            }
         }
     }
     
