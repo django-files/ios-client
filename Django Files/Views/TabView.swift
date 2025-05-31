@@ -11,6 +11,7 @@ import SwiftData
 struct TabViewWindow: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var sessionManager: SessionManager
+    @Binding var selectedTab: Tab
     
     @State private var showingServerSelector = false
     @Query private var sessions: [DjangoFilesSession]
@@ -18,10 +19,14 @@ struct TabViewWindow: View {
     @State private var serverChangeRefreshTrigger = UUID()
     @State private var serverNeedsAuth: DjangoFilesSession?
     
-    @State private var selectedTab: Tab = .files
     @State private var showLoginSheet = false
     @State private var filesNavigationPath = NavigationPath()
     @State private var albumsNavigationPath = NavigationPath()
+    
+    init(sessionManager: SessionManager, selectedTab: Binding<Tab>) {
+        self.sessionManager = sessionManager
+        _selectedTab = selectedTab
+    }
     
     enum Tab {
         case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb

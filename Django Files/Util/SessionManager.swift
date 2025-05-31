@@ -25,7 +25,7 @@ class SessionManager: ObservableObject {
         let api = DFAPI(url: URL(string: serverURL)!, token: "")
         
         // Get token using the signature
-        if let token = await api.applicationAuth(signature: signature) {
+        if let token = await api.applicationAuth(signature: signature, selectedServer: newSession) {
             newSession.token = token
             newSession.auth = true
             

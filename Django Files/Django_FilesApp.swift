@@ -25,6 +25,7 @@ struct Django_FilesApp: App {
     @StateObject private var sessionManager = SessionManager()
     @State private var hasExistingSessions = false
     @State private var isLoading = true
+    @State private var selectedTab: TabViewWindow.Tab = .files
 
     init() {
         // print("📱 Setting up WebSocketToastObserver")
@@ -40,7 +41,7 @@ struct Django_FilesApp: App {
                             checkForExistingSessions()
                         }
                 } else if hasExistingSessions {
-                    TabViewWindow(sessionManager: sessionManager)
+                    TabViewWindow(sessionManager: sessionManager, selectedTab: $selectedTab)
                 } else {
                     SessionEditor(onBoarding: true, session: nil, onSessionCreated: { newSession in
                         sessionManager.selectedSession = newSession
@@ -61,7 +62,7 @@ struct Django_FilesApp: App {
     }
     
     private func handleDeepLink(_ url: URL) {
-        // print("Deep link received: \(url)")
+        print("Deep link received: \(url)")
         guard url.scheme == "djangofiles" else { return }
         
         // Extract the signature from the URL parameters
@@ -69,11 +70,45 @@ struct Django_FilesApp: App {
             print("Invalid deep link URL")
             return
         }
+        print("Deep link host: \(components.host ?? "unknown")")
         switch components.host {
         case "authorize":
             deepLinkAuth(components)
+        case "serverlist":
+            selectedTab = .serverList
+        case "filelist":
+            handleFileListDeepLink(components)
         default:
+            ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
             print("Unsupported deep link type: \(components.host ?? "unknown")")
+        }
+    }
+    
+    private func handleFileListDeepLink(_ components: URLComponents) {
+        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
+              let serverURL = URL(string: urlString) else {
+            print("Invalid server URL in filelist deep link")
+            return
+        }
+        
+        // Find the session with matching URL and select it
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        Task {
+            do {
+                let existingSessions = try context.fetch(descriptor)
+                if let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
+                    await MainActor.run {
+                        sessionManager.selectedSession = matchingSession
+                        selectedTab = .files
+                    }
+                } else {
+                    print("No session found for URL: \(serverURL.absoluteString)")
+                }
+            } catch {
+                print("Error fetching sessions: \(error)")
+            }
         }
     }
     

@@ -801,6 +801,7 @@ struct FilePreviewView: View {
                                     .padding(8)
                             }
                             .buttonStyle(.borderless)
+                            .padding(.leading, 1)
                             Spacer()
                         }
                         .background(.ultraThinMaterial)

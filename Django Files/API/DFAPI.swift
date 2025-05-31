@@ -223,6 +223,22 @@ struct DFAPI {
         selectedServer.token = token
     }
 
+    @MainActor
+    private func handleAuthResponse(response: HTTPURLResponse, url: URL, selectedServer: DjangoFilesSession, token: String) {
+        // Extract cookies from response
+        if let headerFields = response.allHeaderFields as? [String: String] {
+            let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
+            // Store cookies in the shared cookie storage
+            cookies.forEach { cookie in
+                HTTPCookieStorage.shared.setCookie(cookie)
+            }
+            selectedServer.cookies = cookies
+        }
+        
+        // Update the token in the server object
+        selectedServer.token = token
+    }
+
     public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {
         let request = DFLocalLoginRequest(username: username, password: password)
         do {
@@ -244,20 +260,11 @@ struct DFAPI {
                 throw URLError(.badServerResponse)
             }
             
-            // Extract cookies from response
-            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
-                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
-                // Store cookies in the shared cookie storage
-                cookies.forEach { cookie in
-                    HTTPCookieStorage.shared.setCookie(cookie)
-                }
-                await updateSessionCookies(selectedServer, cookies)
-            }
+            let userToken = try decoder.decode(UserToken.self, from: data)
             
-            let userToken = try JSONDecoder().decode(UserToken.self, from: data)
+            // Use shared function to handle cookies and token
+            await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: userToken.token)
             
-            // Update the token in the server object
-            await updateSessionToken(selectedServer, userToken.token)
             return true
         } catch {
             print("Local login request failed \(error)")
@@ -284,7 +291,6 @@ struct DFAPI {
             if let url = urlRequest.url {
                 // Set the cookie directly in the request header
                 urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
-                //print("Using session key cookie: \(sessionKey) on \(url)")
                 
                 // Also set it in the cookie storage
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
@@ -298,7 +304,6 @@ struct DFAPI {
                 
                 if let cookie = HTTPCookie(properties: cookieProperties) {
                     HTTPCookieStorage.shared.setCookie(cookie)
-                    // print("Set cookie: \(cookie)")
                 }
             }
             
@@ -307,16 +312,8 @@ struct DFAPI {
             configuration.httpCookieStorage = .shared
             configuration.httpCookieAcceptPolicy = .always
             
-            // Print all cookies before making the request
-            // print("Cookies before request:")
-//            HTTPCookieStorage.shared.cookies?.forEach { cookie in
-//                print(" - \(cookie.name): \(cookie.value)")
-//            }
-            
             let session = URLSession(configuration: configuration)
             let (_, response) = try await session.data(for: urlRequest)
-            
-            // print("response: \(response)")
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -324,31 +321,8 @@ struct DFAPI {
                 throw URLError(.badServerResponse)
             }
             
-            // Print request headers for debugging
-//            print("Request headers:")
-//            urlRequest.allHTTPHeaderFields?.forEach { key, value in
-//                print(" - \(key): \(value)")
-//            }
-            
-            // Print response headers for debugging
-//            print("Response headers:")
-//            (response as? HTTPURLResponse)?.allHeaderFields.forEach { key, value in
-//                print(" - \(key): \(value)")
-//            }
-            
-            // Extract cookies from response
-            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
-                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
-                // Store cookies in the shared cookie storage
-                cookies.forEach { cookie in
-                    HTTPCookieStorage.shared.setCookie(cookie)
-                    // print("Received cookie from response: \(cookie)")
-                }
-                await updateSessionCookies(selectedServer, cookies)
-            }
-            
-            // Update the token in the server object using the MainActor method
-            await updateSessionToken(selectedServer, token)
+            // Use shared function to handle cookies and token
+            await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: token)
             
             return true
         } catch {
@@ -396,21 +370,35 @@ struct DFAPI {
         let token: String
     }
 
-    public func applicationAuth(signature: String) async -> String? {
+    public func applicationAuth(signature: String, selectedServer: DjangoFilesSession? = nil) async -> String? {
         let request = DFApplicationAuthRequest(signature: signature)
         do {
             let json = try JSONEncoder().encode(request)
-            print(json)
-            print("JSON Data: \(String(data: json, encoding: .utf8) ?? "invalid json")")
-            let responseBody = try await makeAPIRequest(
-                body: json,
-                path: getAPIPath(.auth_application),
-                parameters: [:],
-                method: .post,
-                headerFields: [.contentType: "application/json"]
-            )
-            let response = try decoder.decode(DFApplicationAuthResponse.self, from: responseBody)
-            return response.token
+            
+            // Create URL request manually to access response headers
+            var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.auth_application), parameters: [:]))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = json
+            
+            // Use default session configuration which persists cookies
+            let configuration = URLSessionConfiguration.default
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            
+            let auth_response = try decoder.decode(DFApplicationAuthResponse.self, from: data)
+            
+            // Use shared function to handle cookies and token if server is provided
+            if let selectedServer = selectedServer {
+                await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: auth_response.token)
+            }
+            
+            return auth_response.token
         } catch {
             print("Application auth request failed \(error)")
             return nil
