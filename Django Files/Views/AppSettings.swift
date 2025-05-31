@@ -17,6 +17,15 @@ struct AppSettings: View {
     @State private var pendingAnalyticsValue = true
     @State private var pendingCrashlyticsValue = true
     
+    private var versionInfo: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
+        if version == "0.0" {
+            return "dev (source)"
+        }
+        return "\(version) (\(build))"
+    }
+    
     var body: some View {
         Form {
             Section(header: Text("Privacy")) {
@@ -80,6 +89,15 @@ struct AppSettings: View {
                     }
                 } message: {
                     Text("Please consider leaving crash analytics enabled. We collect no personal information, only information portaining to application errors.")
+                }
+            }
+            
+            Section(header: Text("About")) {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text(versionInfo)
+                        .foregroundColor(.secondary)
                 }
             }
         }

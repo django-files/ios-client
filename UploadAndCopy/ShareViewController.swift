@@ -59,6 +59,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         getAvailableServers()
         
         self.progressBar.isHidden = true
+        self.textView.isHidden = true
         var loaded: Bool = false
         for extensionItem in extensionItems {
             for ele in extensionItem.attachments! {
@@ -118,6 +119,9 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                             self.shortText.placeholder = self.randomString(length: 5)
                             self.shareURL = item as? URL
                             self.shareLabel.text = "Shorten Link"
+                            self.textView.isHidden = false
+                            self.textView.isEditable = false
+                            self.textView.text = self.shareURL!.absoluteString
                             if self.shareURL!.absoluteString.hasPrefix("http://") || self.shareURL!.absoluteString.hasPrefix("https://"){
                                 self.doShorten = true
                             }
