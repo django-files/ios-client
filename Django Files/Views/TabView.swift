@@ -96,16 +96,6 @@ struct TabViewWindow: View {
                         Label("Server Settings", systemImage: "person.2.badge.gearshape")
                     }
                     .tag(Tab.serverSettings)
-                    
-                    AuthViewContainer(
-                        selectedServer: server,
-                        needsRefresh: $needsRefresh
-                    )
-                    .id(serverChangeRefreshTrigger)
-                    .tabItem {
-                        Label("Mobile Web (Legacy)", systemImage: "globe")
-                    }
-                    .tag(Tab.mobileWeb)
                 }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {

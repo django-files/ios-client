@@ -189,10 +189,10 @@ struct FileListView: View {
                         Image(systemName: "document.on.document.fill")
                             .font(.system(size: 50))
                             .padding(.bottom)
-                            .shadow(color: .purple, radius: 50)
+                            .shadow(color: .purple, radius: 15)
                         Text("No files found")
                             .font(.headline)
-                            .shadow(color: .purple, radius: 50)
+                            .shadow(color: .purple, radius: 20)
                         Text("Upload a file to get started")
                             .foregroundColor(.secondary)
                     }
@@ -240,18 +240,7 @@ struct FileListView: View {
                     }
                     .tint(.red)
                 }
-//                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-//                    Button {
-//                        Task {
-//                            await toggleFilePrivacy(file: file)
-//                        }
-//                    } label: {
-//                        Label(file.private ? "Make Public" : "Make Private", 
-//                              systemImage: file.private ? "lock.open" : "lock")
-//                    }
-//                    .tint(.blue)
-//                }
-                
+
                 if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
                     Color.clear
                         .frame(height: 20)
@@ -315,7 +304,9 @@ struct FileListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .shadow(color: .purple, radius: files.isEmpty ? 3 : 0)
             }
+            
         }
         .sheet(isPresented: $showingUploadSheet,
                onDismiss: { Task { await refreshFiles()} }

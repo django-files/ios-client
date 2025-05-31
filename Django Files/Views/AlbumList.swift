@@ -62,10 +62,10 @@ struct AlbumListView: View {
                         Image(systemName: "photo.stack.fill")
                             .font(.system(size: 50))
                             .padding(.bottom)
-                            .shadow(color: .purple, radius: 50)
+                            .shadow(color: .purple, radius: 20)
                         Text("No albums found")
                             .font(.headline)
-                            .shadow(color: .purple, radius: 50)
+                            .shadow(color: .purple, radius: 20)
                         Text("Create an album to get started")
                             .foregroundColor(.secondary)
                     }

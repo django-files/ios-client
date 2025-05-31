@@ -481,8 +481,8 @@ struct ImageScrollView: UIViewRepresentable {
            } else {
                let point = gesture.location(in: imageView)
                let size = scrollView.bounds.size
-               let w = size.width / scrollView.maximumZoomScale
-               let h = size.height / scrollView.maximumZoomScale
+               let w = size.width / (scrollView.maximumZoomScale / 5)
+               let h = size.height / (scrollView.maximumZoomScale / 5)
                let x = point.x - (w / 2.0)
                let y = point.y - (h / 2.0)
                let rect = CGRect(x: x, y: y, width: w, height: h)
@@ -746,35 +746,16 @@ struct FilePreviewView: View {
                             .background(.ultraThinMaterial)
                             .frame(width: 32, height: 32)
                             .cornerRadius(8)
-                            .padding(.leading, 20)
+                            .padding(.leading, 15)
                             Spacer()
                             Text(file.name)
+                                .padding(5)
                                 .font(.headline)
                                 .lineLimit(1)
+                                .shadow(color: .black, radius: 3)
+//                                .background(.ultraThinMaterial)
+//                                .cornerRadius(16)
                             Spacer()
-                        }
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                showFileInfo = true
-                            }) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 20))
-                                    .padding()
-                            }
-                            .buttonStyle(.borderless)
-                            
-                            Menu {
-                                fileShareMenu(for: file)
-                            } label: {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20))
-                                    .offset(y: -2)
-                                    .padding()
-                            }
-                            .menuStyle(.button)
-                            
                             Menu {
                                 fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: .constant(""), passwordText: .constant(""), fileNameText: .constant(""))
                                     .padding()
@@ -784,11 +765,59 @@ struct FilePreviewView: View {
                                     .padding()
                             }
                             .menuStyle(.button)
+                            .background(.ultraThinMaterial)
+                            .frame(width: 32, height: 32)
+                            .cornerRadius(16)
+                            .padding(.trailing, 10)
+                        }
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showFileInfo = true
+                            }) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 20))
+                                    .padding(8)
+                            }
+                            .buttonStyle(.borderless)
+                            
+                            Menu {
+                                fileShareMenu(for: file)
+                            } label: {
+                                Image(systemName: "link.icloud")
+                                    .font(.system(size: 20))
+                                    .padding(8)
+                            }
+                            .menuStyle(.button)
+                            
+                            Button(action: {
+                                // share sheet call goes here
+                                // Dismiss any presented views first
+                                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                   let window = windowScene.windows.first,
+                                   let rootVC = window.rootViewController {
+                                    rootVC.dismiss(animated: true) {
+                                        let activityVC = UIActivityViewController(activityItems: [URL(string: file.url) ?? ""], applicationActivities: nil)
+                                        if let popover = activityVC.popoverPresentationController {
+                                            popover.sourceView = rootVC.view
+                                            popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                                        }
+                                        rootVC.present(activityVC, animated: true)
+                                    }
+                                }
+                            }) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 20))
+                                    .offset(y: -2)
+                                    .padding(8)
+                            }
+                            .buttonStyle(.borderless)
                             Spacer()
                         }
                         .background(.ultraThinMaterial)
-                        .frame(width: 200, height: 44)
-                        .cornerRadius(22)
+                        .frame(width: 155, height: 44)
+                        .cornerRadius(20)
                     }
 
                 }

@@ -72,33 +72,17 @@ struct CreateAlbumResponse: Decodable {
 
 extension DFAPI {
     // Fetch albums with pagination
-    func getAlbums(page: Int = 1) async -> AlbumsResponse? {
-        guard var components = URLComponents(string: "\(url)/api/albums/") else {
-            return nil
-        }
-        
-        components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
-        
-        guard let requestURL = components.url else {
-            return nil
-        }
-        
-        var request = URLRequest(url: requestURL)
-        request.httpMethod = "GET"
-        request.addValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        
+    func getAlbums(page: Int = 1, selectedServer: DjangoFilesSession? = nil) async -> AlbumsResponse? {
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse, 
-                  (200...299).contains(httpResponse.statusCode) else {
-                return nil
-            }
-            
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.albums) + "\(page)/",
+                parameters: [:],
+                method: .get,
+                expectedResponse: .ok,
+                selectedServer: selectedServer
+            )
             let decoder = JSONDecoder()
-            let albumsResponse = try decoder.decode(AlbumsResponse.self, from: data)
-            return albumsResponse
-            
+            return try decoder.decode(AlbumsResponse.self, from: responseBody)
         } catch {
             print("Error fetching albums: \(error)")
             return nil
@@ -122,7 +106,7 @@ extension DFAPI {
             let json = try JSONEncoder().encode(request)
             let responseBody = try await makeAPIRequest(
                 body: json,
-                path: getAPIPath(.albums),
+                path: getAPIPath(.album),
                 parameters: [:],
                 method: .post,
                 expectedResponse: .ok,
@@ -142,7 +126,7 @@ extension DFAPI {
     // Delete an album by ID
     func deleteAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {
-            let path = "\(getAPIPath(.albums))\(albumId)"
+            let path = "\(getAPIPath(.album))\(albumId)"
             _ = try await makeAPIRequest(
                 path: path,
                 parameters: [:],

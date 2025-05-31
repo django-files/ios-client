@@ -35,7 +35,8 @@ struct DFAPI {
         case edit_file = "files/edit/"
         case file = "file/"
         case raw = "raw/"
-        case albums = "album/"
+        case album = "album/"
+        case albums = "albums/"
         case auth_application = "auth/application/"
     }
     
