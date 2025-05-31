@@ -68,6 +68,7 @@ struct FileRowView: View {
                 }
             }
             .listRowSeparator(.visible)
+
             
             VStack(alignment: .leading, spacing: 5) {
                 
@@ -266,106 +267,13 @@ struct FileListView: View {
                 Spacer()
             }
         }
-        .toolbar(showingPreview ? .hidden : .visible, for: .tabBar)
-        .animation(.easeInOut(duration: 0.3), value: showingPreview)
         .fullScreenCover(isPresented: $showingPreview) {
             if let file = selectedFile {
-                ZStack {
-                    if redirectURLs[file.raw] == nil {
-                        ProgressView()
-                            .onAppear {
-                                Task {
-                                    await loadRedirectURL(for: file)
-                                }
-                            }
-                    } else {
-                        ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
-                            .onDisappear {
-                                showingPreview = false
-                            }
-                            .gesture(
-                                DragGesture().onEnded { value in
-                                    if value.location.y - value.startLocation.y > 150 {
-                                        showingPreview = false
-                                    }
-                                }
-                            )
-                        
-                        ZStack(alignment: .top) {
-                            VStack {
-                                HStack{
-                                    Button(action: {
-                                        showingPreview = false
-                                    }) {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 17))
-                                            .foregroundColor(.blue)
-                                            .padding()
-                                    }
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(8)
-                                    .padding(.leading, 20)
-                                    Spacer()
-                                    Text(file.name)
-                                        .font(.headline)
-                                        .lineLimit(1)
-                                    
-                                    Spacer()
-
-                                }
-                                Spacer()
-                                // Bottom Navigation Bar
-                                HStack {
-                                    Spacer()
-
-                                    Button(action: {
-                                        showFileInfo = true
-                                    }) {
-                                        Label("", systemImage: "info.circle")
-                                            .font(.system(size: 17))
-                                            .padding()
-                                            .padding(.leading, 8)
-                                    }
-                                    .menuStyle(.button)
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(8)
-                                    
-                                    Menu {
-                                        fileShareMenu(for: file)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 17))
-                                            .padding()
-                                    }
-                                    .menuStyle(.button)
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(8)
-                                    .padding()
-                                    
-                                    Menu {
-                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                            .padding()
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
-                                            .font(.system(size: 17))
-                                            .padding()
-                                    }
-                                    .menuStyle(.button)
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(8)
-
-                                    Spacer()
-                                }
-                                
-                            }
-                        }
-
-                    }
-                }
+                FilePreviewView(
+                    file: file,
+                    showingPreview: $showingPreview,
+                    showFileInfo: $showFileInfo
+                )
             }
         }
 

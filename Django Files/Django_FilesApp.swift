@@ -110,6 +110,7 @@ struct Django_FilesApp: App {
                     await MainActor.run {
                         sessionManager.selectedSession = newSession
                         hasExistingSessions = true
+                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
                     }
                 }
             } catch {

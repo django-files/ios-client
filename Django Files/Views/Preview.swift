@@ -692,3 +692,164 @@ class AudioPlayerViewModel: ObservableObject {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 }
+
+struct FilePreviewView: View {
+    let file: DFFile
+    @Binding var showingPreview: Bool
+    @Binding var showFileInfo: Bool
+    @State private var redirectURLs: [String: String] = [:]
+    
+    var body: some View {
+        ZStack {
+            if redirectURLs[file.raw] == nil {
+                ProgressView()
+                    .onAppear {
+                        Task {
+                            await loadRedirectURL(for: file)
+                        }
+                    }
+            } else {
+                ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
+                    .onDisappear {
+                        showingPreview = false
+                    }
+                    .gesture(
+                        DragGesture().onEnded { value in
+                            if value.location.y - value.startLocation.y > 150 {
+                                showingPreview = false
+                            }
+                        }
+                    )
+                
+                ZStack(alignment: .top) {
+                    VStack {
+                        HStack{
+                            Button(action: {
+                                showingPreview = false
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 17))
+                                    .foregroundColor(.blue)
+                                    .padding()
+                            }
+                            .background(.ultraThinMaterial)
+                            .frame(width: 32, height: 32)
+                            .cornerRadius(8)
+                            .padding(.leading, 20)
+                            Spacer()
+                            Text(file.name)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showFileInfo = true
+                            }) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 20))
+                                    .padding()
+                            }
+                            .buttonStyle(.borderless)
+                            
+                            Menu {
+                                fileShareMenu(for: file)
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 20))
+                                    .offset(y: -3)
+                                    .padding()
+                            }
+                            .menuStyle(.button)
+                            
+                            Menu {
+                                fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: .constant(""), passwordText: .constant(""), fileNameText: .constant(""))
+                                    .padding()
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.system(size: 20))
+                                    .padding()
+                            }
+                            .menuStyle(.button)
+                            Spacer()
+                        }
+                        .background(.ultraThinMaterial)
+                        .frame(width: 200, height: 44)
+                        .cornerRadius(22)
+                    }
+
+                }
+            }
+
+        }
+    }
+    
+    @MainActor
+    private func loadRedirectURL(for file: DFFile) async {
+        guard redirectURLs[file.raw] == nil,
+              let serverURL = URL(string: file.url)?.host else {
+            return
+        }
+        
+        let baseURL = URL(string: "https://\(serverURL)")!
+        let api = DFAPI(url: baseURL, token: "")  // Token will be handled by cookies
+        
+        if let redirectURL = await api.checkRedirect(url: file.raw) {
+            redirectURLs[file.raw] = redirectURL
+        } else {
+            // If redirect fails, use the original URL
+            redirectURLs[file.raw] = file.raw
+        }
+    }
+    
+    private func fileShareMenu(for file: DFFile) -> FileShareMenu {
+        FileShareMenu(
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                UIPasteboard.general.string = file.raw
+            }
+        )
+    }
+    
+    private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
+        FileContextMenuButtons(
+            isPreviewing: isPreviewing,
+            isPrivate: isPrivate,
+            onPreview: {
+                // No-op since we're already previewing
+            },
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                UIPasteboard.general.string = file.raw
+            },
+            openRawBrowser: {
+                if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            onTogglePrivate: {
+                // We'll handle this in the parent view
+            },
+            setExpire: {
+                // We'll handle this in the parent view
+            },
+            setPassword: {
+                // We'll handle this in the parent view
+            },
+            renameFile: {
+                // We'll handle this in the parent view
+            },
+            deleteFile: {
+                // We'll handle this in the parent view
+            }
+        )
+    }
+}
+
+

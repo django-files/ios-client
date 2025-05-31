@@ -28,85 +28,118 @@ struct TabViewWindow: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
+        Group {
             if let server = sessionManager.selectedSession {
-                if server.auth {
-                    NavigationStack(path: $filesNavigationPath) {
-                        FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
-                            .id(serverChangeRefreshTrigger)
-                    }
-                    .tabItem {
-                        Label("Files", systemImage: "document.fill")
-                    }
-                    .tag(Tab.files)
-
-                    NavigationStack(path: $albumsNavigationPath) {
-                    AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
-                        .id(serverChangeRefreshTrigger)
-                    }
-                    .tabItem {
-                        Label("Albums", systemImage: "square.stack")
-                    }
-                    .tag(Tab.albums)
-                    
-                    ShortListView(server: $sessionManager.selectedSession)
-                        .id(serverChangeRefreshTrigger)
-                        .tabItem {
-                            Label("Shorts", systemImage: "link")
+                TabView(selection: $selectedTab) {
+                    if server.auth {
+                        NavigationStack(path: $filesNavigationPath) {
+                            FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
+                                .id(serverChangeRefreshTrigger)
                         }
-                        .tag(Tab.shorts)
-                }
-            }
-            
-            ServerSelector(selectedSession: $sessionManager.selectedSession)
-                .tabItem {
-                    Label("Server List", systemImage: "server.rack")
-                }
-                .tag(Tab.serverList)
-                .sheet(isPresented: $showLoginSheet) {
-                    if let session = sessionManager.selectedSession {
-                        LoginView(selectedServer: session, onLoginSuccess: {
-                            showLoginSheet = false
-                            // Return to previous tab after successful login
-                            if selectedTab == .serverList {
-                                selectedTab = .files
+                        .tabItem {
+                            Label("Files", systemImage: "document.fill")
+                        }
+                        .tag(Tab.files)
+                        
+                        NavigationStack(path: $albumsNavigationPath) {
+                            AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
+                                .id(serverChangeRefreshTrigger)
+                        }
+                        .tabItem {
+                            Label("Albums", systemImage: "square.stack")
+                        }
+                        .tag(Tab.albums)
+                        
+                        ShortListView(server: $sessionManager.selectedSession)
+                            .id(serverChangeRefreshTrigger)
+                            .tabItem {
+                                Label("Shorts", systemImage: "link")
                             }
-                        })
+                            .tag(Tab.shorts)
+                    }
+                    
+                    ServerSelector(selectedSession: $sessionManager.selectedSession)
+                        .tabItem {
+                            Label("Server List", systemImage: "server.rack")
+                        }
+                        .tag(Tab.serverList)
+                        .sheet(isPresented: $showLoginSheet) {
+                            if let session = sessionManager.selectedSession {
+                                LoginView(selectedServer: session, onLoginSuccess: {
+                                    showLoginSheet = false
+                                    // Return to previous tab after successful login
+                                    if selectedTab == .serverList {
+                                        selectedTab = .files
+                                    }
+                                })
+                            }
+                        }
+                    
+                    AuthViewContainer(
+                        selectedServer: server,
+                        customURL: server.url + "/settings/user/",
+                        needsRefresh: .constant(true)
+                    )
+                    .id(serverChangeRefreshTrigger)
+                    .tabItem {
+                        Label("User Settings", systemImage: "person")
+                    }
+                    .tag(Tab.userSettings)
+                    
+                    AuthViewContainer(
+                        selectedServer: server,
+                        customURL: server.url + "/settings/site/",
+                        needsRefresh: .constant(true)
+                    )
+                    .id(serverChangeRefreshTrigger)
+                    .tabItem {
+                        Label("Server Settings", systemImage: "person.2.badge.gearshape")
+                    }
+                    .tag(Tab.serverSettings)
+                    
+                    AuthViewContainer(
+                        selectedServer: server,
+                        needsRefresh: $needsRefresh
+                    )
+                    .id(serverChangeRefreshTrigger)
+                    .tabItem {
+                        Label("Mobile Web (Legacy)", systemImage: "globe")
+                    }
+                    .tag(Tab.mobileWeb)
+                }
+                .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
+                    if let session = newValue {
+                        sessionManager.saveSelectedSession()
+                        connectToWebSocket(session: session)
+                        serverChangeRefreshTrigger = UUID()
+                        if !session.auth {
+                            selectedTab = .serverList
+                            showLoginSheet = true
+                        }
                     }
                 }
-            
-            if let selectedSession = sessionManager.selectedSession {
-                AuthViewContainer(
-                    selectedServer: selectedSession,
-                    customURL: selectedSession.url + "/settings/user/",
-                    needsRefresh: .constant(true)
-                )
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("User Settings", systemImage: "person")
+                .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
+                    if let isAuth = newValue, !isAuth {
+                        selectedTab = .serverList
+                        showLoginSheet = true
+                    }
                 }
-                .tag(Tab.userSettings)
-                
-                AuthViewContainer(
-                    selectedServer: selectedSession,
-                    customURL: selectedSession.url + "/settings/site/",
-                    needsRefresh: .constant(true)
-                )
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("Server Settings", systemImage: "person.2.badge.gearshape")
-                }
-                .tag(Tab.serverSettings)
-                
-                AuthViewContainer(
-                    selectedServer: selectedSession,
-                    needsRefresh: $needsRefresh
-                )
-                .id(serverChangeRefreshTrigger)
-                .tabItem {
-                    Label("Mobile Web (Legacy)", systemImage: "globe")
-                }
-                .tag(Tab.mobileWeb)
+            } else {
+                ServerSelector(selectedSession: $sessionManager.selectedSession)
+                    .tabItem {
+                        Label("Server List", systemImage: "server.rack")
+                    }
+                    .tag(Tab.serverList)
+                    .sheet(isPresented: $showLoginSheet) {
+                        if let session = sessionManager.selectedSession {
+                            LoginView(selectedServer: session, onLoginSuccess: {
+                                showLoginSheet = false
+                                if selectedTab == .serverList {
+                                    selectedTab = .files
+                                }
+                            })
+                        }
+                    }
             }
         }
         .onAppear {
@@ -115,23 +148,6 @@ struct TabViewWindow: View {
             // Connect to WebSocket if a session is selected
             if let selectedSession = sessionManager.selectedSession {
                 connectToWebSocket(session: selectedSession)
-            }
-        }
-        .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
-            if let session = newValue {
-                sessionManager.saveSelectedSession()
-                connectToWebSocket(session: session)
-                serverChangeRefreshTrigger = UUID()
-                if !session.auth {
-                    selectedTab = .serverList
-                    showLoginSheet = true
-                }
-            }
-        }
-        .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
-            if let isAuth = newValue, !isAuth {
-                selectedTab = .serverList
-                showLoginSheet = true
             }
         }
     }
@@ -145,7 +161,6 @@ struct TabViewWindow: View {
         print("TabViewWindow: Connecting to WebSocket for session \(session.url)")
         _ = api.connectToWebSocket()
     }
-    
 }
 
 struct ServerSelector: View {
