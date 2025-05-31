@@ -792,20 +792,8 @@ struct FilePreviewView: View {
                             .menuStyle(.button)
                             
                             Button(action: {
-                                // share sheet call goes here
-                                // Dismiss any presented views first
-                                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                   let window = windowScene.windows.first,
-                                   let rootVC = window.rootViewController {
-                                    rootVC.dismiss(animated: true) {
-                                        let activityVC = UIActivityViewController(activityItems: [URL(string: file.url) ?? ""], applicationActivities: nil)
-                                        if let popover = activityVC.popoverPresentationController {
-                                            popover.sourceView = rootVC.view
-                                            popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
-                                        }
-                                        rootVC.present(activityVC, animated: true)
-                                    }
-                                }
+                                ShareSheet.present(items: [URL(string: file.url) ?? ""])
+
                             }) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 20))
@@ -819,10 +807,28 @@ struct FilePreviewView: View {
                         .frame(width: 155, height: 44)
                         .cornerRadius(20)
                     }
-
                 }
             }
+        }
+    }
+    
+    struct ShareSheet {
+        static func present(items: [Any]) {
+            guard let rootVC = UIApplication.shared.connectedScenes
+                    .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+                    .first?.rootViewController else {
+                return
+            }
 
+            let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            
+            // Find the topmost presented view controller
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+
+            topVC.present(activityVC, animated: true)
         }
     }
     
