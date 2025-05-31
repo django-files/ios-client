@@ -9,6 +9,87 @@ import SwiftUI
 import SwiftData
 import Foundation
 
+protocol FileListDelegate: AnyObject {
+    @MainActor
+    func deleteFiles(fileIDs: [Int], onSuccess: (() -> Void)?) async -> Bool
+    @MainActor
+    func renameFile(fileID: Int, newName: String, onSuccess: (() -> Void)?) async -> Bool
+}
+
+@MainActor
+class FileListManager: ObservableObject, FileListDelegate {
+    @Published var files: [DFFile] = []
+    var server: Binding<DjangoFilesSession?>
+    
+    init(server: Binding<DjangoFilesSession?>) {
+        self.server = server
+    }
+    
+    func deleteFiles(fileIDs: [Int], onSuccess: (() -> Void)?) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.deleteFiles(fileIDs: fileIDs, selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                files.removeAll { file in
+                    fileIDs.contains(file.id)
+                }
+                onSuccess?()
+            }
+        }
+        return status
+    }
+    
+    func renameFile(fileID: Int, newName: String, onSuccess: (() -> Void)?) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.renameFile(fileID: fileID, name: newName, selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                if let index = files.firstIndex(where: { $0.id == fileID }) {
+                    var updatedFiles = files
+                    
+                    // Update the name
+                    updatedFiles[index].name = newName
+                    
+                    // Update URLs that contain the filename
+                    let file = updatedFiles[index]
+                    
+                    // Update raw URL
+                    if let oldRawURL = URL(string: file.raw) {
+                        let newRawURL = oldRawURL.deletingLastPathComponent().appendingPathComponent(newName)
+                        updatedFiles[index].raw = newRawURL.absoluteString
+                    }
+                    
+                    // Update thumb URL
+                    if let oldThumbURL = URL(string: file.thumb) {
+                        let newThumbURL = oldThumbURL.deletingLastPathComponent().appendingPathComponent(newName)
+                        updatedFiles[index].thumb = newThumbURL.absoluteString
+                    }
+                    
+                    // Update main URL
+                    if let oldURL = URL(string: file.url) {
+                        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
+                        updatedFiles[index].url = newURL.absoluteString
+                    }
+                    
+                    // Reassign the entire array to trigger a view update
+                    files = updatedFiles
+                }
+                onSuccess?()
+            }
+        }
+        return status
+    }
+}
 
 struct CustomLabel: LabelStyle {
     var spacing: Double = 0.0
@@ -22,7 +103,7 @@ struct CustomLabel: LabelStyle {
 }
 
 struct FileRowView: View {
-    let file: DFFile
+    @Binding var file: DFFile
     @State var isPrivate: Bool
     @State var hasPassword: Bool
     @State var hasExpiration: Bool
@@ -43,7 +124,6 @@ struct FileRowView: View {
         components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
         return components?.url ?? serverURL
     }
-    
     
     var body: some View {
         HStack(alignment: .center) {
@@ -131,8 +211,8 @@ struct FileListView: View {
     let albumName: String?
     
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var fileListManager: FileListManager
     
-    @State private var files: [DFFile] = []
     @State private var currentPage = 1
     @State private var hasNextPage: Bool = false
     @State private var isLoading: Bool = true
@@ -162,6 +242,19 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     @State private var showFileInfo: Bool = false
+    
+    init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
+        self.server = server
+        self.albumID = albumID
+        self.navigationPath = navigationPath
+        self.albumName = albumName
+        _fileListManager = StateObject(wrappedValue: FileListManager(server: server))
+    }
+
+    private var files: [DFFile] {
+        get { fileListManager.files }
+        nonmutating set { fileListManager.files = newValue }
+    }
     
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
         if server.wrappedValue != nil && albumName == nil {
@@ -202,38 +295,50 @@ struct FileListView: View {
                 .listRowSeparator(.hidden)
             }
 
-            ForEach(files, id: \.id) { file in
+            ForEach(files.indices, id: \.self) { index in
                 Button {
-                    selectedFile = file
+                    selectedFile = files[index]
                     showingPreview = true
                 } label: {
-                    if file.mime.starts(with: "image/") {
-                        FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
-                            .contextMenu {
-                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                            } preview: {
-                                CachedAsyncImage(url: thumbnailURL(file: file)) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    ProgressView()
-                                }
-                                .frame(width: 512, height: 512)
-                                .cornerRadius(8)
+                    if files[index].mime.starts(with: "image/") {
+                        FileRowView(
+                            file: $fileListManager.files[index],
+                            isPrivate: files[index].private,
+                            hasPassword: (files[index].password != ""),
+                            hasExpiration: (files[index].expr != ""),
+                            serverURL: URL(string: server.wrappedValue!.url)!
+                        )
+                        .contextMenu {
+                            fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        } preview: {
+                            CachedAsyncImage(url: thumbnailURL(file: files[index])) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                ProgressView()
                             }
+                            .frame(width: 512, height: 512)
+                            .cornerRadius(8)
+                        }
                     } else {
-                        FileRowView(file: file, isPrivate: file.private, hasPassword: (file.password != ""), hasExpiration: (file.expr != ""), serverURL: URL(string: server.wrappedValue!.url)!)
-                            .contextMenu {
-                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                            }
+                        FileRowView(
+                            file: $fileListManager.files[index],
+                            isPrivate: files[index].private,
+                            hasPassword: (files[index].password != ""),
+                            hasExpiration: (files[index].expr != ""),
+                            serverURL: URL(string: server.wrappedValue!.url)!
+                        )
+                        .contextMenu {
+                            fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        }
                     }
                 }
-                .id(file.id)
+                .id(files[index].id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button() {
-                        fileIDsToDelete = [file.id]
-                        fileNameToDelete = file.name
+                        fileIDsToDelete = [files[index].id]
+                        fileNameToDelete = files[index].name
                         showingDeleteConfirmation = true
                     } label: {
                         Label("Delete", systemImage: "trash")
@@ -241,7 +346,7 @@ struct FileListView: View {
                     .tint(.red)
                 }
 
-                if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
+                if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
                     Color.clear
                         .frame(height: 20)
                         .onAppear {
@@ -260,11 +365,13 @@ struct FileListView: View {
             }
         }
         .fullScreenCover(isPresented: $showingPreview) {
-            if let file = selectedFile {
+            if let index = files.firstIndex(where: { $0.id == selectedFile?.id }) {
                 FilePreviewView(
-                    file: file,
+                    file: $fileListManager.files[index],
+                    server: server,
                     showingPreview: $showingPreview,
-                    showFileInfo: $showFileInfo
+                    showFileInfo: $showFileInfo,
+                    fileListDelegate: fileListManager
                 )
             }
         }
@@ -329,10 +436,6 @@ struct FileListView: View {
             Button("Delete", role: .destructive) {
                 Task {
                     await deleteFiles(fileIDs: fileIDsToDelete)
-                    // Return to the file list if we're in a detail view
-                    if navigationPath.wrappedValue.count > 0 {
-                        navigationPath.wrappedValue.removeLast()
-                    }
                 }
             }
             Button("Cancel", role: .cancel) {
@@ -610,22 +713,8 @@ struct FileListView: View {
     }
     
     @MainActor
-    private func deleteFiles(fileIDs: [Int]) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        await api.deleteFiles(fileIDs: fileIDs, selectedServer: serverInstance)
-        
-        // Remove the deleted files from the local array
-        withAnimation {
-            files.removeAll { file in
-                fileIDs.contains(file.id)
-            }
-        }
-
+    private func deleteFiles(fileIDs: [Int], onSuccess: (() -> Void)? = nil) async -> Bool {
+        return await fileListManager.deleteFiles(fileIDs: fileIDs, onSuccess: onSuccess)
     }
     
     @MainActor
@@ -663,12 +752,10 @@ struct FileListView: View {
               let url = URL(string: serverInstance.url) else {
             return
         }
-        
         let api = DFAPI(url: url, token: serverInstance.token)
         // Toggle the private status (if currently private, make it public and vice versa)
         let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
-        
-        await refreshFiles()
+        await refreshFiles() // TODO: update local data instead of refresh
     }
     
     @MainActor
@@ -680,7 +767,7 @@ struct FileListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
-        await refreshFiles()
+        await refreshFiles() // TODO: update local data instead of refresh
     }
     
     @MainActor
@@ -691,19 +778,12 @@ struct FileListView: View {
         }
         let api = DFAPI(url: url, token: serverInstance.token)
         let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
-        await refreshFiles()
+        await refreshFiles() // TODO: update local data instead of refresh
     }
     
     @MainActor
     private func renameFile(file: DFFile, name: String) async {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return
-        }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        if await api.renameFile(fileID: file.id, name: name, selectedServer: serverInstance) {
-            await refreshFiles()
-        }
+        let _ = await fileListManager.renameFile(fileID: file.id, newName: name, onSuccess: nil)
     }
     
 }

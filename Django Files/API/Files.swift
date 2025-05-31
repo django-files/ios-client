@@ -8,27 +8,27 @@
 import Foundation
 
 public struct DFFile: Codable, Hashable, Equatable {
-    public let id: Int
-    public let user: Int
-    public let size: Int
-    public let mime: String
-    public let name: String
-    public let userName: String
-    public let userUsername: String
-    public let info: String
-    public let expr: String
-    public let view: Int
-    public let maxv: Int
-    public let password: String
-    public let `private`: Bool
-    public let avatar: Bool
-    public let url: String
-    public let thumb: String
-    public let raw: String
-    public let date: String
-    public let albums: [Int]
-    public let exif: [String: AnyCodable]?
-    public let meta: [String: AnyCodable]?
+    public var id: Int
+    public var user: Int
+    public var size: Int
+    public var mime: String
+    public var name: String
+    public var userName: String
+    public var userUsername: String
+    public var info: String
+    public var expr: String
+    public var view: Int
+    public var maxv: Int
+    public var password: String
+    public var `private`: Bool
+    public var avatar: Bool
+    public var url: String
+    public var thumb: String
+    public var raw: String
+    public var date: String
+    public var albums: [Int]
+    public var exif: [String: AnyCodable]?
+    public var meta: [String: AnyCodable]?
     
     // Skip nested JSON structures
     enum CodingKeys: String, CodingKey {
@@ -279,7 +279,7 @@ extension DFAPI {
         return nil
     }
     
-    public func deleteFiles(fileIDs: [Int], selectedServer: DjangoFilesSession? = nil) async {
+    public func deleteFiles(fileIDs: [Int], selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {
             let fileIDsData = try JSONSerialization.data(withJSONObject: ["ids": fileIDs])
             let _ = try await makeAPIRequest(
@@ -289,8 +289,10 @@ extension DFAPI {
                 method: .delete,
                 selectedServer: selectedServer
             )
+            return true
         } catch {
             print("File Delete Failed \(error)")
+            return false
         }
     }
     

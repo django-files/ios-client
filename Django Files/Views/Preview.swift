@@ -7,7 +7,7 @@ import PDFKit
 struct ContentPreview: View {
     let mimeType: String
     let fileURL: URL
-    let file: DFFile
+    @Binding var file: DFFile
     var showFileInfo: Binding<Bool>
 
     @State private var content: Data?
@@ -705,10 +705,29 @@ class AudioPlayerViewModel: ObservableObject {
 }
 
 struct FilePreviewView: View {
-    let file: DFFile
+    @Binding var file: DFFile
+    let server: Binding<DjangoFilesSession?>
     @Binding var showingPreview: Bool
     @Binding var showFileInfo: Bool
+    let fileListDelegate: FileListDelegate?
+    
     @State private var redirectURLs: [String: String] = [:]
+    
+    @State private var showingDeleteConfirmation = false
+    @State private var fileIDsToDelete: [Int] = []
+    @State private var fileNameToDelete: String = ""
+    
+    @State private var showingExpirationDialog = false
+    @State private var expirationText = ""
+    @State private var fileToExpire: DFFile? = nil
+    
+    @State private var showingPasswordDialog = false
+    @State private var passwordText = ""
+    @State private var fileToPassword: DFFile? = nil
+    
+    @State private var showingRenameDialog = false
+    @State private var fileNameText = ""
+    @State private var fileToRename: DFFile? = nil
     
     var body: some View {
         ZStack {
@@ -720,7 +739,7 @@ struct FilePreviewView: View {
                         }
                     }
             } else {
-                ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: file, showFileInfo: $showFileInfo)
+                ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: $file, showFileInfo: $showFileInfo)
                     .onDisappear {
                         showingPreview = false
                     }
@@ -731,7 +750,79 @@ struct FilePreviewView: View {
                             }
                         }
                     )
-                
+                    .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
+                        TextField("Enter expiration", text: $expirationText)
+                        Button("Cancel", role: .cancel) {
+                            fileToExpire = nil
+                        }
+                        Button("Set") {
+                            if let file = fileToExpire {
+                                let expirationValue = expirationText
+                                Task {
+                                    await setFileExpr(file: file, expr: expirationValue)
+                                    await MainActor.run {
+                                        expirationText = ""
+                                        fileToExpire = nil
+                                    }
+                                }
+                            }
+                        }
+                    } message: {
+                        Text("Enter time until file expiration. Examples: 1h, 5days, 2y")
+                    }
+                    .alert("Set File Password", isPresented: $showingPasswordDialog) {
+                        TextField("Enter password", text: $passwordText)
+                        Button("Cancel", role: .cancel) {
+                            fileToPassword = nil
+                        }
+                        Button("Set") {
+                            if let file = fileToPassword {
+                                let passwordValue = passwordText
+                                Task {
+                                    await setFilePassword(file: file, password: passwordValue)
+                                    await MainActor.run {
+                                        passwordText = ""
+                                        fileToPassword = nil
+                                    }
+                                }
+                            }
+                        }
+                    } message: {
+                        Text("Enter a password for the file.")
+                    }
+                    .alert("Rename File", isPresented: $showingRenameDialog) {
+                        TextField("New File Name", text: $fileNameText)
+                        Button("Cancel", role: .cancel) {
+                            fileToRename = nil
+                        }
+                        Button("Set") {
+                            if let file = fileToRename {
+                                let fileNameValue = fileNameText
+                                Task {
+                                    await renameFile(file: file, name: fileNameValue)
+                                    await MainActor.run {
+                                        fileNameText = ""
+                                        fileToRename = nil
+                                    }
+                                }
+                            }
+                        }
+                    } message: {
+                        Text("Enter a new name for this file.")
+                    }
+                    .confirmationDialog("Are you sure?", isPresented: $showingDeleteConfirmation) {
+                        Button("Delete", role: .destructive) {
+                            Task {
+                                if await deleteFiles(fileIDs: fileIDsToDelete) {
+                                    showingPreview = false
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
+                    }
+
                 ZStack(alignment: .top) {
                     VStack {
                         HStack{
@@ -753,8 +844,6 @@ struct FilePreviewView: View {
                                 .font(.headline)
                                 .lineLimit(1)
                                 .shadow(color: .black, radius: 3)
-//                                .background(.ultraThinMaterial)
-//                                .cornerRadius(16)
                             Spacer()
                             Menu {
                                 fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: .constant(""), passwordText: .constant(""), fileNameText: .constant(""))
@@ -851,15 +940,67 @@ struct FilePreviewView: View {
         }
     }
     
-    private func fileShareMenu(for file: DFFile) -> FileShareMenu {
-        FileShareMenu(
-            onCopyShareLink: {
-                UIPasteboard.general.string = file.url
-            },
-            onCopyRawLink: {
-                UIPasteboard.general.string = file.raw
+    @MainActor
+    private func toggleFilePrivacy(file: DFFile) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        // Toggle the private status (if currently private, make it public and vice versa)
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["private": !file.private], selectedServer: serverInstance)
+        
+        // TODO: update private status
+    }
+    
+    @MainActor
+    private func setFileExpr(file: DFFile, expr: String?) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["expr": expr ?? ""], selectedServer: serverInstance)
+        // TODO: update local expr status
+    }
+    
+    @MainActor
+    private func setFilePassword(file: DFFile, password: String?) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return
+        }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let _ = await api.editFiles(fileIDs: [file.id], changes: ["password": password ?? ""], selectedServer: serverInstance)
+        // TODO:  update local password status
+    }
+    
+    
+    @MainActor
+    private func renameFile(file: DFFile, name: String) async {
+        if let delegate = fileListDelegate {
+            let _ = await delegate.renameFile(fileID: file.id, newName: name, onSuccess: nil)
+        } else {
+            guard let serverInstance = server.wrappedValue,
+                  let url = URL(string: serverInstance.url) else {
+                return
             }
-        )
+            let api = DFAPI(url: url, token: serverInstance.token)
+            let _ = await api.renameFile(fileID: file.id, name: name, selectedServer: serverInstance)
+        }
+    }
+    
+    @MainActor
+    private func deleteFiles(fileIDs: [Int]) async -> Bool {
+        if let delegate = fileListDelegate {
+            return await delegate.deleteFiles(fileIDs: fileIDs) {
+                // No additional success callback needed as the delegate handles list updates
+            }
+        } else {
+            return false
+        }
     }
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
@@ -873,27 +1014,125 @@ struct FilePreviewView: View {
                 UIPasteboard.general.string = file.url
             },
             onCopyRawLink: {
-                UIPasteboard.general.string = file.raw
+                if redirectURLs[file.raw] == nil {
+                    Task {
+                        await loadRedirectURL(for: file)
+                        // Only copy the URL after we've loaded the redirect
+                        if let redirectURL = redirectURLs[file.raw] {
+                            await MainActor.run {
+                                UIPasteboard.general.string = redirectURL
+                            }
+                        } else {
+                            await MainActor.run {
+                                UIPasteboard.general.string = file.raw
+                            }
+                        }
+                    }
+                } else if let redirectURL = redirectURLs[file.raw] {
+                    UIPasteboard.general.string = redirectURL
+                } else {
+                    UIPasteboard.general.string = file.raw
+                }
             },
             openRawBrowser: {
                 if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
+                    if redirectURLs[file.raw] == nil {
+                        Task {
+                            await loadRedirectURL(for: file)
+                            // Only open the URL after we've loaded the redirect
+                            if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                                await MainActor.run {
+                                    UIApplication.shared.open(finalURL)
+                                }
+                            } else {
+                                await MainActor.run {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        }
+                    } else if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                        UIApplication.shared.open(finalURL)
+                    } else {
+                        UIApplication.shared.open(url)
+                    }
                 }
             },
             onTogglePrivate: {
-                // We'll handle this in the parent view
+                Task {
+                    await toggleFilePrivacy(file: file)
+                }
             },
             setExpire: {
-                // We'll handle this in the parent view
+                fileToExpire = file
+                expirationText.wrappedValue = fileToExpire?.expr ?? ""
+                showingExpirationDialog = true
             },
             setPassword: {
-                // We'll handle this in the parent view
+                fileToPassword = file
+                passwordText.wrappedValue = fileToPassword?.password ?? ""
+                showingPasswordDialog = true
             },
             renameFile: {
-                // We'll handle this in the parent view
+                fileToRename = file
+                fileNameText.wrappedValue = fileToRename?.name ?? ""
+                showingRenameDialog = true
             },
             deleteFile: {
-                // We'll handle this in the parent view
+                fileIDsToDelete = [file.id]
+                fileNameToDelete = file.name
+                showingDeleteConfirmation = true
+            }
+        )
+    }
+    
+    private func fileShareMenu(for file: DFFile) -> FileShareMenu {
+        FileShareMenu(
+            onCopyShareLink: {
+                UIPasteboard.general.string = file.url
+            },
+            onCopyRawLink: {
+                if redirectURLs[file.raw] == nil {
+                    Task {
+                        await loadRedirectURL(for: file)
+                        // Only copy the URL after we've loaded the redirect
+                        if let redirectURL = redirectURLs[file.raw] {
+                            await MainActor.run {
+                                UIPasteboard.general.string = redirectURL
+                            }
+                        } else {
+                            await MainActor.run {
+                                UIPasteboard.general.string = file.raw
+                            }
+                        }
+                    }
+                } else if let redirectURL = redirectURLs[file.raw] {
+                    UIPasteboard.general.string = redirectURL
+                } else {
+                    UIPasteboard.general.string = file.raw
+                }
+            },
+            openRawBrowser: {
+                if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
+                    if redirectURLs[file.raw] == nil {
+                        Task {
+                            await loadRedirectURL(for: file)
+                            // Only open the URL after we've loaded the redirect
+                            if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                                await MainActor.run {
+                                    UIApplication.shared.open(finalURL)
+                                }
+                            } else {
+                                await MainActor.run {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        }
+                    } else if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
+                        UIApplication.shared.open(finalURL)
+                    } else {
+                        UIApplication.shared.open(url)
+                    }
+                }
             }
         )
     }
