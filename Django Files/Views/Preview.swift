@@ -729,6 +729,8 @@ struct FilePreviewView: View {
     @State private var fileNameText = ""
     @State private var fileToRename: DFFile? = nil
     
+    @State private var showingShareSheet = false
+    
     var body: some View {
         ZStack {
             if redirectURLs[file.raw] == nil {
@@ -881,8 +883,7 @@ struct FilePreviewView: View {
                             .menuStyle(.button)
                             
                             Button(action: {
-                                ShareSheet.present(items: [URL(string: file.url) ?? ""])
-
+                                showingShareSheet = true
                             }) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 20))
@@ -891,6 +892,12 @@ struct FilePreviewView: View {
                             }
                             .buttonStyle(.borderless)
                             .padding(.leading, 1)
+                            .sheet(isPresented: $showingShareSheet) {
+                                if let url = URL(string: file.url) {
+                                    ShareSheet(url: url)
+                                        .presentationDetents([.medium])
+                                }
+                            }
                             Spacer()
                         }
                         .background(.ultraThinMaterial)
@@ -899,26 +906,6 @@ struct FilePreviewView: View {
                     }
                 }
             }
-        }
-    }
-    
-    struct ShareSheet {
-        static func present(items: [Any]) {
-            guard let rootVC = UIApplication.shared.connectedScenes
-                    .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
-                    .first?.rootViewController else {
-                return
-            }
-
-            let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-            
-            // Find the topmost presented view controller
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController {
-                topVC = presented
-            }
-
-            topVC.present(activityVC, animated: true)
         }
     }
     
@@ -1160,6 +1147,26 @@ struct PDFView: UIViewRepresentable {
             pdfView.document = document
         }
     }
+}
+
+struct ShareSheet: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        ActivityViewController(activityItems: [url])
+    }
+}
+
+struct ActivityViewController: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 
