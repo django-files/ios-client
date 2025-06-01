@@ -48,6 +48,9 @@ struct Django_FilesApp: App {
     @State private var hasExistingSessions = false
     @State private var isLoading = true
     @State private var selectedTab: TabViewWindow.Tab = .files
+    @State private var showingServerConfirmation = false
+    @State private var pendingAuthURL: URL? = nil
+    @State private var pendingAuthSignature: String? = nil
 
     init() {
         // print("📱 Setting up WebSocketToastObserver")
@@ -62,17 +65,39 @@ struct Django_FilesApp: App {
                         .onAppear {
                             checkForExistingSessions()
                         }
-                } else if hasExistingSessions {
-                    TabViewWindow(sessionManager: sessionManager, selectedTab: $selectedTab)
-                } else {
+                } else if !hasExistingSessions {
                     SessionEditor(onBoarding: true, session: nil, onSessionCreated: { newSession in
                         sessionManager.selectedSession = newSession
                         hasExistingSessions = true
                     })
+                } else if sessionManager.selectedSession == nil {
+                    NavigationStack {
+                        ServerSelector(selectedSession: $sessionManager.selectedSession)
+                            .navigationTitle("Select Server")
+                    }
+                } else {
+                    TabViewWindow(sessionManager: sessionManager, selectedTab: $selectedTab)
                 }
             }
             .onOpenURL { url in
                 handleDeepLink(url)
+            }
+            .sheet(isPresented: $showingServerConfirmation) {
+                ServerConfirmationView(
+                    serverURL: $pendingAuthURL,
+                    signature: $pendingAuthSignature,
+                    onConfirm: { setAsDefault in
+                        Task {
+                            await handleServerConfirmation(confirmed: true, setAsDefault: setAsDefault)
+                        }
+                    },
+                    onCancel: {
+                        Task {
+                            await handleServerConfirmation(confirmed: false, setAsDefault: false)
+                        }
+                    },
+                    context: sharedModelContainer.mainContext
+                )
             }
         }
         .modelContainer(sharedModelContainer)
@@ -97,7 +122,7 @@ struct Django_FilesApp: App {
         case "authorize":
             deepLinkAuth(components)
         case "serverlist":
-            selectedTab = .serverList
+            selectedTab = .settings
         case "filelist":
             handleFileListDeepLink(components)
         default:
@@ -149,29 +174,97 @@ struct Django_FilesApp: App {
             do {
                 let existingSessions = try context.fetch(descriptor)
                 if let existingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    // If session exists, update it on the main thread
+                    // If session exists, just select it and update UI
                     await MainActor.run {
                         sessionManager.selectedSession = existingSession
                         hasExistingSessions = true
+                        ToastManager.shared.showToast(message: "Connected to existing server \(existingSession.url)")
                     }
                     return
                 }
                 
-                // If no existing session, create and authenticate a new one
-                if let newSession = await sessionManager.createAndAuthenticateSession(
-                    url: serverURL,
-                    signature: signature,
-                    context: context
-                ) {
-                    // Update the UI on the main thread
-                    await MainActor.run {
-                        sessionManager.selectedSession = newSession
-                        hasExistingSessions = true
-                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
-                    }
+                // No existing session, show confirmation dialog
+                await MainActor.run {
+                    pendingAuthURL = serverURL
+                    pendingAuthSignature = signature
+                    showingServerConfirmation = true
                 }
             } catch {
                 print("Error checking for existing sessions: \(error)")
+            }
+        }
+    }
+    
+    private func handleServerConfirmation(confirmed: Bool, setAsDefault: Bool) async {
+        guard let serverURL = pendingAuthURL,
+              let signature = pendingAuthSignature else {
+            return
+        }
+
+        // If user cancelled, just clear the pending data and return
+        if !confirmed {
+            pendingAuthURL = nil
+            pendingAuthSignature = nil
+            return
+        }
+
+        // Create and authenticate the new session
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        do {
+            let existingSessions = try context.fetch(descriptor)
+            
+            // If no existing session, create and authenticate a new one
+            if let newSession = await sessionManager.createAndAuthenticateSession(
+                url: serverURL,
+                signature: signature,
+                context: context
+            ) {
+                // Update the UI on the main thread
+                await MainActor.run {
+                    if setAsDefault {
+                        // Reset all other sessions to not be default
+                        for session in existingSessions {
+                            session.defaultSession = false
+                        }
+                        newSession.defaultSession = true
+                    }
+                    sessionManager.selectedSession = newSession
+                    hasExistingSessions = true
+                    selectedTab = .files
+                    ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
+                }
+            }
+        } catch {
+            ToastManager.shared.showToast(message: "Problem signing into server \(error)")
+            print("Error creating new session: \(error)")
+        }
+        
+        // Clear pending auth data
+        pendingAuthURL = nil
+        pendingAuthSignature = nil
+    }
+    
+    private func checkDefaultServer() {
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        Task {
+            do {
+                let sessions = try context.fetch(descriptor)
+                await MainActor.run {
+                    if sessionManager.selectedSession == nil {
+                        if let defaultSession = sessions.first(where: { $0.defaultSession }) {
+                            sessionManager.selectedSession = defaultSession
+                            selectedTab = .files
+                        } else {
+                            selectedTab = .settings
+                        }
+                    }
+                }
+            } catch {
+                print("Error checking for default server: \(error)")
             }
         }
     }
@@ -183,6 +276,9 @@ struct Django_FilesApp: App {
         do {
             let sessionsCount = try context.fetchCount(descriptor)
             hasExistingSessions = sessionsCount > 0
+            if hasExistingSessions {
+                checkDefaultServer()
+            }
             isLoading = false  // Set loading to false after check completes
         } catch {
             print("Error checking for existing sessions: \(error)")

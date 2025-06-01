@@ -79,15 +79,87 @@ struct ContentPreview: View {
     // Text Preview
     private var textPreview: some View {
         ScrollView {
-            if let content = content, let text = String(data: content, encoding: .utf8) {
-                CodeText(text)
-                    .padding()
-            } else {
-                Text("Unable to decode text content")
-                    .foregroundColor(.red)
+            ZStack {
+                if let content = content, let text = String(data: content, encoding: .utf8) {
+                    CodeText(text)
+                        .highlightLanguage(determineLanguage(from: mimeType, fileName: fileURL.lastPathComponent))
+                        .padding()
+                } else {
+                    Text("Unable to decode text content")
+                        .foregroundColor(.red)
+                }
+            }
+            .padding(.top, 40)
+        }
+    }
+
+    // Helper function to determine the highlight language based on file type
+    private func determineLanguage(from mimeType: String, fileName: String) -> HighlightLanguage {
+        let fileExtension = (fileName as NSString).pathExtension.lowercased()
+        
+        switch fileExtension {
+        case "swift":
+            return .swift
+        case "py", "python":
+            return .python
+        case "js", "javascript":
+            return .javaScript
+        case "java":
+            return .java
+        case "cpp", "c", "h", "hpp":
+            return .cPlusPlus
+        case "html":
+            return .html
+        case "css":
+            return .css
+        case "json":
+            return .json
+        case "md", "markdown":
+            return .markdown
+        case "sh", "bash":
+            return .bash
+        case "rb", "ruby":
+            return .ruby
+        case "go":
+            return .go
+        case "rs":
+            return .rust
+        case "php":
+            return .php
+        case "sql":
+            return .sql
+        case "ts", "typescript":
+            return .typeScript
+        case "yaml", "yml":
+            return .yaml
+        default:
+            // For plain text or unknown types
+            if mimeType == "text/plain" {
+                return .plaintext
+            }
+            // Try to determine from mime type if extension didn't match
+            let mimeSubtype = mimeType.split(separator: "/").last?.lowercased() ?? ""
+            switch mimeSubtype {
+            case "javascript":
+                return .javaScript
+            case "python":
+                return .python
+            case "java":
+                return .java
+            case "html":
+                return .html
+            case "css":
+                return .css
+            case "json":
+                return .json
+            case "markdown":
+                return .markdown
+            case "xml":
+                return .html
+            default:
+                return .plaintext
             }
         }
-        .padding(.top, 35)
     }
 
     // Image Preview
@@ -838,20 +910,21 @@ struct FilePreviewView: View {
                             }
                             .background(.ultraThinMaterial)
                             .frame(width: 32, height: 32)
-                            .cornerRadius(8)
+                            .cornerRadius(16)
                             .padding(.leading, 15)
                             Spacer()
                             Text(file.name)
                                 .padding(5)
                                 .font(.headline)
                                 .lineLimit(1)
-                                .shadow(color: .black, radius: 3)
+                                .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
+                                .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
                             Spacer()
                             Menu {
                                 fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     .padding()
                             } label: {
-                                Image(systemName: "ellipsis.circle")
+                                Image(systemName: "ellipsis")
                                     .font(.system(size: 20))
                                     .padding()
                             }
@@ -860,6 +933,15 @@ struct FilePreviewView: View {
                             .frame(width: 32, height: 32)
                             .cornerRadius(16)
                             .padding(.trailing, 10)
+                        }
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background {
+                            if file.mime.starts(with: "text") {
+                                Rectangle()
+                                    .fill(.ultraThinMaterial)
+                                    .ignoresSafeArea()
+                            }
                         }
                         Spacer()
                         HStack {

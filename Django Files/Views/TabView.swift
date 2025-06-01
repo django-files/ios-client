@@ -29,7 +29,7 @@ struct TabViewWindow: View {
     }
     
     enum Tab {
-        case files, albums, shorts, serverList, userSettings, serverSettings, mobileWeb, appSettings
+        case files, albums, shorts, settings, mobileWeb
     }
     
     var body: some View {
@@ -63,50 +63,11 @@ struct TabViewWindow: View {
                             .tag(Tab.shorts)
                     }
                     
-                    ServerSelector(selectedSession: $sessionManager.selectedSession)
+                    SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
                         .tabItem {
-                            Label("Server List", systemImage: "server.rack")
+                            Label("Settings", systemImage: "gear")
                         }
-                        .tag(Tab.serverList)
-                        .sheet(isPresented: $showLoginSheet) {
-                            if let session = sessionManager.selectedSession {
-                                LoginView(selectedServer: session, onLoginSuccess: {
-                                    showLoginSheet = false
-                                    // Return to previous tab after successful login
-                                    if selectedTab == .serverList {
-                                        selectedTab = .files
-                                    }
-                                })
-                            }
-                        }
-                    
-                    AuthViewContainer(
-                        selectedServer: server,
-                        customURL: server.url + "/settings/user/",
-                        needsRefresh: .constant(true)
-                    )
-                    .id(serverChangeRefreshTrigger)
-                    .tabItem {
-                        Label("User Settings", systemImage: "person")
-                    }
-                    .tag(Tab.userSettings)
-                    
-                    AuthViewContainer(
-                        selectedServer: server,
-                        customURL: server.url + "/settings/site/",
-                        needsRefresh: .constant(true)
-                    )
-                    .id(serverChangeRefreshTrigger)
-                    .tabItem {
-                        Label("Server Settings", systemImage: "person.2.badge.gearshape")
-                    }
-                    .tag(Tab.serverSettings)
-                    
-                    AppSettings()
-                        .tabItem {
-                            Label("App Settings", systemImage: "gear")
-                        }
-                        .tag(Tab.appSettings)
+                        .tag(Tab.settings)
                 }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
@@ -114,33 +75,23 @@ struct TabViewWindow: View {
                         connectToWebSocket(session: session)
                         serverChangeRefreshTrigger = UUID()
                         if !session.auth {
-                            selectedTab = .serverList
+                            selectedTab = .settings
                             showLoginSheet = true
                         }
                     }
                 }
                 .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
                     if let isAuth = newValue, !isAuth {
-                        selectedTab = .serverList
+                        selectedTab = .settings
                         showLoginSheet = true
                     }
                 }
             } else {
-                ServerSelector(selectedSession: $sessionManager.selectedSession)
+                SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
                     .tabItem {
-                        Label("Server List", systemImage: "server.rack")
+                        Label("Settings", systemImage: "gear")
                     }
-                    .tag(Tab.serverList)
-                    .sheet(isPresented: $showLoginSheet) {
-                        if let session = sessionManager.selectedSession {
-                            LoginView(selectedServer: session, onLoginSuccess: {
-                                showLoginSheet = false
-                                if selectedTab == .serverList {
-                                    selectedTab = .files
-                                }
-                            })
-                        }
-                    }
+                    .tag(Tab.settings)
             }
         }
         .onAppear {
