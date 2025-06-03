@@ -49,14 +49,20 @@ struct ContentPreview: View {
         Group {
             if mimeType.starts(with: "text/") {
                 textPreview
+            } else if mimeType.starts(with: "application/") {
+                if mimeType == "application/pdf" {
+                    pdfPreview
+                } else if mimeType.contains("json") {
+                    textPreview
+                } else {
+                    genericFilePreview
+                }
             } else if mimeType.starts(with: "image/") {
                 imagePreview
             } else if mimeType.starts(with: "video/") {
                 videoPreview
             } else if mimeType.starts(with: "audio/") {
                 audioPreview
-            } else if mimeType == "application/pdf" {
-                pdfPreview
             } else {
                 genericFilePreview
             }
@@ -138,27 +144,42 @@ struct ContentPreview: View {
                 return .plaintext
             }
             // Try to determine from mime type if extension didn't match
+            let mimePrimeType = mimeType.split(separator: "/").first?.lowercased() ?? ""
             let mimeSubtype = mimeType.split(separator: "/").last?.lowercased() ?? ""
-            switch mimeSubtype {
-            case "javascript":
-                return .javaScript
-            case "python":
-                return .python
-            case "java":
-                return .java
-            case "html":
-                return .html
-            case "css":
-                return .css
-            case "json":
-                return .json
-            case "markdown":
-                return .markdown
-            case "xml":
-                return .html
+
+            switch mimePrimeType {
+            case "application":
+                switch mimeSubtype {
+                    case "json", "x-ndjson":
+                        return .json
+                default:
+                    return .plaintext
+                }
+            case "text":
+                switch mimeSubtype {
+                case "javascript":
+                    return .javaScript
+                case "python":
+                    return .python
+                case "java":
+                    return .java
+                case "html":
+                    return .html
+                case "css":
+                    return .css
+                case "json", "x-ndjson":
+                    return .json
+                case "markdown":
+                    return .markdown
+                case "xml":
+                    return .html
+                default:
+                    return .plaintext
+                }
             default:
                 return .plaintext
             }
+
         }
     }
 
