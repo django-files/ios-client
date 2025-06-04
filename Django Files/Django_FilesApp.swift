@@ -14,15 +14,19 @@ import FirebaseCrashlytics
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    FirebaseApp.configure()
-    
-    // Initialize Firebase Analytics based on user preference
-    let analyticsEnabled = UserDefaults.standard.bool(forKey: "firebaseAnalyticsEnabled")
-    Analytics.setAnalyticsCollectionEnabled(analyticsEnabled)
-    
-    // Initialize Crashlytics based on user preference
-    let crashlyticsEnabled = UserDefaults.standard.bool(forKey: "crashlyticsEnabled")
-    Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
+    // Skip Firebase initialization in test environment
+    let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    if !isRunningTests {
+        FirebaseApp.configure()
+        
+        // Initialize Firebase Analytics based on user preference
+        let analyticsEnabled = UserDefaults.standard.bool(forKey: "firebaseAnalyticsEnabled")
+        Analytics.setAnalyticsCollectionEnabled(analyticsEnabled)
+        
+        // Initialize Crashlytics based on user preference
+        let crashlyticsEnabled = UserDefaults.standard.bool(forKey: "crashlyticsEnabled")
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
+    }
 
     return true
   }
