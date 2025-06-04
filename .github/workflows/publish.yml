@@ -36,6 +36,10 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
+      - name: "Google Services File"
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
+
       - name: "Fastlane ${{ env.command }}"
         run: fastlane ${{ env.command }}
         env:

@@ -61,6 +61,17 @@ Additionally, the URL is copied to the clipboard and the preview is show in the 
 
 ### Planned
 
+- Animated GIF/webm support (0.2.1)
+- New user setup/registration in app (0.2.1)
+- Scan Login QR code direct from app support (0.2.1)
+- Select an album from activity/share sheet (0.2.1)
+- User invitation management and sign up (0.2.2)
+- Use app for preview links/non authenticated use of app for public objects (0.2.2)
+- Better album management (0.2.2)
+- iOS Widget (0.2.3)
+- Server Statistics (0.2.3)
+- Gallery (0.2.3)
+
 Don't see your feature here? [Request a Feature](https://github.com/django-files/ios-client/discussions/categories/feature-requests).
 
 ### Known Issues

@@ -8,9 +8,20 @@
 import Foundation
 import HTTPTypes
 import HTTPTypesFoundation
+import UIKit
+
+// Custom imports
+import SwiftUI  // Needed for ToastManager
+
+// Add an import for the models file
+// This line should be modified if the module structure is different
+// Or the models should be declared here if needed
 
 struct DFAPI {
     private static let API_PATH = "/api/"
+    
+    // Add a shared WebSocket instance
+    internal static var sharedWebSocket: DFWebSocket?
     
     enum DjangoFilesAPIs: String {
         case stats = "stats/"
@@ -18,11 +29,21 @@ struct DFAPI {
         case short = "shorten/"
         case auth_methods = "auth/methods/"
         case login = "auth/token/"
+        case files = "files/"
+        case shorts = "shorts/"
+        case delete_file = "files/delete/"
+        case edit_file = "files/edit/"
+        case file = "file/"
+        case raw = "raw/"
+        case album = "album/"
+        case albums = "albums/"
+        case auth_application = "auth/application/"
     }
     
     let url: URL
     let token: String
     var decoder: JSONDecoder
+    
     
     init(url: URL, token: String){
         self.url = url
@@ -38,21 +59,31 @@ struct DFAPI {
         return components.url!
     }
     
-    private func getAPIPath(_ api: DjangoFilesAPIs) -> String {
+    internal func getAPIPath(_ api: DjangoFilesAPIs) -> String {
         return DFAPI.API_PATH + api.rawValue
     }
     
-    private func handleError(_ status: HTTPResponse.Status, data: Data?){
+    @MainActor
+    private func updateSessionAuth(_ selectedServer: DjangoFilesSession, _ isAuthenticated: Bool) {
+        selectedServer.auth = isAuthenticated
+    }
+
+    private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async {
         print("Server response status code: \(status)")
-        do{
+        do {
             let e = try decoder.decode(DFErrorResponse.self, from: data!)
             print("\(e.error): \(e.message)")
-        }catch {
+            
+            // Check for 401 Unauthorized and update session auth status
+            if status.code == 401, let server = selectedServer {
+                await updateSessionAuth(server, false)
+            }
+        } catch {
             print("Invalid error response.")
         }
     }
     
-    private func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data
+    internal func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data
     {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.authorization] = token
@@ -62,14 +93,17 @@ struct DFAPI {
         }
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: body)
-        guard response.status == .ok else {
-            handleError(response.status, data: responseBody)
+        
+        // Handle non-2xx responses
+        if response.status.code < 200 || response.status.code >= 300 {
+            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
+        
         return responseBody
     }
     
-    private func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil) async throws -> Data {
+    internal func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
@@ -79,10 +113,13 @@ struct DFAPI {
         
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate ?? nil, delegateQueue: .main)
         let (responseBody, response) = try await session.upload(for: request, from: Data())
-        guard response.status != .created else {
-            handleError(response.status, data: responseBody)
+        
+        // Handle non-2xx responses
+        if response.status.code < 200 || response.status.code >= 300 {
+            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
             throw URLError(.badServerResponse)
         }
+        
         return responseBody
     }
     private func makeAPIRequestStreamed(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionStreamDelegate) throws -> URLSessionUploadTask{
@@ -96,18 +133,8 @@ struct DFAPI {
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         return session.uploadTask(withStreamedRequest: URLRequest(httpRequest: request)!)
     }
-    
-    public func getStats(amount: Int? = nil) async -> DFStatsResponse?{
-        do{
-            let responseBody = try await makeAPIRequest(path: getAPIPath(.stats), parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""])
-            return try decoder.decode(DFStatsResponse.self, from: responseBody)
-        }catch {
-            print("Request failed \(error)")
-            return nil;
-        }
-    }
-    
-    public func uploadFile(url: URL, fileName: String? = nil, taskDelegate: URLSessionTaskDelegate? = nil) async -> DFUploadResponse?{
+
+    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
         
@@ -115,21 +142,36 @@ struct DFAPI {
         data.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
         data.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         data.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        do{
+        do {
             try data.append(Data(contentsOf: url))
-        }
-        catch{
+        } catch {
             print("Error reading file \(error)")
             return nil
         }
         data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
-        do{
-            let responseBody = try await makeAPIRequest(body: data, path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [.contentType: "multipart/form-data; boundary=\(boundary)"], taskDelegate: taskDelegate)
+        do {
+            var headers: [HTTPField.Name: String] = [.contentType: "multipart/form-data; boundary=\(boundary)"]
+            if !albums.isEmpty {
+                headers[HTTPField.Name("Albums")!] = albums
+            }
+            if privateUpload {
+                headers[HTTPField.Name("Private")!] = "true"
+            }
+            let responseBody = try await makeAPIRequest(
+                body: data,
+                path: getAPIPath(.upload),
+                parameters: [:],
+                method: .post,
+                expectedResponse: .ok,
+                headerFields: headers,
+                taskDelegate: taskDelegate,
+                selectedServer: selectedServer
+            )
             return try decoder.decode(DFUploadResponse.self, from: responseBody)
-        }catch {
+        } catch {
             print("Request failed \(error)")
-            return nil;
+            return nil
         }
     }
     
@@ -146,19 +188,7 @@ struct DFAPI {
             return nil;
         }
     }
-    
-    public func createShort(url: URL, short: String, maxViews: Int? = nil) async -> DFShortResponse?{
-        let request = DFShortRequest(url: url.absoluteString, vanity: short, maxViews: maxViews ?? 0)
-        do{
-            let json = try JSONEncoder().encode(request)
-            let responseBody = try await makeAPIRequest<DFShortRequest>(body: json, path: getAPIPath(.short), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [:], taskDelegate: nil)
-            return try decoder.decode(DFShortResponse.self, from: responseBody)
-        }catch {
-            print("Request failed \(error)")
-            return nil;
-        }
-    }
-    
+
     public func getAuthMethods() async -> DFAuthMethodsResponse? {
         do {
             let responseBody = try await makeAPIRequest(
@@ -178,9 +208,35 @@ struct DFAPI {
         let username: String
         let password: String
     }
-    
+
     struct UserToken: Codable {
         let token: String
+    }
+
+    @MainActor
+    private func updateSessionCookies(_ selectedServer: DjangoFilesSession, _ cookies: [HTTPCookie]) {
+        selectedServer.cookies = cookies
+    }
+
+    @MainActor
+    private func updateSessionToken(_ selectedServer: DjangoFilesSession, _ token: String) {
+        selectedServer.token = token
+    }
+
+    @MainActor
+    private func handleAuthResponse(response: HTTPURLResponse, url: URL, selectedServer: DjangoFilesSession, token: String) {
+        // Extract cookies from response
+        if let headerFields = response.allHeaderFields as? [String: String] {
+            let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
+            // Store cookies in the shared cookie storage
+            cookies.forEach { cookie in
+                HTTPCookieStorage.shared.setCookie(cookie)
+            }
+            selectedServer.cookies = cookies
+        }
+        
+        // Update the token in the server object
+        selectedServer.token = token
     }
 
     public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {
@@ -204,24 +260,11 @@ struct DFAPI {
                 throw URLError(.badServerResponse)
             }
             
-            // Extract cookies from response
-            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
-                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
-                // Store cookies in the shared cookie storage
-                cookies.forEach { cookie in
-                    HTTPCookieStorage.shared.setCookie(cookie)
-                }
-                await MainActor.run {
-                    selectedServer.cookies = cookies
-                }
-            }
+            let userToken = try decoder.decode(UserToken.self, from: data)
             
-            let userToken = try JSONDecoder().decode(UserToken.self, from: data)
+            // Use shared function to handle cookies and token
+            await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: userToken.token)
             
-            // Update the token in the server object
-            await MainActor.run {
-                selectedServer.token = userToken.token
-            }
             return true
         } catch {
             print("Local login request failed \(error)")
@@ -261,7 +304,6 @@ struct DFAPI {
                 
                 if let cookie = HTTPCookie(properties: cookieProperties) {
                     HTTPCookieStorage.shared.setCookie(cookie)
-                    print("Set cookie: \(cookie)")
                 }
             }
             
@@ -269,12 +311,6 @@ struct DFAPI {
             let configuration = URLSessionConfiguration.default
             configuration.httpCookieStorage = .shared
             configuration.httpCookieAcceptPolicy = .always
-            
-            // Print all cookies before making the request
-            print("Cookies before request:")
-            HTTPCookieStorage.shared.cookies?.forEach { cookie in
-                print(" - \(cookie.name): \(cookie.value)")
-            }
             
             let session = URLSession(configuration: configuration)
             let (_, response) = try await session.data(for: urlRequest)
@@ -285,35 +321,8 @@ struct DFAPI {
                 throw URLError(.badServerResponse)
             }
             
-            // Print request headers for debugging
-            print("Request headers:")
-            urlRequest.allHTTPHeaderFields?.forEach { key, value in
-                print(" - \(key): \(value)")
-            }
-            
-            // Print response headers for debugging
-            print("Response headers:")
-            (response as? HTTPURLResponse)?.allHeaderFields.forEach { key, value in
-                print(" - \(key): \(value)")
-            }
-            
-            // Extract cookies from response
-            if let headerFields = httpResponse.allHeaderFields as? [String: String] {
-                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: urlRequest.url!)
-                // Store cookies in the shared cookie storage
-                cookies.forEach { cookie in
-                    HTTPCookieStorage.shared.setCookie(cookie)
-                    print("Received cookie from response: \(cookie)")
-                }
-                await MainActor.run {
-                    selectedServer.cookies = cookies
-                }
-            }
-            
-            // Update the token in the server object
-            await MainActor.run {
-                selectedServer.token = token
-            }
+            // Use shared function to handle cookies and token
+            await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: token)
             
             return true
         } catch {
@@ -321,9 +330,81 @@ struct DFAPI {
             return false
         }
     }
+
+    public func checkRedirect(url: String) async -> String? {
+        do {
+            guard let targetURL = URL(string: url) else { return nil }
+            
+            var request = HTTPRequest(method: .get, url: targetURL)
+            request.headerFields[.authorization] = self.token
+            request.headerFields[.referer] = self.url.absoluteString
+            
+            let configuration = URLSessionConfiguration.ephemeral
+            let delegate = RedirectDelegate()
+            let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+            
+            let (_, response) = try await session.data(for: request)
+            
+            if response.status.code == 302 {
+                if let newURL = URL(string: response.headerFields[.location]!) {
+                    if newURL.host() == nil {
+                        return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(response.headerFields[.location] ?? "")"
+                    } else {
+                        return response.headerFields[.location]
+                    }
+                }
+            }
+
+            return nil
+        } catch {
+            print("Redirect check failed: \(error)")
+            return nil
+        }
+    }
+
+    struct DFApplicationAuthRequest: Codable {
+        let signature: String
+    }
+
+    private struct DFApplicationAuthResponse: Codable {
+        let token: String
+    }
+
+    public func applicationAuth(signature: String, selectedServer: DjangoFilesSession? = nil) async -> String? {
+        let request = DFApplicationAuthRequest(signature: signature)
+        do {
+            let json = try JSONEncoder().encode(request)
+            
+            // Create URL request manually to access response headers
+            var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.auth_application), parameters: [:]))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = json
+            
+            // Use default session configuration which persists cookies
+            let configuration = URLSessionConfiguration.default
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            
+            let auth_response = try decoder.decode(DFApplicationAuthResponse.self, from: data)
+            
+            // Use shared function to handle cookies and token if server is provided
+            if let selectedServer = selectedServer {
+                await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: auth_response.token)
+            }
+            
+            return auth_response.token
+        } catch {
+            print("Application auth request failed \(error)")
+            return nil
+        }
+    }
 }
-
-
 
 class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, URLSessionDataDelegate, URLSessionTaskDelegate, URLSessionStreamDelegate{
     enum States {
@@ -639,12 +720,25 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     }
 }
 
-struct DFAuthMethod: Codable {
-    let name: String
-    let url: String
-}
+    struct DFAuthMethod: Codable {
+        let name: String
+        let url: String
+    }
 
-struct DFAuthMethodsResponse: Codable {
-    let authMethods: [DFAuthMethod]
-    let siteName: String
+    struct DFAuthMethodsResponse: Codable {
+        let authMethods: [DFAuthMethod]
+        let siteName: String
+    }
+
+class RedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Don't follow the redirect by passing nil
+        completionHandler(nil)
+    }
 }

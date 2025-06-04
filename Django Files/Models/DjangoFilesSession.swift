@@ -9,11 +9,13 @@ import Foundation
 import SwiftData
 
 @Model
-public final class DjangoFilesSession: Equatable {
+public final class DjangoFilesSession: Equatable, @unchecked Sendable {
     var url: String
     var defaultSession: Bool = false
     var token: String
     var auth: Bool = false
+    var userID: Int?
+    var username: String?
     @Transient var cookies: [HTTPCookie] = []
     
     init() {

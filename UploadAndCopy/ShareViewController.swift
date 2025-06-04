@@ -10,7 +10,7 @@ import Social
 import SwiftData
 import CoreHaptics
 
-class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTaskDelegate {
+class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTaskDelegate, UITextViewDelegate {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -31,6 +31,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     @IBOutlet weak var availableServers: UIButton!
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     @IBOutlet weak var shortTextLabel: UILabel!
+    @IBOutlet weak var textView: UITextView!
     @IBOutlet weak var shortText: UITextField!
     @IBOutlet weak var shareLabel: UILabel!
     
@@ -45,6 +46,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         self.activityIndicator.hidesWhenStopped = true
         
         shortText.delegate = self
+        textView.delegate = self
         
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
@@ -57,6 +59,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         getAvailableServers()
         
         self.progressBar.isHidden = true
+        self.textView.isHidden = true
         var loaded: Bool = false
         for extensionItem in extensionItems {
             for ele in extensionItem.attachments! {
@@ -116,8 +119,41 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                             self.shortText.placeholder = self.randomString(length: 5)
                             self.shareURL = item as? URL
                             self.shareLabel.text = "Shorten Link"
+                            self.textView.isHidden = false
+                            self.textView.isEditable = false
+                            self.textView.text = self.shareURL!.absoluteString
                             if self.shareURL!.absoluteString.hasPrefix("http://") || self.shareURL!.absoluteString.hasPrefix("https://"){
                                 self.doShorten = true
+                            }
+                            self.activityIndicator.stopAnimating()
+                            self.shareButton.isEnabled = true
+                        }
+                    })
+                    loaded = true
+                    break
+                }
+                else if itemProvider.hasItemConformingToTypeIdentifier("public.text") || itemProvider.hasItemConformingToTypeIdentifier("public.plain-text") {
+                    itemProvider.loadItem(forTypeIdentifier: itemProvider.registeredTypeIdentifiers[0], options: nil, completionHandler: { (item, error) in
+                        DispatchQueue.main.async {
+                            self.shortText.isHidden = true
+                            self.shortTextLabel.isHidden = true
+                            self.textView.isHidden = false
+                            
+                            if let text = item as? String {
+                                // Show the text preview
+                                self.textView.text = text
+                                
+                                // Create a temporary file to store the text
+                                let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
+                                let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).txt")
+                                do {
+                                    try text.write(to: targetURL, atomically: true, encoding: .utf8)
+                                    self.isTempFile = true
+                                    self.shareURL = targetURL
+                                    self.shareLabel.text = "Upload Text"
+                                } catch {
+                                    self.showMessageAndDismiss(message: "Could not share text.")
+                                }
                             }
                             self.activityIndicator.stopAnimating()
                             self.shareButton.isEnabled = true
@@ -219,6 +255,16 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         self.progressBar.isHidden = false
         self.progressBar.progress = 0
         
+        // If we're sharing text and it's been edited, update the file content
+        if let text = textView.text, !textView.isHidden {
+            do {
+                try text.write(to: shareURL!, atomically: true, encoding: .utf8)
+            } catch {
+                self.showMessageAndDismiss(message: "Could not update text content.")
+                return
+            }
+        }
+        
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         Task{
             let task = await api.uploadFileStreamed(url: shareURL!, taskDelegate: self)
@@ -245,7 +291,7 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         let shortLink: String = (self.shortText.text == nil || self.shortText.text == "") ? randomString(length: 5) : self.shortText.text!
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         Task{
-            let response = await api.createShort(url: shareURL!, short: shortLink)
+            let response = await api.createShort(url: shareURL!, short: shortLink, selectedServer: session)
             self.activityIndicator.stopAnimating()
             
             if response == nil{

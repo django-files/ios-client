@@ -13,14 +13,12 @@ struct OAuthWebView: View {
     }
     
     private func startAuthentication() {
-        print("Starting authentication...")
         guard let authURL = URL(string: url) else {
             print("Failed to create URL from string: '\(url)'")
             onComplete(nil, nil, nil)
             dismiss()
             return
         }
-        print("Auth URL created: \(authURL)")
     
         // Create the auth session
         let session = ASWebAuthenticationSession(
@@ -28,7 +26,7 @@ struct OAuthWebView: View {
             callbackURLScheme: "djangofiles",
             completionHandler: { callbackURL, error in          
                 if let error = error {
-                    print("Authentication failed: \(error.localizedDescription)")
+                    print("Authentication failed: \(error)")
                     onComplete(nil, nil, nil)
                     dismiss()
                     return
@@ -44,18 +42,16 @@ struct OAuthWebView: View {
                             dismiss()
                             return
                         }
-                print(oauth_error)
                 onComplete(token, sessionKey, oauth_error)
                 dismiss()
             }
         )
 
-        // Present the authentication session
         session.presentationContextProvider = WindowProvider.shared
         session.prefersEphemeralWebBrowserSession = false
         
         let started = session.start()
-        print("Session started: \(started)")  // Debug print
+        print("Session started: \(started)")
         
         if !started {
             print("Failed to start authentication session")
