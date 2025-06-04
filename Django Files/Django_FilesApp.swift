@@ -237,42 +237,43 @@ struct Django_FilesApp: App {
             return
         }
 
-        // Create and authenticate the new session
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        do {
-            let existingSessions = try context.fetch(descriptor)
+        await MainActor.run {
+            // Create and authenticate the new session
+            let context = sharedModelContainer.mainContext
             
-            // If no existing session, create and authenticate a new one
-            if let newSession = await sessionManager.createAndAuthenticateSession(
-                url: serverURL,
-                signature: signature,
-                context: context
-            ) {
-                // Update the UI on the main thread
-                await MainActor.run {
-                    if setAsDefault {
-                        // Reset all other sessions to not be default
-                        for session in existingSessions {
-                            session.defaultSession = false
+            do {
+                let descriptor = FetchDescriptor<DjangoFilesSession>()
+                let existingSessions = try context.fetch(descriptor)
+                
+                // Create and authenticate the new session
+                Task {
+                    if let newSession = await sessionManager.createAndAuthenticateSession(
+                        url: serverURL,
+                        signature: signature,
+                        context: context
+                    ) {
+                        if setAsDefault {
+                            // Reset all other sessions to not be default
+                            for session in existingSessions {
+                                session.defaultSession = false
+                            }
+                            newSession.defaultSession = true
                         }
-                        newSession.defaultSession = true
+                        sessionManager.selectedSession = newSession
+                        hasExistingSessions = true
+                        selectedTab = .files
+                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
                     }
-                    sessionManager.selectedSession = newSession
-                    hasExistingSessions = true
-                    selectedTab = .files
-                    ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
                 }
+            } catch {
+                ToastManager.shared.showToast(message: "Problem signing into server \(error)")
+                print("Error creating new session: \(error)")
             }
-        } catch {
-            ToastManager.shared.showToast(message: "Problem signing into server \(error)")
-            print("Error creating new session: \(error)")
+            
+            // Clear pending auth data
+            pendingAuthURL = nil
+            pendingAuthSignature = nil
         }
-        
-        // Clear pending auth data
-        pendingAuthURL = nil
-        pendingAuthSignature = nil
     }
     
     private func checkDefaultServer() {
