@@ -14,9 +14,9 @@ import FirebaseCrashlytics
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    // Skip Firebase initialization in test environment
-    let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    if !isRunningTests {
+    // Skip Firebase initialization if disabled via launch arguments
+    let shouldDisableFirebase = ProcessInfo.processInfo.arguments.contains("--DisableFirebase")
+    if !shouldDisableFirebase {
         FirebaseApp.configure()
         
         // Initialize Firebase Analytics based on user preference

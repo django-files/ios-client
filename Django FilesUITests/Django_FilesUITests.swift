@@ -26,7 +26,7 @@ final class Django_FilesUITests: XCTestCase {
     func testNewServer() throws {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
-        app.launchArguments = ["--DeleteAllData"]
+        app.launchArguments = ["--DeleteAllData", "--DisableFirebase"]
         app.launchEnvironment = ["RESET_STATE": "YES"]
         app.launch()
         let textField = app.textFields["urlTextField"]
