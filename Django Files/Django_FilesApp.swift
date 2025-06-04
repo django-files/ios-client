@@ -55,6 +55,35 @@ struct Django_FilesApp: App {
     init() {
         // print("📱 Setting up WebSocketToastObserver")
         let _ = WebSocketToastObserver.shared
+        
+        // Handle reset arguments
+        if CommandLine.arguments.contains("--DeleteAllData") {
+            // Clear UserDefaults
+            if let bundleID = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                do {
+                    let context = sharedModelContainer.mainContext
+                    // Delete all DjangoFilesSession objects
+                    try context.delete(model: DjangoFilesSession.self)
+                    try context.save()
+                } catch {
+                    print("Error clearing SwiftData store: \(error)")
+                    // Clear any files in the app's documents directory
+                    if let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                        do {
+                            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath,
+                                                                                       includingPropertiesForKeys: nil)
+                            for fileURL in fileURLs {
+                                try FileManager.default.removeItem(at: fileURL)
+                            }
+                        } catch {
+                            print("Error clearing documents directory: \(error)")
+                            return
+                        }
+                    }
+                }
+            }
+        }
     }
 
     var body: some Scene {
