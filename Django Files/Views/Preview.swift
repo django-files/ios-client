@@ -958,7 +958,7 @@ struct FilePreviewView: View {
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
                         .background {
-                            if file.mime.starts(with: "text") {
+                            if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
                                 Rectangle()
                                     .fill(.ultraThinMaterial)
                                     .ignoresSafeArea()
