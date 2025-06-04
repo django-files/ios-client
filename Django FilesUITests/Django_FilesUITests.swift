@@ -38,18 +38,18 @@ final class Django_FilesUITests: XCTestCase {
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
 
-//    @MainActor
-//    func testLaunchPerformance() throws {
-//        #if targetEnvironment(simulator)
-//        // Skip performance testing in simulator as it's not reliable
-//        return
-//        #else
-//        if #available(iOS 18.0, *) {
-//            // This measures how long it takes to launch your application.
-//            measure(metrics: [XCTApplicationLaunchMetric()]) {
-//                XCUIApplication().launch()
-//            }
-//        }
-//        #endif
-//    }
+    @MainActor
+    func testLaunchPerformance() throws {
+        #if targetEnvironment(simulator)
+        // Skip performance testing in simulator as it's not reliable
+        return
+        #else
+        if #available(iOS 18.0, *) {
+            // This measures how long it takes to launch your application.
+            measure(metrics: [XCTApplicationLaunchMetric()]) {
+                XCUIApplication().launch()
+            }
+        }
+        #endif
+    }
 }
