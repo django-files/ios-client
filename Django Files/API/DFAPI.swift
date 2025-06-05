@@ -20,6 +20,9 @@ import SwiftUI  // Needed for ToastManager
 struct DFAPI {
     private static let API_PATH = "/api/"
     
+    // Custom User Agent for API requests
+    private static let customUserAgent = "DjangoFiles iOS \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")(\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"))"
+
     // Add a shared WebSocket instance
     internal static var sharedWebSocket: DFWebSocket?
     
@@ -88,6 +91,7 @@ struct DFAPI {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.authorization] = token
         request.headerFields[.referer] = url.absoluteString
+        request.headerFields[.userAgent] = DFAPI.customUserAgent
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
@@ -107,6 +111,7 @@ struct DFAPI {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
+        request.headerFields[.userAgent] = DFAPI.customUserAgent
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
@@ -126,6 +131,7 @@ struct DFAPI {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
         request.headerFields[.authorization] = self.token
+        request.headerFields[.userAgent] = DFAPI.customUserAgent
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
@@ -248,6 +254,7 @@ struct DFAPI {
             var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:]))
             urlRequest.httpMethod = "POST"
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")
             urlRequest.httpBody = json
             
             // Use default session configuration which persists cookies
@@ -286,6 +293,7 @@ struct DFAPI {
             var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:]))
             urlRequest.httpMethod = "POST"
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")
             urlRequest.httpBody = json
             
             if let url = urlRequest.url {
@@ -338,6 +346,7 @@ struct DFAPI {
             var request = HTTPRequest(method: .get, url: targetURL)
             request.headerFields[.authorization] = self.token
             request.headerFields[.referer] = self.url.absoluteString
+            request.headerFields[.userAgent] = DFAPI.customUserAgent
             
             let configuration = URLSessionConfiguration.ephemeral
             let delegate = RedirectDelegate()
@@ -379,6 +388,7 @@ struct DFAPI {
             var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.auth_application), parameters: [:]))
             urlRequest.httpMethod = "POST"
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")
             urlRequest.httpBody = json
             
             // Use default session configuration which persists cookies
