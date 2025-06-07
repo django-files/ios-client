@@ -28,6 +28,7 @@ struct ContentPreview: View {
     let fileURL: URL
     let file: DFFile
     var showFileInfo: Binding<Bool>
+    @Binding var selectedFileDetails: DFFile?
 
     @State private var content: Data?
     @State private var isLoading = true
@@ -78,19 +79,6 @@ struct ContentPreview: View {
                 audioPreview
             } else {
                 genericFilePreview
-            }
-        }
-        .sheet(isPresented: showFileInfo, onDismiss: { showFileInfo.wrappedValue = false }) {
-            if let details = fileDetails {
-                PreviewFileInfo(file: details)
-                    .presentationBackground(.ultraThinMaterial)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            } else {
-                PreviewFileInfo(file: file)
-                    .presentationBackground(.ultraThinMaterial)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
             }
         }
         .ignoresSafeArea()
@@ -286,6 +274,7 @@ struct ContentPreview: View {
             if let details = await api.getFileDetails(fileID: file.id) {
                 await MainActor.run {
                     self.fileDetails = details
+                    self.selectedFileDetails = details
                 }
             }
         }
@@ -297,6 +286,7 @@ struct PageViewController: UIViewControllerRepresentable {
     var currentIndex: Int
     var redirectURLs: [String: String]
     var showFileInfo: Binding<Bool>
+    @Binding var selectedFileDetails: DFFile?
     var onPageChange: (Int) -> Void
     
     func makeCoordinator() -> Coordinator {
@@ -345,7 +335,8 @@ struct PageViewController: UIViewControllerRepresentable {
                 mimeType: file.mime,
                 fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.raw)!,
                 file: file,
-                showFileInfo: parent.showFileInfo
+                showFileInfo: parent.showFileInfo,
+                selectedFileDetails: parent.$selectedFileDetails
             )
             return UIHostingController(rootView: contentPreview)
         }
@@ -392,6 +383,7 @@ struct FilePreviewView: View {
     @State private var redirectURLs: [String: String] = [:]
     @State private var dragOffset = CGSize.zero
     @GestureState private var dragState = DragState.inactive
+    @State private var selectedFileDetails: DFFile?
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -458,9 +450,9 @@ struct FilePreviewView: View {
                         currentIndex: currentIndex,
                         redirectURLs: redirectURLs,
                         showFileInfo: $showFileInfo,
+                        selectedFileDetails: $selectedFileDetails,
                         onPageChange: { newIndex in
                             onNavigate(newIndex)
-                            // Preload more files when page changes
                             Task {
                                 await preloadFiles()
                             }
@@ -620,6 +612,19 @@ struct FilePreviewView: View {
             // Preload files when current index changes externally
             Task {
                 await preloadFiles()
+            }
+        }
+        .sheet(isPresented: $showFileInfo) {
+            if let details = selectedFileDetails {
+                PreviewFileInfo(file: details)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            } else {
+                PreviewFileInfo(file: file)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
