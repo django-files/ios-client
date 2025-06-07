@@ -26,7 +26,7 @@ extension Edge {
 struct ContentPreview: View {
     let mimeType: String
     let fileURL: URL
-    @Binding var file: DFFile
+    let file: DFFile
     var showFileInfo: Binding<Bool>
 
     @State private var content: Data?
@@ -66,16 +66,10 @@ struct ContentPreview: View {
     // Determine the appropriate view based on MIME type
     private var contentView: some View {
         Group {
-            if mimeType.starts(with: "text/") {
+            if mimeType == "application/pdf" {
+                pdfPreview
+            } else if mimeType.starts(with: "text/") || (mimeType.starts(with: "application/") && mimeType.contains("json")) {
                 textPreview
-            } else if mimeType.starts(with: "application/") {
-                if mimeType == "application/pdf" {
-                    pdfPreview
-                } else if mimeType.contains("json") {
-                    textPreview
-                } else {
-                    genericFilePreview
-                }
             } else if mimeType.starts(with: "image/") {
                 imagePreview
             } else if mimeType.starts(with: "video/") {
@@ -99,6 +93,8 @@ struct ContentPreview: View {
                     .presentationDragIndicator(.visible)
             }
         }
+        .ignoresSafeArea()
+        .id(fileURL)
     }
 
     // Text Preview
@@ -278,6 +274,8 @@ struct ContentPreview: View {
     private func loadFileDetails() {
         guard let serverURL = URL(string: file.url)?.host else { return }
         
+        print("Loading file details for \(file.url) on \(serverURL)")
+        
         // Construct the base URL from the file's URL
         let baseURL = URL(string: "https://\(serverURL)")!
         
@@ -294,32 +292,92 @@ struct ContentPreview: View {
     }
 }
 
-class CustomScrollView: UIScrollView {
-    override func layoutSubviews() {
-        super.layoutSubviews()
+struct PageViewController: UIViewControllerRepresentable {
+    var files: [DFFile]
+    var currentIndex: Int
+    var redirectURLs: [String: String]
+    var showFileInfo: Binding<Bool>
+    var onPageChange: (Int) -> Void
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    func makeUIViewController(context: Context) -> UIPageViewController {
+        let pageViewController = UIPageViewController(
+            transitionStyle: .scroll,
+            navigationOrientation: .horizontal
+        )
+        pageViewController.dataSource = context.coordinator
+        pageViewController.delegate = context.coordinator
         
-        // Center the image after layout
-        if let imageView = subviews.first as? UIImageView {
-            var frameToCenter = imageView.frame
-            
-            if frameToCenter.size.width < bounds.size.width {
-                frameToCenter.origin.x = (bounds.size.width - frameToCenter.size.width) / 2
-            } else {
-                frameToCenter.origin.x = 0
+        // Create and set the initial view controller
+        if let initialVC = context.coordinator.createContentViewController(for: currentIndex) {
+            pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
+        }
+        
+        return pageViewController
+    }
+    
+    func updateUIViewController(_ pageViewController: UIPageViewController, context: Context) {
+        if let currentVC = pageViewController.viewControllers?.first as? UIHostingController<ContentPreview>,
+           let currentFileIndex = files.firstIndex(where: { $0.id == currentVC.rootView.file.id }),
+           currentFileIndex != currentIndex {
+            // Update to the new index if it's different
+            if let newVC = context.coordinator.createContentViewController(for: currentIndex) {
+                let direction: UIPageViewController.NavigationDirection = currentFileIndex > currentIndex ? .reverse : .forward
+                pageViewController.setViewControllers([newVC], direction: direction, animated: true)
             }
+        }
+    }
+    
+    class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
+        var parent: PageViewController
+        
+        init(_ pageViewController: PageViewController) {
+            self.parent = pageViewController
+        }
+        
+        func createContentViewController(for index: Int) -> UIHostingController<ContentPreview>? {
+            guard index >= 0 && index < parent.files.count else { return nil }
+            let file = parent.files[index]
+            let contentPreview = ContentPreview(
+                mimeType: file.mime,
+                fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.raw)!,
+                file: file,
+                showFileInfo: parent.showFileInfo
+            )
+            return UIHostingController(rootView: contentPreview)
+        }
+        
+        func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
+            guard let currentVC = viewController as? UIHostingController<ContentPreview>,
+                  let currentIndex = parent.files.firstIndex(where: { $0.id == currentVC.rootView.file.id }),
+                  currentIndex > 0
+            else { return nil }
             
-            if frameToCenter.size.height < bounds.size.height {
-                frameToCenter.origin.y = (bounds.size.height - frameToCenter.size.height) / 2
-            } else {
-                frameToCenter.origin.y = 0
-            }
+            return createContentViewController(for: currentIndex - 1)
+        }
+        
+        func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+            guard let currentVC = viewController as? UIHostingController<ContentPreview>,
+                  let currentIndex = parent.files.firstIndex(where: { $0.id == currentVC.rootView.file.id }),
+                  currentIndex < parent.files.count - 1
+            else { return nil }
             
-            imageView.frame = frameToCenter
+            return createContentViewController(for: currentIndex + 1)
+        }
+        
+        func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
+            guard completed,
+                  let currentVC = pageViewController.viewControllers?.first as? UIHostingController<ContentPreview>,
+                  let currentIndex = parent.files.firstIndex(where: { $0.id == currentVC.rootView.file.id })
+            else { return }
+            
+            parent.onPageChange(currentIndex)
         }
     }
 }
-
-
 
 struct FilePreviewView: View {
     @Binding var file: DFFile
@@ -334,8 +392,6 @@ struct FilePreviewView: View {
     @State private var redirectURLs: [String: String] = [:]
     @State private var dragOffset = CGSize.zero
     @GestureState private var dragState = DragState.inactive
-    @State private var previousIndex: Int? = nil
-    @State private var finalOffset: CGFloat = 0
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -369,6 +425,23 @@ struct FilePreviewView: View {
         }
     }
     
+    @MainActor
+    private func preloadFiles() async {
+        // Load the current file and preload adjacent files
+        let filesToLoad = [-2, -1, 0, 1, 2]
+            .map { currentIndex + $0 }
+            .filter { $0 >= 0 && $0 < allFiles.count }
+            .map { allFiles[$0] }
+        
+        await withTaskGroup(of: Void.self) { group in
+            for fileToLoad in filesToLoad {
+                group.addTask {
+                    await loadSingleFileRedirect(fileToLoad)
+                }
+            }
+        }
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -376,103 +449,79 @@ struct FilePreviewView: View {
                     ProgressView()
                         .onAppear {
                             Task {
-                                await loadRedirectURL(for: file)
+                                await preloadFiles()
                             }
                         }
                 } else {
-                    ContentPreview(mimeType: file.mime, fileURL: URL(string: redirectURLs[file.raw]!)!, file: $file, showFileInfo: $showFileInfo)
-                        .id(file.id)
-                        .offset(x: dragState.translation.width + finalOffset, y: dragState.translation.height)
-                        .transition(.move(edge: previousIndex ?? 0 > currentIndex ? .leading : .trailing))
-                        .onChange(of: currentIndex) { oldIndex, newIndex in
-                            previousIndex = oldIndex
-                            finalOffset = 0
+                    PageViewController(
+                        files: allFiles,
+                        currentIndex: currentIndex,
+                        redirectURLs: redirectURLs,
+                        showFileInfo: $showFileInfo,
+                        onPageChange: { newIndex in
+                            onNavigate(newIndex)
+                            // Preload more files when page changes
+                            Task {
+                                await preloadFiles()
+                            }
                         }
-                        .onDisappear {
-                            showingPreview = false
-                        }
-                        .gesture(
-                            DragGesture()
-                                .updating($dragState) { value, state, _ in
-                                    state = .dragging(translation: value.translation)
-                                }
-                                .onEnded { value in
-                                    let translation = value.translation
-                                    let velocity = CGSize(
-                                        width: (value.predictedEndLocation.x - value.location.x) / 1.5,
-                                        height: (value.predictedEndLocation.y - value.location.y) / 1.5
-                                    )
-                                    
-                                    // Determine if the gesture is more horizontal or vertical
-                                    let isHorizontal = abs(translation.width) > abs(translation.height)
-                                    
-                                    if isHorizontal {
-                                        let offsetX = translation.width
-                                        let progress = offsetX / geometry.size.width
-                                        let velocityThreshold: CGFloat = 200
-                                        let progressThreshold: CGFloat = 0.2
-                                        
-                                        if (progress > progressThreshold || velocity.width > velocityThreshold) && currentIndex > 0 {
-                                            finalOffset = geometry.size.width
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                onNavigate(currentIndex - 1)
-                                            }
-                                        } else if (progress < -progressThreshold || velocity.width < -velocityThreshold) && currentIndex < allFiles.count - 1 {
-                                            finalOffset = -geometry.size.width
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                onNavigate(currentIndex + 1)
-                                            }
-                                        } else {
-                                            withAnimation(.easeOut(duration: 0.2)) {
-                                                finalOffset = 0
-                                            }
-                                        }
-                                    } else {
-                                        let offsetY = translation.height
-                                        let progress = offsetY / geometry.size.height
-                                        let velocityThreshold: CGFloat = 200
-                                        let progressThreshold: CGFloat = 0.2
-                                        
-                                        if progress > progressThreshold || velocity.height > velocityThreshold {
-                                            withAnimation(.easeOut(duration: 0.2)) {
-                                                showingPreview = false
-                                            }
-                                        }
-                                    }
-                                }
-                        )
-                        .background(
-                            FileDialogs(
-                                showingDeleteConfirmation: $showingDeleteConfirmation,
-                                fileIDsToDelete: $fileIDsToDelete,
-                                fileNameToDelete: $fileNameToDelete,
-                                showingExpirationDialog: $showingExpirationDialog,
-                                expirationText: $expirationText,
-                                fileToExpire: $fileToExpire,
-                                showingPasswordDialog: $showingPasswordDialog,
-                                passwordText: $passwordText,
-                                fileToPassword: $fileToPassword,
-                                showingRenameDialog: $showingRenameDialog,
-                                fileNameText: $fileNameText,
-                                fileToRename: $fileToRename,
-                                onDelete: { fileIDs in
-                                    if await deleteFiles(fileIDs: fileIDs) {
+                    )
+                    .gesture(
+                        DragGesture()
+                            .updating($dragState) { value, state, _ in
+                                state = .dragging(translation: value.translation)
+                            }
+                            .onEnded { value in
+                                let translation = value.translation
+                                let velocity = CGSize(
+                                    width: value.predictedEndLocation.x - value.location.x,
+                                    height: value.predictedEndLocation.y - value.location.y
+                                )
+                                
+                                // Only handle vertical gestures for dismissal
+                                let progress = translation.height / geometry.size.height
+                                let velocityThreshold: CGFloat = 300
+                                let progressThreshold: CGFloat = 0.3
+                                
+                                if progress > progressThreshold || velocity.height > velocityThreshold {
+                                    withAnimation(.easeOut(duration: 0.2)) {
                                         showingPreview = false
-                                        return true
                                     }
-                                    return false
-                                },
-                                onSetExpiration: { file, expr in
-                                    await setFileExpr(file: file, expr: expr)
-                                },
-                                onSetPassword: { file, password in
-                                    await setFilePassword(file: file, password: password)
-                                },
-                                onRename: { file, name in
-                                    await renameFile(file: file, name: name)
                                 }
-                            )
+                            }
+                    )
+                    .background(
+                        FileDialogs(
+                            showingDeleteConfirmation: $showingDeleteConfirmation,
+                            fileIDsToDelete: $fileIDsToDelete,
+                            fileNameToDelete: $fileNameToDelete,
+                            showingExpirationDialog: $showingExpirationDialog,
+                            expirationText: $expirationText,
+                            fileToExpire: $fileToExpire,
+                            showingPasswordDialog: $showingPasswordDialog,
+                            passwordText: $passwordText,
+                            fileToPassword: $fileToPassword,
+                            showingRenameDialog: $showingRenameDialog,
+                            fileNameText: $fileNameText,
+                            fileToRename: $fileToRename,
+                            onDelete: { fileIDs in
+                                if await deleteFiles(fileIDs: fileIDs) {
+                                    showingPreview = false
+                                    return true
+                                }
+                                return false
+                            },
+                            onSetExpiration: { file, expr in
+                                await setFileExpr(file: file, expr: expr)
+                            },
+                            onSetPassword: { file, password in
+                                await setFilePassword(file: file, password: password)
+                            },
+                            onRename: { file, name in
+                                await renameFile(file: file, name: name)
+                            }
                         )
+                    )
 
                     ZStack(alignment: .top) {
                         VStack {
@@ -567,10 +616,21 @@ struct FilePreviewView: View {
                 }
             }
         }
+        .onChange(of: currentIndex) { _, _ in
+            // Preload files when current index changes externally
+            Task {
+                await preloadFiles()
+            }
+        }
     }
     
     @MainActor
     private func loadRedirectURL(for file: DFFile) async {
+        await preloadFiles()
+    }
+    
+    @MainActor
+    private func loadSingleFileRedirect(_ file: DFFile) async {
         guard redirectURLs[file.raw] == nil,
               let serverURL = URL(string: file.url)?.host else {
             return
@@ -581,24 +641,6 @@ struct FilePreviewView: View {
         
         if let redirectURL = await api.checkRedirect(url: file.raw) {
             redirectURLs[file.raw] = redirectURL
-            
-            // Preload adjacent files
-            if currentIndex > 0 {
-                let prevFile = allFiles[currentIndex - 1]
-                if redirectURLs[prevFile.raw] == nil {
-                    if let prevRedirectURL = await api.checkRedirect(url: prevFile.raw) {
-                        redirectURLs[prevFile.raw] = prevRedirectURL
-                    }
-                }
-            }
-            if currentIndex < allFiles.count - 1 {
-                let nextFile = allFiles[currentIndex + 1]
-                if redirectURLs[nextFile.raw] == nil {
-                    if let nextRedirectURL = await api.checkRedirect(url: nextFile.raw) {
-                        redirectURLs[nextFile.raw] = nextRedirectURL
-                    }
-                }
-            }
         } else {
             // If redirect fails, use the original URL
             redirectURLs[file.raw] = file.raw

@@ -121,3 +121,28 @@ struct ImageScrollView: UIViewRepresentable {
         }
     }
 }
+
+class CustomScrollView: UIScrollView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // Center the image after layout
+        if let imageView = subviews.first as? UIImageView {
+            var frameToCenter = imageView.frame
+
+            if frameToCenter.size.width < bounds.size.width {
+                frameToCenter.origin.x = (bounds.size.width - frameToCenter.size.width) / 2
+            } else {
+                frameToCenter.origin.x = 0
+            }
+
+            if frameToCenter.size.height < bounds.size.height {
+                frameToCenter.origin.y = (bounds.size.height - frameToCenter.size.height) / 2
+            } else {
+                frameToCenter.origin.y = 0
+            }
+
+            imageView.frame = frameToCenter
+        }
+    }
+}
