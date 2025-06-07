@@ -3,25 +3,6 @@ import AVKit
 import HighlightSwift
 import UIKit
 
-extension AnyTransition {
-    static func slideTransition(edge: Edge, dragOffset: CGFloat = 0) -> AnyTransition {
-        AnyTransition.asymmetric(
-            insertion: .move(edge: edge).combined(with: .opacity),
-            removal: .move(edge: edge.opposite).combined(with: .opacity)
-        )
-    }
-}
-
-extension Edge {
-    var opposite: Edge {
-        switch self {
-        case .leading: return .trailing
-        case .trailing: return .leading
-        case .top: return .bottom
-        case .bottom: return .top
-        }
-    }
-}
 
 struct ContentPreview: View {
     let mimeType: String
@@ -87,103 +68,11 @@ struct ContentPreview: View {
 
     // Text Preview
     private var textPreview: some View {
-        ScrollView {
-            ZStack {
-                if let content = content, let text = String(data: content, encoding: .utf8) {
-                    CodeText(text)
-                        .highlightLanguage(determineLanguage(from: mimeType, fileName: fileURL.lastPathComponent))
-                        .padding()
-                } else {
-                    Text("Unable to decode text content")
-                        .foregroundColor(.red)
-                }
-            }
-            .padding(.top, 40)
-        }
-    }
-
-    // Helper function to determine the highlight language based on file type
-    private func determineLanguage(from mimeType: String, fileName: String) -> HighlightLanguage {
-        let fileExtension = (fileName as NSString).pathExtension.lowercased()
-        
-        switch fileExtension {
-        case "swift":
-            return .swift
-        case "py", "python":
-            return .python
-        case "js", "javascript":
-            return .javaScript
-        case "java":
-            return .java
-        case "cpp", "c", "h", "hpp":
-            return .cPlusPlus
-        case "html":
-            return .html
-        case "css":
-            return .css
-        case "json":
-            return .json
-        case "md", "markdown":
-            return .markdown
-        case "sh", "bash":
-            return .bash
-        case "rb", "ruby":
-            return .ruby
-        case "go":
-            return .go
-        case "rs":
-            return .rust
-        case "php":
-            return .php
-        case "sql":
-            return .sql
-        case "ts", "typescript":
-            return .typeScript
-        case "yaml", "yml":
-            return .yaml
-        default:
-            // For plain text or unknown types
-            if mimeType == "text/plain" {
-                return .plaintext
-            }
-            // Try to determine from mime type if extension didn't match
-            let mimePrimeType = mimeType.split(separator: "/").first?.lowercased() ?? ""
-            let mimeSubtype = mimeType.split(separator: "/").last?.lowercased() ?? ""
-
-            switch mimePrimeType {
-            case "application":
-                switch mimeSubtype {
-                    case "json", "x-ndjson":
-                        return .json
-                default:
-                    return .plaintext
-                }
-            case "text":
-                switch mimeSubtype {
-                case "javascript":
-                    return .javaScript
-                case "python":
-                    return .python
-                case "java":
-                    return .java
-                case "html":
-                    return .html
-                case "css":
-                    return .css
-                case "json", "x-ndjson":
-                    return .json
-                case "markdown":
-                    return .markdown
-                case "xml":
-                    return .html
-                default:
-                    return .plaintext
-                }
-            default:
-                return .plaintext
-            }
-
-        }
+        TextPreview(
+            content: content,
+            mimeType: mimeType,
+            fileName: fileURL.lastPathComponent
+        )
     }
 
     // Image Preview
@@ -261,14 +150,8 @@ struct ContentPreview: View {
 
     private func loadFileDetails() {
         guard let serverURL = URL(string: file.url)?.host else { return }
-        
-        print("Loading file details for \(file.url) on \(serverURL)")
-        
-        // Construct the base URL from the file's URL
         let baseURL = URL(string: "https://\(serverURL)")!
-        
-        // Create DFAPI instance
-        let api = DFAPI(url: baseURL, token: "")  // Token will be handled by cookies
+        let api = DFAPI(url: baseURL, token: "")
         
         Task {
             if let details = await api.getFileDetails(fileID: file.id) {
@@ -458,30 +341,6 @@ struct FilePreviewView: View {
                             }
                         }
                     )
-                    .gesture(
-                        DragGesture()
-                            .updating($dragState) { value, state, _ in
-                                state = .dragging(translation: value.translation)
-                            }
-                            .onEnded { value in
-                                let translation = value.translation
-                                let velocity = CGSize(
-                                    width: value.predictedEndLocation.x - value.location.x,
-                                    height: value.predictedEndLocation.y - value.location.y
-                                )
-                                
-                                // Only handle vertical gestures for dismissal
-                                let progress = translation.height / geometry.size.height
-                                let velocityThreshold: CGFloat = 300
-                                let progressThreshold: CGFloat = 0.3
-                                
-                                if progress > progressThreshold || velocity.height > velocityThreshold {
-                                    withAnimation(.easeOut(duration: 0.2)) {
-                                        showingPreview = false
-                                    }
-                                }
-                            }
-                    )
                     .background(
                         FileDialogs(
                             showingDeleteConfirmation: $showingDeleteConfirmation,
@@ -607,6 +466,44 @@ struct FilePreviewView: View {
                     }
                 }
             }
+            .offset(y: dragOffset.height)
+            .gesture(
+                DragGesture()
+                    .updating($dragState) { value, state, _ in
+                        state = .dragging(translation: value.translation)
+                    }
+                    .onChanged { value in
+                        let translation = value.translation
+                        // Only allow vertical dragging with initial resistance
+                        let dampingFactor: CGFloat = 0.5 // Increase this value for more resistance
+                        let dampenedHeight = pow(translation.height, dampingFactor) * 8
+                        dragOffset = CGSize(width: 0, height: max(0, dampenedHeight))
+                    }
+                    .onEnded { value in
+                        let translation = value.translation
+                        let velocity = CGSize(
+                            width: value.predictedEndLocation.x - value.location.x,
+                            height: value.predictedEndLocation.y - value.location.y
+                        )
+                        
+                        // Only handle vertical gestures for dismissal
+                        let progress = translation.height / geometry.size.height
+                        let velocityThreshold: CGFloat = 300
+                        let progressThreshold: CGFloat = 0.3
+                        
+                        if progress > progressThreshold || velocity.height > velocityThreshold {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                dragOffset = CGSize(width: 0, height: geometry.size.height)
+                                showingPreview = false
+                            }
+                        } else {
+                            // Reset position if not dismissed
+                            withAnimation(.spring()) {
+                                dragOffset = .zero
+                            }
+                        }
+                    }
+            )
         }
         .onChange(of: currentIndex) { _, _ in
             // Preload files when current index changes externally
