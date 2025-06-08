@@ -434,7 +434,14 @@ struct FileListView: View {
                     server: server,
                     showingPreview: $showingPreview,
                     showFileInfo: $showFileInfo,
-                    fileListDelegate: fileListManager
+                    fileListDelegate: fileListManager,
+                    allFiles: files,
+                    currentIndex: index,
+                    onNavigate: { newIndex in
+                        if newIndex >= 0 && newIndex < files.count {
+                            selectedFile = files[newIndex]
+                        }
+                    }
                 )
             }
         }
@@ -495,78 +502,34 @@ struct FileListView: View {
                 CreateAlbumView(server: serverInstance)
             }
         }
-        .confirmationDialog("Are you sure?", isPresented: $showingDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    await deleteFiles(fileIDs: fileIDsToDelete)
+        .background(
+            FileDialogs(
+                showingDeleteConfirmation: $showingDeleteConfirmation,
+                fileIDsToDelete: $fileIDsToDelete,
+                fileNameToDelete: $fileNameToDelete,
+                showingExpirationDialog: $showingExpirationDialog,
+                expirationText: $expirationText,
+                fileToExpire: $fileToExpire,
+                showingPasswordDialog: $showingPasswordDialog,
+                passwordText: $passwordText,
+                fileToPassword: $fileToPassword,
+                showingRenameDialog: $showingRenameDialog,
+                fileNameText: $fileNameText,
+                fileToRename: $fileToRename,
+                onDelete: { fileIDs in
+                    await deleteFiles(fileIDs: fileIDs)
+                },
+                onSetExpiration: { file, expr in
+                    await setFileExpiration(file: file, expr: expr)
+                },
+                onSetPassword: { file, password in
+                    await setFilePassword(file: file, password: password)
+                },
+                onRename: { file, name in
+                    await renameFile(file: file, name: name)
                 }
-            }
-            Button("Cancel", role: .cancel) {
-                // Optional: No action needed for cancel
-            }
-        } message: {
-            Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
-        }
-        .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
-            TextField("Enter expiration", text: $expirationText)
-            Button("Cancel", role: .cancel) {
-                fileToExpire = nil
-            }
-            Button("Set") {
-                if let file = fileToExpire {
-                    let expirationValue = expirationText
-                    Task {
-                        await setFileExpiration(file: file, expr: expirationValue)
-                        await MainActor.run {
-                            expirationText = ""
-                            fileToExpire = nil
-                        }
-                    }
-                }
-            }
-        } message: {
-            Text("Enter time until file expiration. Examples: 1h, 5days, 2y")
-        }
-        .alert("Set File Password", isPresented: $showingPasswordDialog) {
-            TextField("Enter password", text: $passwordText)
-            Button("Cancel", role: .cancel) {
-                fileToPassword = nil
-            }
-            Button("Set") {
-                if let file = fileToPassword {
-                    let passwordValue = passwordText
-                    Task {
-                        await setFilePassword(file: file, password: passwordValue)
-                        await MainActor.run {
-                            passwordText = ""
-                            fileToPassword = nil
-                        }
-                    }
-                }
-            }
-        } message: {
-            Text("Enter a password for the file.")
-        }
-        .alert("Rename File", isPresented: $showingRenameDialog) {
-            TextField("New File Name", text: $fileNameText)
-            Button("Cancel", role: .cancel) {
-                fileToRename = nil
-            }
-            Button("Set") {
-                if let file = fileToRename {
-                    let fileNameValue = fileNameText
-                    Task {
-                        await renameFile(file: file, name: fileNameValue)
-                        await MainActor.run {
-                            fileNameText = ""
-                            fileToRename = nil
-                        }
-                    }
-                }
-            }
-        } message: {
-            Text("Enter a new name for this file.")
-        }
+            )
+        )
         .onAppear {
             loadFiles()
         }
