@@ -16,6 +16,19 @@ public final class DjangoFilesSession: Equatable, @unchecked Sendable {
     var auth: Bool = false
     var userID: Int?
     var username: String?
+    var firstName: String?
+    var avatarUrl: URL?
+    var superUser: Bool = false
+    var defaultColor: String?
+    var navColorOne: String?
+    var navColorTwo: String?
+    var defaultFilePrivate: Bool = false
+    var defaultFilePassword: Bool = false
+    var defaultFileExpire: String?
+    var defaultFileRemoveExif: Bool = false
+    var defaultFileUploadNameFormat: String = "name"
+    
+    
     @Transient var cookies: [HTTPCookie] = []
     
     init() {

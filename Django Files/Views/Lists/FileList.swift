@@ -160,119 +160,6 @@ class FileListManager: ObservableObject, FileListDelegate {
     }
 }
 
-struct CustomLabel: LabelStyle {
-    var spacing: Double = 0.0
-    
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: spacing) {
-            configuration.icon
-            configuration.title
-        }
-    }
-}
-
-struct FileRowView: View {
-    @Binding var file: DFFile
-    var isPrivate: Bool { file.private }
-    var hasPassword: Bool { file.password != "" }
-    var hasExpiration: Bool { file.expr != "" }
-    let serverURL: URL
-    
-    private func getIcon() -> String {
-        if file.mime.hasPrefix("image/") {
-            return "photo.artframe"
-        } else if file.mime.hasPrefix("video/") {
-            return "video.fill"
-        } else {
-            return "doc.fill"
-        }
-    }
-    
-    private var thumbnailURL: URL {
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? serverURL
-    }
-    
-    var body: some View {
-        HStack(alignment: .center) {
-            VStack(spacing: 0) {
-                if file.mime.hasPrefix("image/") {
-                    CachedAsyncImage(url: thumbnailURL) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ProgressView()
-                    }
-                    .frame(width: 64, height: 64)
-                    .clipped()
-                    .cornerRadius(8)
-                } else {
-                    Image(systemName: getIcon())
-                        .font(.system(size: 50))
-                        .frame(width: 64, height: 64)
-                        .foregroundColor(Color.primary)
-                        .clipped()
-                }
-            }
-            .listRowSeparator(.visible)
-
-            
-            VStack(alignment: .leading, spacing: 5) {
-                
-                HStack(spacing: 5) {
-                    Text(file.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .foregroundColor(.blue)
-                }
-                
-                
-                HStack(spacing: 6) {
-                    Text(file.mime)
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .lineLimit(1)
-                    
-                    Label("", systemImage: "lock")
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .opacity(isPrivate ? 1 : 0)
-                    
-                    Label("", systemImage: "key")
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .opacity(hasPassword ? 1 : 0)
-                    
-                    Label("", systemImage: "calendar.badge.exclamationmark")
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .opacity(hasExpiration ? 1 : 0)
-                }
-                
-                HStack(spacing: 5) {
-
-                    
-                    Label(file.userUsername, systemImage: "person")
-                        .font(.caption)
-                        .labelStyle(CustomLabel(spacing: 3))
-                        .lineLimit(1)
-                    
-                    
-                    Text(file.formattedDate())
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .lineLimit(1)
-                }
-
-            }
-        }
-    }
-}
-
-
 struct FileListView: View {
     let server: Binding<DjangoFilesSession?>
     let albumID: Int?
@@ -291,6 +178,7 @@ struct FileListView: View {
     @State private var showingAlbumCreator: Bool = false
     @State private var showingPreview: Bool = false
     @State private var selectedFile: DFFile? = nil
+    @State private var filterUserID: Int? = nil
     
     @State private var showingDeleteConfirmation = false
     @State private var fileIDsToDelete: [Int] = []
@@ -311,6 +199,16 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     @State private var showFileInfo: Bool = false
+    @State private var showingUserFilter: Bool = false
+    @State private var users: [DFUser] = []
+    
+    // Add computed property for selected username
+    private var selectedUsername: String? {
+        if let userID = filterUserID {
+            return users.first(where: { $0.id == userID })?.username
+        }
+        return nil
+    }
     
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
@@ -318,6 +216,10 @@ struct FileListView: View {
         self.navigationPath = navigationPath
         self.albumName = albumName
         _fileListManager = StateObject(wrappedValue: FileListManager(server: server))
+        // Set initial filter to current user's ID
+        if let currentUserID = server.wrappedValue?.userID {
+            _filterUserID = State(initialValue: currentUserID)
+        }
     }
 
     private var files: [DFFile] {
@@ -454,6 +356,46 @@ struct FileListView: View {
         }
         .navigationTitle(getTitle(server: server, albumName: albumName))
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                HStack {
+                    Menu {
+                        if server.wrappedValue?.superUser ?? false {
+                            Button(action: {
+                                showingUserFilter = true
+                                Task {
+                                    if let serverInstance = server.wrappedValue,
+                                       let url = URL(string: serverInstance.url) {
+                                        let api = DFAPI(url: url, token: serverInstance.token)
+                                        users = await api.getAllUsers(selectedServer: serverInstance)
+                                    }
+                                }
+                            }) {
+                                Label("User Filter", systemImage: "person.2.circle")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    if selectedUsername != server.wrappedValue?.username {
+                        if let username = selectedUsername {
+                            Text("User: \(username)")
+                                .font(.caption)
+                                .padding(4)
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                        if filterUserID == 0 {
+                            Text("User: *")
+                                .font(.caption)
+                                .padding(4)
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                    }
+
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: {
@@ -500,6 +442,20 @@ struct FileListView: View {
         .sheet(isPresented: $showingAlbumCreator) {
             if let serverInstance = server.wrappedValue {
                 CreateAlbumView(server: serverInstance)
+            }
+        }
+        .sheet(isPresented: $showingUserFilter, onDismiss: {
+            Task {
+                await refreshFiles()
+            }
+        }) {
+            if let serverInstance = server.wrappedValue {
+                UserFilterView(users: $users, selectedUserID: $filterUserID)
+                    .onChange(of: filterUserID) { _ in
+                        Task {
+                            await refreshFiles()
+                        }
+                    }
             }
         }
         .background(
@@ -719,7 +675,7 @@ struct FileListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         
-        if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance) {
+        if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID) {
             if append {
                 files.append(contentsOf: filesResponse.files)
             } else {
@@ -792,4 +748,63 @@ struct FileListView: View {
         let _ = await fileListManager.renameFile(fileID: file.id, newName: name, onSuccess: nil)
     }
     
+}
+
+struct UserFilterView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var users: [DFUser]
+    @Binding var selectedUserID: Int?
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Button(action: {
+                    selectedUserID = 0
+                    Task {
+                        await MainActor.run {
+                            dismiss()
+                        }
+                    }
+                }) {
+                    HStack {
+                        Text("All Users")
+                        Spacer()
+                        if selectedUserID == nil {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                }
+                
+                ForEach(users, id: \.id) { user in
+                    Button(action: {
+                        selectedUserID = user.id
+                        Task {
+                            await MainActor.run {
+                                dismiss()
+                            }
+                        }
+                    }) {
+                        HStack {
+                            Text(user.username)
+                            Spacer()
+                            if selectedUserID == user.id {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Filter by User")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 }

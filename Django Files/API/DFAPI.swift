@@ -41,6 +41,8 @@ struct DFAPI {
         case album = "album/"
         case albums = "albums/"
         case auth_application = "auth/application/"
+        case user = "user/"
+        case users = "users/"
     }
     
     let url: URL

@@ -234,11 +234,14 @@ public struct DFFilesResponse: Codable {
 }
 
 extension DFAPI {
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFFilesResponse? {
+    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil) async -> DFFilesResponse? {
         do {
             var parameters: [String: String] = [:]
             if let album = album {
                 parameters["album"] = String(album)
+            }
+            if filterUserID != nil {
+                parameters["user"] = String(filterUserID!)
             }
             
             let responseBody = try await makeAPIRequest(
