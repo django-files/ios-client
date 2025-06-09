@@ -89,6 +89,7 @@
 				API/Short.swift,
 				API/Stats.swift,
 				API/Upload.swift,
+				API/Users.swift,
 				API/Websocket.swift,
 				Models/DjangoFilesSession.swift,
 			);

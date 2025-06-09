@@ -97,8 +97,18 @@ struct TabViewWindow: View {
         .onAppear {
             sessionManager.loadLastSelectedSession(from: sessions)
             
-            // Connect to WebSocket if a session is selected
+            // Update user data and connect to WebSocket if a session is selected
             if let selectedSession = sessionManager.selectedSession {
+                // Create the DFAPI instance
+                let api = DFAPI(url: URL(string: selectedSession.url)!, token: selectedSession.token)
+                
+                // Update user data if authenticated
+                if selectedSession.auth {
+                    Task {
+                        await api.updateSessionWithUserData(selectedSession)
+                    }
+                }
+                
                 connectToWebSocket(session: selectedSession)
             }
         }

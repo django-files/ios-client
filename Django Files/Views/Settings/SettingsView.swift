@@ -8,8 +8,57 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                if let server = sessionManager.selectedSession, !server.auth {
-                    Text("Please sign into the selected server from the server list to use the application.")
+                if let server = sessionManager.selectedSession {
+                    if server.auth {
+                        Section {
+                            HStack {
+                                if let avatarUrl = server.avatarUrl {
+                                    CachedAsyncImage(url: avatarUrl) { image in
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 50, height: 50)
+                                            .clipShape(Circle())
+                                    } placeholder: {
+                                        Image(systemName: "person.circle.fill")
+                                            .resizable()
+                                            .frame(width: 50, height: 50)
+                                            .foregroundColor(.gray)
+                                    }
+                                } else {
+                                    Image(systemName: "person.circle.fill")
+                                        .resizable()
+                                        .frame(width: 50, height: 50)
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                VStack(alignment: .leading) {
+                                    if let firstName = server.firstName, let username = server.username {
+                                        Text(firstName)
+                                            .font(.headline)
+                                        Text(username)
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    } else if let username = server.username {
+                                        Text(username)
+                                            .font(.headline)
+                                    }
+                                    HStack{
+                                        Text(server.url)
+                                            .font(.subheadline)
+                                    }
+                                }
+
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .onAppear {
+                            print("Avatar URL: \(String(describing: server.avatarUrl))")
+
+                        }
+                    } else {
+                        Text("Please sign into the selected server from the server list to use the application.")
+                    }
                 }
                 
                 Section {
