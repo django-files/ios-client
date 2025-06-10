@@ -72,6 +72,9 @@ struct TabViewWindow: View {
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
                         sessionManager.saveSelectedSession()
+                        Task {
+                            await refreshUserData(session: session)
+                        }
                         connectToWebSocket(session: session)
                         serverChangeRefreshTrigger = UUID()
                         if !session.auth {
@@ -96,22 +99,18 @@ struct TabViewWindow: View {
         }
         .onAppear {
             sessionManager.loadLastSelectedSession(from: sessions)
-            
-            // Update user data and connect to WebSocket if a session is selected
             if let selectedSession = sessionManager.selectedSession {
-                // Create the DFAPI instance
-                let api = DFAPI(url: URL(string: selectedSession.url)!, token: selectedSession.token)
-                
-                // Update user data if authenticated
-                if selectedSession.auth {
-                    Task {
-                        await api.updateSessionWithUserData(selectedSession)
-                    }
-                }
-                
                 connectToWebSocket(session: selectedSession)
+                Task {
+                    await refreshUserData(session: selectedSession)
+                }
             }
         }
+    }
+    
+    private func refreshUserData(session: DjangoFilesSession) async {
+        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
+        _ = await api.updateSessionWithUserData(session)
     }
     
     // Helper function to connect to WebSocket

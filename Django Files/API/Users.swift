@@ -14,7 +14,7 @@ public struct DFUser: Codable {
     public let lastName: String
     public let email: String
     public let lastLogin: Date?
-    public let dateJoined: Date
+    public let dateJoined: Date?
     public let isSuperuser: Bool
     public let isStaff: Bool
     public let isActive: Bool
@@ -57,11 +57,11 @@ public struct DFUser: Codable {
             lastLogin = nil
         }
         
-        if let dateJoinedStr = try container.decode(String.self, forKey: .dateJoined) as String?,
+        if let dateJoinedStr = try container.decodeIfPresent(String.self, forKey: .dateJoined),
            let dateJoinedDate = dateFormatter.date(from: dateJoinedStr) {
             dateJoined = dateJoinedDate
         } else {
-            throw DecodingError.dataCorruptedError(forKey: .dateJoined, in: container, debugDescription: "Date string does not match format")
+            dateJoined = nil
         }
         
         isSuperuser = try container.decode(Bool.self, forKey: .isSuperuser)
@@ -163,6 +163,8 @@ extension DFAPI {
         guard let user = await getCurrentUser(selectedServer: session) else {
             return false
         }
+        
+        print("updating session with user data : \(user)")
         
         // Update session with user data
         session.userID = user.id
