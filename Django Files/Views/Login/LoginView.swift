@@ -322,11 +322,11 @@ struct OAuthURL: Identifiable {
     let url: String
 }
 
-//#Preview {
-//    LoginView(
-//        selectedServer: DjangoFilesSession(url: "http://localhost"),
-//        onLoginSuccess: {
-//            print("Login success")
-//        }
-//    )
-//}
+#Preview {
+    LoginView(
+        selectedServer: DjangoFilesSession(url: "http://localhost"),
+        onLoginSuccess: {
+            print("Login success")
+        }
+    )
+}

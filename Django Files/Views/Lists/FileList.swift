@@ -449,7 +449,7 @@ struct FileListView: View {
                 await refreshFiles()
             }
         }) {
-            if let serverInstance = server.wrappedValue {
+            if let _ = server.wrappedValue {
                 UserFilterView(users: $users, selectedUserID: $filterUserID)
                     .onChange(of: filterUserID) { _ in
                         Task {

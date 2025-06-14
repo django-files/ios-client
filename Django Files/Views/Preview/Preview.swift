@@ -52,6 +52,7 @@ struct ContentPreview: View {
                 pdfPreview
             } else if mimeType.starts(with: "text/") || (mimeType.starts(with: "application/") && mimeType.contains("json")) {
                 textPreview
+                    .padding(.top, 60)
             } else if mimeType.starts(with: "image/") {
                 imagePreview
             } else if mimeType.starts(with: "video/") {
@@ -341,6 +342,7 @@ struct FilePreviewView: View {
                             }
                         }
                     )
+                    .ignoresSafeArea()
                     .background(
                         FileDialogs(
                             showingDeleteConfirmation: $showingDeleteConfirmation,
