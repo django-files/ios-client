@@ -75,12 +75,6 @@ struct TabViewWindow: View {
                         Task {
                             await refreshUserData(session: session)
                         }
-                        connectToWebSocket(session: session)
-                        serverChangeRefreshTrigger = UUID()
-                        if !session.auth {
-                            selectedTab = .settings
-                            showLoginSheet = true
-                        }
                     }
                 }
                 .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
@@ -177,6 +171,11 @@ struct ServerSelector: View {
                     LoginView(selectedServer: session, onLoginSuccess:{
                         selectedSession = session
                     })
+                }
+            }
+            .onChange(of: authSession?.auth) { oldValue, newValue in
+                if newValue == true {
+                    authSession = nil
                 }
             }
             .sheet(item: $editSession) { session in
