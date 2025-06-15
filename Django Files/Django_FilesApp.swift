@@ -14,6 +14,7 @@ import FirebaseCrashlytics
 class PreviewStateManager: ObservableObject {
     @Published var deepLinkFile: DFFile?
     @Published var showingDeepLinkPreview = false
+    @Published var deepLinkTargetFileID: Int? = nil
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -119,6 +120,7 @@ struct Django_FilesApp: App {
                     TabViewWindow(sessionManager: sessionManager, selectedTab: $selectedTab)
                 }
             }
+            .environmentObject(previewStateManager)
             .onOpenURL { url in
                 handleDeepLink(url)
             }
@@ -246,8 +248,7 @@ struct Django_FilesApp: App {
                         await MainActor.run {
                             sessionManager.selectedSession = session
                             selectedTab = .files
-                            // Post notification to update deep link target file ID
-                            NotificationCenter.default.post(name: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil, userInfo: ["fileID": fileID])
+                            previewStateManager.deepLinkTargetFileID = fileID
                         }
                     } else {
                         print("❌ Failed to fetch file details")

@@ -93,6 +93,7 @@ struct TabViewWindow: View {
                     .tag(Tab.settings)
             }
         }
+        .environmentObject(previewStateManager)
         .onAppear {
             sessionManager.loadLastSelectedSession(from: sessions)
             if let selectedSession = sessionManager.selectedSession {

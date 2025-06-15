@@ -167,6 +167,7 @@ struct FileListView: View {
     let albumName: String?
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var previewStateManager: PreviewStateManager
     @StateObject private var fileListManager: FileListManager
     
     @State private var currentPage = 1
@@ -223,11 +224,6 @@ struct FileListView: View {
         if let currentUserID = server.wrappedValue?.userID {
             _filterUserID = State(initialValue: currentUserID)
         }
-        // Check for deep link target file ID on init
-        if let targetFileID = UserDefaults.standard.object(forKey: "deepLinkTargetFileID") as? Int {
-            _deepLinkTargetFileID = State(initialValue: targetFileID)
-            UserDefaults.standard.removeObject(forKey: "deepLinkTargetFileID")
-        }
     }
 
     private var files: [DFFile] {
@@ -252,11 +248,26 @@ struct FileListView: View {
     }
     
     private func checkForDeepLinkTarget() {
-        if let targetFileID = deepLinkTargetFileID,
-           let index = files.firstIndex(where: { $0.id == targetFileID }) {
-            selectedFile = files[index]
-            showingPreview = true
-            deepLinkTargetFileID = nil
+        print("checkForDeepLinkTarget Called with target: \(String(describing: previewStateManager.deepLinkTargetFileID))")
+        if let targetFileID = previewStateManager.deepLinkTargetFileID {
+            Task {
+                var currentPage = 1
+                var foundFile = false
+                while !foundFile {
+                    await fetchFiles(page: currentPage, append: currentPage > 1)
+                    if let index = files.firstIndex(where: { $0.id == targetFileID }) {
+                        await MainActor.run {
+                            selectedFile = files[index]
+                            showingPreview = true
+                            previewStateManager.deepLinkTargetFileID = nil
+                        }
+                        foundFile = true
+                    } else if !hasNextPage {
+                        break
+                    }
+                    currentPage += 1
+                }
+            }
         }
     }
     
@@ -479,7 +490,7 @@ struct FileListView: View {
         }) {
             if let _ = server.wrappedValue {
                 UserFilterView(users: $users, selectedUserID: $filterUserID)
-                    .onChange(of: filterUserID) { _ in
+                    .onChange(of: filterUserID) { oldValue, newValue in
                         Task {
                             await refreshFiles()
                         }
@@ -516,19 +527,8 @@ struct FileListView: View {
         )
         .onAppear {
             loadFiles()
-            checkForDeepLinkTarget()
-            // Add observer for deep link target file ID
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil, queue: .main) { notification in
-                if let fileID = notification.userInfo?["fileID"] as? Int {
-                    deepLinkTargetFileID = fileID
-                }
-            }
         }
-        .onDisappear {
-            // Remove observer when view disappears
-            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil)
-        }
-        .onChange(of: deepLinkTargetFileID) { _, newValue in
+        .onChange(of: previewStateManager.deepLinkTargetFileID) { _, newValue in
             if newValue != nil {
                 checkForDeepLinkTarget()
             }
