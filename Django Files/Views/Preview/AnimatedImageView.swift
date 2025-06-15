@@ -64,7 +64,7 @@ struct AnimatedImageScrollView: UIViewRepresentable {
     }
     
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        if let imageView = context.coordinator.imageView as? FLAnimatedImageView,
+        if let imageView = context.coordinator.imageView,
            let animatedImage = FLAnimatedImage(animatedGIFData: data) {
             imageView.animatedImage = animatedImage
             context.coordinator.updateZoomScaleForSize(scrollView.bounds.size)

@@ -122,7 +122,17 @@ struct Django_FilesApp: App {
             }
             .environmentObject(previewStateManager)
             .onOpenURL { url in
-                handleDeepLink(url)
+                DeepLinks.shared.handleDeepLink(
+                    url,
+                    context: sharedModelContainer.mainContext,
+                    sessionManager: sessionManager,
+                    previewStateManager: previewStateManager,
+                    selectedTab: $selectedTab,
+                    hasExistingSessions: $hasExistingSessions,
+                    showingServerConfirmation: $showingServerConfirmation,
+                    pendingAuthURL: $pendingAuthURL,
+                    pendingAuthSignature: $pendingAuthSignature
+                )
             }
             .sheet(isPresented: $showingServerConfirmation) {
                 ServerConfirmationView(
@@ -130,12 +140,30 @@ struct Django_FilesApp: App {
                     signature: $pendingAuthSignature,
                     onConfirm: { setAsDefault in
                         Task {
-                            await handleServerConfirmation(confirmed: true, setAsDefault: setAsDefault)
+                            await DeepLinks.shared.handleServerConfirmation(
+                                confirmed: true,
+                                setAsDefault: setAsDefault,
+                                pendingAuthURL: $pendingAuthURL,
+                                pendingAuthSignature: $pendingAuthSignature,
+                                context: sharedModelContainer.mainContext,
+                                sessionManager: sessionManager,
+                                hasExistingSessions: $hasExistingSessions,
+                                selectedTab: $selectedTab
+                            )
                         }
                     },
                     onCancel: {
                         Task {
-                            await handleServerConfirmation(confirmed: false, setAsDefault: false)
+                            await DeepLinks.shared.handleServerConfirmation(
+                                confirmed: false,
+                                setAsDefault: false,
+                                pendingAuthURL: $pendingAuthURL,
+                                pendingAuthSignature: $pendingAuthSignature,
+                                context: sharedModelContainer.mainContext,
+                                sessionManager: sessionManager,
+                                hasExistingSessions: $hasExistingSessions,
+                                selectedTab: $selectedTab
+                            )
                         }
                     },
                     context: sharedModelContainer.mainContext
@@ -165,248 +193,6 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
-    }
-    
-    private func handleDeepLink(_ url: URL) {
-        print("Deep link received: \(url)")
-        guard url.scheme == "djangofiles" else { return }
-        
-        // Extract the signature from the URL parameters
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
-            print("Invalid deep link URL")
-            return
-        }
-        print("Deep link host: \(components.host ?? "unknown")")
-        switch components.host {
-        case "authorize":
-            deepLinkAuth(components)
-        case "serverlist":
-            selectedTab = .settings
-        case "filelist":
-            handleFileListDeepLink(components)
-        case "preview":
-            handlePreviewLink(components)
-        default:
-            ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
-            print("Unsupported deep link type: \(components.host ?? "unknown")")
-        }
-    }
-    
-    private func handlePreviewLink(_ components: URLComponents) {
-        print("🔍 Handling preview deep link with components: \(components)")
-        
-        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: urlString),
-              let fileIDString = components.queryItems?.first(where: { $0.name == "file_id" })?.value,
-              let fileID = Int(fileIDString),
-              let fileName = components.queryItems?.first(where: { $0.name == "file_name" })?.value?.removingPercentEncoding else {
-            print("❌ Invalid preview deep link parameters")
-            return
-        }
-        
-        print("📡 Parsed deep link - Server: \(serverURL), FileID: \(fileID), FileName: \(fileName)")
-        
-        // Check if this server exists in user's sessions
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        Task {
-            do {
-                let existingSessions = try context.fetch(descriptor)
-                if let session = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    // Server exists in user's sessions, handle normally
-                    print("✅ Preview link for known server: \(serverURL.absoluteString)")
-                    
-                    // Check if session is authenticated
-                    if !session.auth {
-                        print("❌ Session is not authenticated")
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Please log in to view this file")
-                            selectedTab = .settings
-                        }
-                        return
-                    }
-                    
-                    // Create API instance with session token
-                    let api = DFAPI(url: serverURL, token: session.token)
-                    
-                    // Get file details to check ownership
-                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
-                        // Check if file belongs to current user
-                        if fileDetails.user != session.userID {
-                            print("❌ File does not belong to current user")
-                            // Handle like unknown server
-                            await MainActor.run {
-                                selectedTab = .files
-                                previewStateManager.deepLinkFile = fileDetails
-                                previewStateManager.showingDeepLinkPreview = true
-                            }
-                            return
-                        }
-                        
-                        // File belongs to current user, navigate to file list
-                        await MainActor.run {
-                            sessionManager.selectedSession = session
-                            selectedTab = .files
-                            previewStateManager.deepLinkTargetFileID = fileID
-                        }
-                    } else {
-                        print("❌ Failed to fetch file details")
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
-                        }
-                    }
-                } else {
-                    // Server not in user's sessions, try to fetch file info
-                    print("🔑 Preview link for unknown server: \(serverURL.absoluteString)")
-                    
-                    // Create a temporary API instance without authentication
-                    let api = DFAPI(url: serverURL, token: "")
-                    print("🌐 Created API instance for server: \(serverURL)")
-                    
-                    // Try to fetch file details
-                    print("📥 Attempting to fetch file details for ID: \(fileID)")
-                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
-                        print("✅ Successfully fetched file details: \(fileDetails.name)")
-                        // Successfully got file details, show preview
-                        await MainActor.run {
-                            print("🎯 Setting up preview view")
-                            selectedTab = .files
-                            previewStateManager.deepLinkFile = fileDetails
-                            previewStateManager.showingDeepLinkPreview = true
-                            print("🎯 Preview view setup complete")
-                        }
-                    } else {
-                        print("❌ Failed to fetch file details")
-                        // Failed to get file details (404/403/etc)
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
-                        }
-                    }
-                }
-            } catch {
-                print("❌ Error checking for existing sessions: \(error)")
-                await MainActor.run {
-                    ToastManager.shared.showToast(message: "Error accessing file: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-    
-    private func handleFileListDeepLink(_ components: URLComponents) {
-        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: urlString) else {
-            print("Invalid server URL in filelist deep link")
-            return
-        }
-        
-        // Find the session with matching URL and select it
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        Task {
-            do {
-                let existingSessions = try context.fetch(descriptor)
-                if let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    await MainActor.run {
-                        sessionManager.selectedSession = matchingSession
-                        selectedTab = .files
-                    }
-                } else {
-                    print("No session found for URL: \(serverURL.absoluteString)")
-                }
-            } catch {
-                print("Error fetching sessions: \(error)")
-            }
-        }
-    }
-    
-    private func deepLinkAuth(_ components: URLComponents) {
-        guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
-            print("Unable to parse auth deep link.")
-            return
-        }
-
-        // Check if a session with this URL already exists
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        Task {
-            do {
-                let existingSessions = try context.fetch(descriptor)
-                if let existingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    // If session exists, just select it and update UI
-                    await MainActor.run {
-                        sessionManager.selectedSession = existingSession
-                        hasExistingSessions = true
-                        ToastManager.shared.showToast(message: "Connected to existing server \(existingSession.url)")
-                    }
-                    return
-                }
-                
-                // No existing session, show confirmation dialog
-                await MainActor.run {
-                    pendingAuthURL = serverURL
-                    pendingAuthSignature = signature
-                    showingServerConfirmation = true
-                }
-            } catch {
-                print("Error checking for existing sessions: \(error)")
-            }
-        }
-    }
-    
-    private func handleServerConfirmation(confirmed: Bool, setAsDefault: Bool) async {
-        guard let serverURL = pendingAuthURL,
-              let signature = pendingAuthSignature else {
-            return
-        }
-
-        // If user cancelled, just clear the pending data and return
-        if !confirmed {
-            pendingAuthURL = nil
-            pendingAuthSignature = nil
-            return
-        }
-
-        await MainActor.run {
-            // Create and authenticate the new session
-            let context = sharedModelContainer.mainContext
-            
-            do {
-                let descriptor = FetchDescriptor<DjangoFilesSession>()
-                let existingSessions = try context.fetch(descriptor)
-                
-                // Create and authenticate the new session
-                Task {
-                    if let newSession = await sessionManager.createAndAuthenticateSession(
-                        url: serverURL,
-                        signature: signature,
-                        context: context
-                    ) {
-                        if setAsDefault {
-                            // Reset all other sessions to not be default
-                            for session in existingSessions {
-                                session.defaultSession = false
-                            }
-                            newSession.defaultSession = true
-                        }
-                        sessionManager.selectedSession = newSession
-                        hasExistingSessions = true
-                        selectedTab = .files
-                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
-                    }
-                }
-            } catch {
-                ToastManager.shared.showToast(message: "Problem signing into server \(error)")
-                print("Error creating new session: \(error)")
-            }
-            
-            // Clear pending auth data
-            pendingAuthURL = nil
-            pendingAuthSignature = nil
-        }
     }
     
     private func checkDefaultServer() {
