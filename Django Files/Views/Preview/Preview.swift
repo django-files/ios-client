@@ -79,9 +79,16 @@ struct ContentPreview: View {
     // Image Preview
     private var imagePreview: some View {
         GeometryReader { geometry in
-            if let content = content, let uiImage = UIImage(data: content) {
-                ImageScrollView(image: uiImage)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+            if let content = content {
+                if mimeType == "image/gif" {
+                    AnimatedImageScrollView(data: content)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                } else if let uiImage = UIImage(data: content) {
+                    ImageScrollView(image: uiImage)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                } else {
+                    Text("Unable to load image")
+                }
             } else {
                 Text("Unable to load image")
             }
