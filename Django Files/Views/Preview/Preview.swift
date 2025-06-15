@@ -23,6 +23,11 @@ struct ContentPreview: View {
         Group {
             if isLoading {
                 ProgressView()
+                    .onAppear {
+                        print("🔄 ContentPreview: Loading view appeared")
+                        print("📄 ContentPreview: MIME type: \(mimeType)")
+                        print("🔗 ContentPreview: File URL: \(fileURL)")
+                    }
             } else if let error = error {
                 VStack {
                     Image(systemName: "exclamationmark.triangle")
@@ -31,16 +36,24 @@ struct ContentPreview: View {
                         .multilineTextAlignment(.center)
                         .padding()
                 }
+                .onAppear {
+                    print("❌ ContentPreview: Error view appeared - \(error.localizedDescription)")
+                }
             } else {
                 contentView
+                    .onAppear {
+                        print("✅ ContentPreview: Content view appeared")
+                    }
             }
         }
         .onAppear {
+            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
             loadContent()
             loadFileDetails()
             isPreviewing = true
         }
         .onDisappear {
+            print("👋 ContentPreview: View disappeared")
             isPreviewing = false
         }
     }
@@ -134,39 +147,60 @@ struct ContentPreview: View {
     
     // Load content from URL
     private func loadContent() {
+        print("📥 ContentPreview: Starting content load")
         isLoading = true
         
         // For video, audio, and PDF, we don't need to download the content as we'll use the URL directly
         if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") || mimeType == "application/pdf" {
+            print("🎥 ContentPreview: Using direct URL for media/PDF")
             isLoading = false
             return
         }
         
+        print("📥 ContentPreview: Downloading content from URL")
         URLSession.shared.dataTask(with: fileURL) { data, response, error in
             DispatchQueue.main.async {
                 self.isLoading = false
                 
                 if let error = error {
+                    print("❌ ContentPreview: Download error - \(error.localizedDescription)")
                     self.error = error
                     return
                 }
                 
-                self.content = data
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("📡 ContentPreview: HTTP Response - \(httpResponse.statusCode)")
+                }
+                
+                if let data = data {
+                    print("✅ ContentPreview: Successfully downloaded \(data.count) bytes")
+                    self.content = data
+                } else {
+                    print("❌ ContentPreview: No data received")
+                }
             }
         }.resume()
     }
 
     private func loadFileDetails() {
-        guard let serverURL = URL(string: file.url)?.host else { return }
+        print("📋 ContentPreview: Loading file details")
+        guard let serverURL = URL(string: file.url)?.host else {
+            print("❌ ContentPreview: Could not extract server URL from file URL")
+            return
+        }
         let baseURL = URL(string: "https://\(serverURL)")!
         let api = DFAPI(url: baseURL, token: "")
         
         Task {
+            print("🌐 ContentPreview: Fetching file details from API")
             if let details = await api.getFileDetails(fileID: file.id) {
+                print("✅ ContentPreview: Successfully fetched file details")
                 await MainActor.run {
                     self.fileDetails = details
                     self.selectedFileDetails = details
                 }
+            } else {
+                print("❌ ContentPreview: Failed to fetch file details")
             }
         }
     }
@@ -271,6 +305,17 @@ struct FilePreviewView: View {
     let currentIndex: Int
     let onNavigate: (Int) -> Void
     
+    init(file: Binding<DFFile>, server: Binding<DjangoFilesSession?>, showingPreview: Binding<Bool>, showFileInfo: Binding<Bool>, fileListDelegate: FileListDelegate?, allFiles: [DFFile], currentIndex: Int, onNavigate: @escaping (Int) -> Void) {
+        self._file = file
+        self.server = server
+        self._showingPreview = showingPreview
+        self._showFileInfo = showFileInfo
+        self.fileListDelegate = fileListDelegate
+        self.allFiles = allFiles
+        self.currentIndex = currentIndex
+        self.onNavigate = onNavigate
+    }
+    
     @State private var redirectURLs: [String: String] = [:]
     @State private var dragOffset = CGSize.zero
     @GestureState private var dragState = DragState.inactive
@@ -293,6 +338,10 @@ struct FilePreviewView: View {
     @State private var fileToRename: DFFile? = nil
     
     @State private var showingShareSheet = false
+    
+    private var isDeepLinkPreview: Bool {
+        fileListDelegate == nil
+    }
     
     private enum DragState {
         case inactive
@@ -406,19 +455,21 @@ struct FilePreviewView: View {
                                     .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
                                     .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
                                 Spacer()
-                                Menu {
-                                    fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                        .padding()
-                                } label: {
-                                    Image(systemName: "ellipsis")
-                                        .font(.system(size: 20))
-                                        .padding()
+                                if !isDeepLinkPreview {
+                                    Menu {
+                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                            .padding()
+                                    } label: {
+                                        Image(systemName: "ellipsis")
+                                            .font(.system(size: 20))
+                                            .padding()
+                                    }
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(16)
+                                    .padding(.trailing, 10)
                                 }
-                                .menuStyle(.button)
-                                .background(.ultraThinMaterial)
-                                .frame(width: 32, height: 32)
-                                .cornerRadius(16)
-                                .padding(.trailing, 10)
                             }
                             .padding(.vertical, 8)
                             .frame(maxWidth: .infinity)
@@ -536,14 +587,18 @@ struct FilePreviewView: View {
     }
     
     @MainActor
-    private func loadRedirectURL(for file: DFFile) async {
-        await preloadFiles()
-    }
-    
-    @MainActor
     private func loadSingleFileRedirect(_ file: DFFile) async {
-        guard redirectURLs[file.raw] == nil,
-              let serverURL = URL(string: file.url)?.host else {
+        guard redirectURLs[file.raw] == nil else {
+            return
+        }
+        
+        // For deep link previews without a server session, use the raw URL directly
+        if server.wrappedValue == nil {
+            redirectURLs[file.raw] = file.raw
+            return
+        }
+        
+        guard let serverURL = URL(string: file.url)?.host else {
             return
         }
         
@@ -639,7 +694,7 @@ struct FilePreviewView: View {
             onCopyRawLink: {
                 if redirectURLs[file.raw] == nil {
                     Task {
-                        await loadRedirectURL(for: file)
+                        await loadSingleFileRedirect(file)
                         // Only copy the URL after we've loaded the redirect
                         if let redirectURL = redirectURLs[file.raw] {
                             await MainActor.run {
@@ -661,7 +716,7 @@ struct FilePreviewView: View {
                 if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
                     if redirectURLs[file.raw] == nil {
                         Task {
-                            await loadRedirectURL(for: file)
+                            await loadSingleFileRedirect(file)
                             // Only open the URL after we've loaded the redirect
                             if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
                                 await MainActor.run {
@@ -716,7 +771,7 @@ struct FilePreviewView: View {
             onCopyRawLink: {
                 if redirectURLs[file.raw] == nil {
                     Task {
-                        await loadRedirectURL(for: file)
+                        await loadSingleFileRedirect(file)
                         // Only copy the URL after we've loaded the redirect
                         if let redirectURL = redirectURLs[file.raw] {
                             await MainActor.run {
@@ -738,7 +793,7 @@ struct FilePreviewView: View {
                 if let url = URL(string: file.raw), UIApplication.shared.canOpenURL(url) {
                     if redirectURLs[file.raw] == nil {
                         Task {
-                            await loadRedirectURL(for: file)
+                            await loadSingleFileRedirect(file)
                             // Only open the URL after we've loaded the redirect
                             if let redirectURL = redirectURLs[file.raw], let finalURL = URL(string: redirectURL) {
                                 await MainActor.run {

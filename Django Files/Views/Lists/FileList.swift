@@ -167,6 +167,7 @@ struct FileListView: View {
     let albumName: String?
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var previewStateManager: PreviewStateManager
     @StateObject private var fileListManager: FileListManager
     
     @State private var currentPage = 1
@@ -195,6 +196,9 @@ struct FileListView: View {
     @State private var showingRenameDialog = false
     @State private var fileNameText = ""
     @State private var fileToRename: DFFile? = nil
+    
+    @State private var showingShareSheet = false
+    @State private var deepLinkTargetFileID: Int? = nil
     
     @State private var redirectURLs: [String: String] = [:]
     
@@ -241,6 +245,41 @@ struct FileListView: View {
         var components = URLComponents(url: URL(string: server.wrappedValue!.url)!.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
         components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
         return components?.url ?? URL(string: server.wrappedValue!.url)!
+    }
+    
+    private func checkForDeepLinkTarget() {
+        print("checkForDeepLinkTarget Called with target: \(String(describing: previewStateManager.deepLinkTargetFileID))")
+        if let targetFileID = previewStateManager.deepLinkTargetFileID {
+            Task {
+                var currentPage = 1
+                var foundFile = false
+                while !foundFile {
+                    await fetchFiles(page: currentPage, append: currentPage > 1)
+                    if let index = files.firstIndex(where: { $0.id == targetFileID }) {
+                        await MainActor.run {
+                            selectedFile = files[index]
+                            showingPreview = true
+                            previewStateManager.deepLinkTargetFileID = nil
+                        }
+                        foundFile = true
+                    } else if !hasNextPage {
+                        break
+                    }
+                    currentPage += 1
+                }
+            }
+        }
+    }
+    
+    private func loadFiles() {
+        if (files.count > 0) { return }
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        Task {
+            await fetchFiles(page: currentPage)
+            checkForDeepLinkTarget()
+        }
     }
     
     var body: some View {
@@ -451,7 +490,7 @@ struct FileListView: View {
         }) {
             if let _ = server.wrappedValue {
                 UserFilterView(users: $users, selectedUserID: $filterUserID)
-                    .onChange(of: filterUserID) { _ in
+                    .onChange(of: filterUserID) { oldValue, newValue in
                         Task {
                             await refreshFiles()
                         }
@@ -488,6 +527,11 @@ struct FileListView: View {
         )
         .onAppear {
             loadFiles()
+        }
+        .onChange(of: previewStateManager.deepLinkTargetFileID) { _, newValue in
+            if newValue != nil {
+                checkForDeepLinkTarget()
+            }
         }
     }
     
@@ -634,16 +678,6 @@ struct FileListView: View {
                 showingDeleteConfirmation = true
             }
         )
-    }
-    
-    private func loadFiles() {
-        if (files.count > 0) { return }
-        isLoading = true
-        errorMessage = nil
-        currentPage = 1
-        Task {
-            await fetchFiles(page: currentPage)
-        }
     }
     
     private func loadNextPage() {
