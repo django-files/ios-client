@@ -369,18 +369,26 @@ struct FileListView: View {
             }
         }
         .fullScreenCover(isPresented: $showingPreview) {
-            if let index = files.firstIndex(where: { $0.id == selectedFile?.id }) {
+            if let index = fileListManager.files.firstIndex(where: { $0.id == selectedFile?.id }) {
                 FilePreviewView(
                     file: $fileListManager.files[index],
                     server: server,
                     showingPreview: $showingPreview,
                     showFileInfo: $showFileInfo,
                     fileListDelegate: fileListManager,
-                    allFiles: files,
+                    allFiles: Binding(
+                        get: { fileListManager.files },
+                        set: { fileListManager.files = $0 }
+                    ),
                     currentIndex: index,
                     onNavigate: { newIndex in
-                        if newIndex >= 0 && newIndex < files.count {
-                            selectedFile = files[newIndex]
+                        if newIndex >= 0 && newIndex < fileListManager.files.count {
+                            selectedFile = fileListManager.files[newIndex]
+                        }
+                    },
+                    onLoadMore: {
+                        if hasNextPage && !isLoading {
+                            await loadNextPage()
                         }
                     }
                 )
@@ -711,7 +719,11 @@ struct FileListView: View {
         
         if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID) {
             if append {
-                files.append(contentsOf: filesResponse.files)
+                // Only append new files that aren't already in the list
+                let newFiles = filesResponse.files.filter { newFile in
+                    !files.contains { $0.id == newFile.id }
+                }
+                files.append(contentsOf: newFiles)
             } else {
                 files = filesResponse.files
             }

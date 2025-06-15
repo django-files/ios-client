@@ -89,7 +89,6 @@ struct ContentPreview: View {
         )
     }
 
-    // Image Preview
     private var imagePreview: some View {
         GeometryReader { geometry in
             if let content = content {
@@ -145,7 +144,6 @@ struct ContentPreview: View {
         .padding()
     }
     
-    // Load content from URL
     private func loadContent() {
         print("📥 ContentPreview: Starting content load")
         isLoading = true
@@ -158,28 +156,21 @@ struct ContentPreview: View {
         }
         
         print("📥 ContentPreview: Downloading content from URL")
-        URLSession.shared.dataTask(with: fileURL) { data, response, error in
-            DispatchQueue.main.async {
-                self.isLoading = false
-                
-                if let error = error {
-                    print("❌ ContentPreview: Download error - \(error.localizedDescription)")
-                    self.error = error
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("📡 ContentPreview: HTTP Response - \(httpResponse.statusCode)")
-                }
-                
-                if let data = data {
-                    print("✅ ContentPreview: Successfully downloaded \(data.count) bytes")
+        Task {
+            do {
+                let data = try await CachedContentLoader.loadContent(from: fileURL)
+                await MainActor.run {
                     self.content = data
-                } else {
-                    print("❌ ContentPreview: No data received")
+                    self.isLoading = false
+                }
+            } catch {
+                print("❌ ContentPreview: Download error - \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = error
+                    self.isLoading = false
                 }
             }
-        }.resume()
+        }
     }
 
     private func loadFileDetails() {
@@ -213,6 +204,7 @@ struct PageViewController: UIViewControllerRepresentable {
     var showFileInfo: Binding<Bool>
     @Binding var selectedFileDetails: DFFile?
     var onPageChange: (Int) -> Void
+    var onLoadMore: (() async -> Void)?
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -226,7 +218,6 @@ struct PageViewController: UIViewControllerRepresentable {
         pageViewController.dataSource = context.coordinator
         pageViewController.delegate = context.coordinator
         
-        // Create and set the initial view controller
         if let initialVC = context.coordinator.createContentViewController(for: currentIndex) {
             pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
         }
@@ -235,26 +226,66 @@ struct PageViewController: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ pageViewController: UIPageViewController, context: Context) {
+        context.coordinator.parent = self
+        
+        // Only update if the current index has changed and we're not in the middle of a transition
         if let currentVC = pageViewController.viewControllers?.first as? UIHostingController<ContentPreview>,
            let currentFileIndex = files.firstIndex(where: { $0.id == currentVC.rootView.file.id }),
-           currentFileIndex != currentIndex {
+           currentFileIndex != currentIndex,
+           !context.coordinator.isTransitioning {
             // Update to the new index if it's different
             if let newVC = context.coordinator.createContentViewController(for: currentIndex) {
                 let direction: UIPageViewController.NavigationDirection = currentFileIndex > currentIndex ? .reverse : .forward
-                pageViewController.setViewControllers([newVC], direction: direction, animated: true)
+                context.coordinator.isTransitioning = true
+                pageViewController.setViewControllers([newVC], direction: direction, animated: true) { _ in
+                    context.coordinator.isTransitioning = false
+                }
             }
         }
     }
     
     class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
         var parent: PageViewController
+        var isTransitioning: Bool = false
+        private var preloadedViewControllers: [Int: UIHostingController<ContentPreview>] = [:]
+        private var preloadTask: Task<Void, Never>?
+        private var isLoadingMore: Bool = false
         
         init(_ pageViewController: PageViewController) {
             self.parent = pageViewController
+            super.init()
+            preloadAdjacentPages()
+        }
+        
+        deinit {
+            preloadTask?.cancel()
+        }
+        
+        private func preloadAdjacentPages() {
+            preloadTask?.cancel()
+            preloadTask = Task {
+                // Preload current and adjacent pages
+                let indicesToPreload = [-2, -1, 0, 1, 2].map { parent.currentIndex + $0 }
+                    .filter { $0 >= 0 && $0 < parent.files.count }
+                
+                for index in indicesToPreload {
+                    if preloadedViewControllers[index] == nil {
+                        await MainActor.run {
+                            preloadedViewControllers[index] = createContentViewController(for: index)
+                        }
+                    }
+                }
+            }
         }
         
         func createContentViewController(for index: Int) -> UIHostingController<ContentPreview>? {
             guard index >= 0 && index < parent.files.count else { return nil }
+            
+            // Check if we already have a preloaded controller
+            if let preloadedVC = preloadedViewControllers[index] {
+                return preloadedVC
+            }
+            
             let file = parent.files[index]
             let contentPreview = ContentPreview(
                 mimeType: file.mime,
@@ -263,7 +294,11 @@ struct PageViewController: UIViewControllerRepresentable {
                 showFileInfo: parent.showFileInfo,
                 selectedFileDetails: parent.$selectedFileDetails
             )
-            return UIHostingController(rootView: contentPreview)
+            let vc = UIHostingController(rootView: contentPreview)
+            vc.view.backgroundColor = .clear
+            vc.view.isOpaque = false
+            preloadedViewControllers[index] = vc
+            return vc
         }
         
         func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
@@ -277,11 +312,33 @@ struct PageViewController: UIViewControllerRepresentable {
         
         func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
             guard let currentVC = viewController as? UIHostingController<ContentPreview>,
-                  let currentIndex = parent.files.firstIndex(where: { $0.id == currentVC.rootView.file.id }),
-                  currentIndex < parent.files.count - 1
+                  let currentIndex = parent.files.firstIndex(where: { $0.id == currentVC.rootView.file.id })
             else { return nil }
             
-            return createContentViewController(for: currentIndex + 1)
+            if currentIndex >= parent.files.count - 2 && !isLoadingMore {
+                Task {
+                    isLoadingMore = true
+                    await parent.onLoadMore?()
+                    isLoadingMore = false
+                    
+                    if currentIndex == parent.files.count - 2 {
+                        await MainActor.run {
+                            preloadedViewControllers.removeAll()
+                            preloadAdjacentPages()
+                            // If we're at the second-to-last file, update to show the last file
+                            if let nextVC = createContentViewController(for: currentIndex + 1) {
+                                pageViewController.setViewControllers([nextVC], direction: .forward, animated: false)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if currentIndex < parent.files.count - 1 {
+                return createContentViewController(for: currentIndex + 1)
+            }
+            
+            return nil
         }
         
         func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
@@ -291,6 +348,11 @@ struct PageViewController: UIViewControllerRepresentable {
             else { return }
             
             parent.onPageChange(currentIndex)
+            preloadAdjacentPages()
+        }
+        
+        func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) {
+            isTransitioning = true
         }
     }
 }
@@ -301,19 +363,21 @@ struct FilePreviewView: View {
     @Binding var showingPreview: Bool
     @Binding var showFileInfo: Bool
     let fileListDelegate: FileListDelegate?
-    let allFiles: [DFFile]
+    @Binding var allFiles: [DFFile]
     let currentIndex: Int
     let onNavigate: (Int) -> Void
+    let onLoadMore: (() async -> Void)?
     
-    init(file: Binding<DFFile>, server: Binding<DjangoFilesSession?>, showingPreview: Binding<Bool>, showFileInfo: Binding<Bool>, fileListDelegate: FileListDelegate?, allFiles: [DFFile], currentIndex: Int, onNavigate: @escaping (Int) -> Void) {
+    init(file: Binding<DFFile>, server: Binding<DjangoFilesSession?>, showingPreview: Binding<Bool>, showFileInfo: Binding<Bool>, fileListDelegate: FileListDelegate?, allFiles: Binding<[DFFile]>, currentIndex: Int, onNavigate: @escaping (Int) -> Void, onLoadMore: (() async -> Void)? = nil) {
         self._file = file
         self.server = server
         self._showingPreview = showingPreview
         self._showFileInfo = showFileInfo
         self.fileListDelegate = fileListDelegate
-        self.allFiles = allFiles
+        self._allFiles = allFiles
         self.currentIndex = currentIndex
         self.onNavigate = onNavigate
+        self.onLoadMore = onLoadMore
     }
     
     @State private var redirectURLs: [String: String] = [:]
@@ -396,7 +460,8 @@ struct FilePreviewView: View {
                             Task {
                                 await preloadFiles()
                             }
-                        }
+                        },
+                        onLoadMore: onLoadMore
                     )
                     .ignoresSafeArea()
                     .background(

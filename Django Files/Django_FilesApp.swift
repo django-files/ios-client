@@ -177,7 +177,7 @@ struct Django_FilesApp: App {
                         showingPreview: $previewStateManager.showingDeepLinkPreview,
                         showFileInfo: $showFileInfo,
                         fileListDelegate: nil,
-                        allFiles: [file],
+                        allFiles: .constant([file]),
                         currentIndex: 0,
                         onNavigate: { _ in }
                     )
