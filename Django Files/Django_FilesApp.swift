@@ -11,6 +11,11 @@ import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
 
+class PreviewStateManager: ObservableObject {
+    @Published var deepLinkFile: DFFile?
+    @Published var showingDeepLinkPreview = false
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
@@ -36,6 +41,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct Django_FilesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var previewStateManager = PreviewStateManager()
+    @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -132,6 +139,23 @@ struct Django_FilesApp: App {
                     context: sharedModelContainer.mainContext
                 )
             }
+            .fullScreenCover(isPresented: $previewStateManager.showingDeepLinkPreview) {
+                if let file = previewStateManager.deepLinkFile {
+                    FilePreviewView(
+                        file: .constant(file),
+                        server: .constant(nil),
+                        showingPreview: $previewStateManager.showingDeepLinkPreview,
+                        showFileInfo: $showFileInfo,
+                        fileListDelegate: nil,
+                        allFiles: [file],
+                        currentIndex: 0,
+                        onNavigate: { _ in }
+                    )
+                    .onDisappear {
+                        previewStateManager.deepLinkFile = nil
+                    }
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)
@@ -158,9 +182,113 @@ struct Django_FilesApp: App {
             selectedTab = .settings
         case "filelist":
             handleFileListDeepLink(components)
+        case "preview":
+            handlePreviewLink(components)
         default:
             ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
             print("Unsupported deep link type: \(components.host ?? "unknown")")
+        }
+    }
+    
+    private func handlePreviewLink(_ components: URLComponents) {
+        print("🔍 Handling preview deep link with components: \(components)")
+        
+        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
+              let serverURL = URL(string: urlString),
+              let fileIDString = components.queryItems?.first(where: { $0.name == "file_id" })?.value,
+              let fileID = Int(fileIDString),
+              let fileName = components.queryItems?.first(where: { $0.name == "file_name" })?.value?.removingPercentEncoding else {
+            print("❌ Invalid preview deep link parameters")
+            return
+        }
+        
+        print("📡 Parsed deep link - Server: \(serverURL), FileID: \(fileID), FileName: \(fileName)")
+        
+        // Check if this server exists in user's sessions
+        let context = sharedModelContainer.mainContext
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+        
+        Task {
+            do {
+                let existingSessions = try context.fetch(descriptor)
+                if let session = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
+                    // Server exists in user's sessions, handle normally
+                    print("✅ Preview link for known server: \(serverURL.absoluteString)")
+                    
+                    // Check if session is authenticated
+                    if !session.auth {
+                        print("❌ Session is not authenticated")
+                        await MainActor.run {
+                            ToastManager.shared.showToast(message: "Please log in to view this file")
+                            selectedTab = .settings
+                        }
+                        return
+                    }
+                    
+                    // Create API instance with session token
+                    let api = DFAPI(url: serverURL, token: session.token)
+                    
+                    // Get file details to check ownership
+                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
+                        // Check if file belongs to current user
+                        if fileDetails.user != session.userID {
+                            print("❌ File does not belong to current user")
+                            // Handle like unknown server
+                            await MainActor.run {
+                                selectedTab = .files
+                                previewStateManager.deepLinkFile = fileDetails
+                                previewStateManager.showingDeepLinkPreview = true
+                            }
+                            return
+                        }
+                        
+                        // File belongs to current user, navigate to file list
+                        await MainActor.run {
+                            sessionManager.selectedSession = session
+                            selectedTab = .files
+                            // Post notification to update deep link target file ID
+                            NotificationCenter.default.post(name: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil, userInfo: ["fileID": fileID])
+                        }
+                    } else {
+                        print("❌ Failed to fetch file details")
+                        await MainActor.run {
+                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
+                        }
+                    }
+                } else {
+                    // Server not in user's sessions, try to fetch file info
+                    print("🔑 Preview link for unknown server: \(serverURL.absoluteString)")
+                    
+                    // Create a temporary API instance without authentication
+                    let api = DFAPI(url: serverURL, token: "")
+                    print("🌐 Created API instance for server: \(serverURL)")
+                    
+                    // Try to fetch file details
+                    print("📥 Attempting to fetch file details for ID: \(fileID)")
+                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
+                        print("✅ Successfully fetched file details: \(fileDetails.name)")
+                        // Successfully got file details, show preview
+                        await MainActor.run {
+                            print("🎯 Setting up preview view")
+                            selectedTab = .files
+                            previewStateManager.deepLinkFile = fileDetails
+                            previewStateManager.showingDeepLinkPreview = true
+                            print("🎯 Preview view setup complete")
+                        }
+                    } else {
+                        print("❌ Failed to fetch file details")
+                        // Failed to get file details (404/403/etc)
+                        await MainActor.run {
+                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
+                        }
+                    }
+                }
+            } catch {
+                print("❌ Error checking for existing sessions: \(error)")
+                await MainActor.run {
+                    ToastManager.shared.showToast(message: "Error accessing file: \(error.localizedDescription)")
+                }
+            }
         }
     }
     

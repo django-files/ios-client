@@ -196,6 +196,9 @@ struct FileListView: View {
     @State private var fileNameText = ""
     @State private var fileToRename: DFFile? = nil
     
+    @State private var showingShareSheet = false
+    @State private var deepLinkTargetFileID: Int? = nil
+    
     @State private var redirectURLs: [String: String] = [:]
     
     @State private var showFileInfo: Bool = false
@@ -220,6 +223,11 @@ struct FileListView: View {
         if let currentUserID = server.wrappedValue?.userID {
             _filterUserID = State(initialValue: currentUserID)
         }
+        // Check for deep link target file ID on init
+        if let targetFileID = UserDefaults.standard.object(forKey: "deepLinkTargetFileID") as? Int {
+            _deepLinkTargetFileID = State(initialValue: targetFileID)
+            UserDefaults.standard.removeObject(forKey: "deepLinkTargetFileID")
+        }
     }
 
     private var files: [DFFile] {
@@ -241,6 +249,26 @@ struct FileListView: View {
         var components = URLComponents(url: URL(string: server.wrappedValue!.url)!.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
         components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
         return components?.url ?? URL(string: server.wrappedValue!.url)!
+    }
+    
+    private func checkForDeepLinkTarget() {
+        if let targetFileID = deepLinkTargetFileID,
+           let index = files.firstIndex(where: { $0.id == targetFileID }) {
+            selectedFile = files[index]
+            showingPreview = true
+            deepLinkTargetFileID = nil
+        }
+    }
+    
+    private func loadFiles() {
+        if (files.count > 0) { return }
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        Task {
+            await fetchFiles(page: currentPage)
+            checkForDeepLinkTarget()
+        }
     }
     
     var body: some View {
@@ -488,6 +516,22 @@ struct FileListView: View {
         )
         .onAppear {
             loadFiles()
+            checkForDeepLinkTarget()
+            // Add observer for deep link target file ID
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil, queue: .main) { notification in
+                if let fileID = notification.userInfo?["fileID"] as? Int {
+                    deepLinkTargetFileID = fileID
+                }
+            }
+        }
+        .onDisappear {
+            // Remove observer when view disappears
+            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("UpdateDeepLinkTargetFileID"), object: nil)
+        }
+        .onChange(of: deepLinkTargetFileID) { _, newValue in
+            if newValue != nil {
+                checkForDeepLinkTarget()
+            }
         }
     }
     
@@ -634,16 +678,6 @@ struct FileListView: View {
                 showingDeleteConfirmation = true
             }
         )
-    }
-    
-    private func loadFiles() {
-        if (files.count > 0) { return }
-        isLoading = true
-        errorMessage = nil
-        currentPage = 1
-        Task {
-            await fetchFiles(page: currentPage)
-        }
     }
     
     private func loadNextPage() {
