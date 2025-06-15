@@ -73,6 +73,13 @@ struct TabViewWindow: View {
                 }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
+                        // Clear navigation paths when switching servers
+                        filesNavigationPath = NavigationPath()
+                        albumsNavigationPath = NavigationPath()
+
+                        // Force view refresh
+                        serverChangeRefreshTrigger = UUID()
+
                         sessionManager.saveSelectedSession()
                         Task {
                             await refreshUserData(session: session)
