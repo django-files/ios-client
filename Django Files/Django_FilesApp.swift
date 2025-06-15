@@ -20,7 +20,6 @@ class PreviewStateManager: ObservableObject {
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    // Skip Firebase initialization if disabled via launch arguments
     let shouldDisableFirebase = ProcessInfo.processInfo.arguments.contains("--DisableFirebase")
     if !shouldDisableFirebase {
         FirebaseApp.configure()
@@ -228,10 +227,10 @@ struct Django_FilesApp: App {
             if hasExistingSessions {
                 checkDefaultServer()
             }
-            isLoading = false  // Set loading to false after check completes
+            isLoading = false
         } catch {
             print("Error checking for existing sessions: \(error)")
-            isLoading = false  // Ensure we exit loading state even on error
+            isLoading = false
         }
     }
 }
