@@ -15,6 +15,7 @@ class PreviewStateManager: ObservableObject {
     @Published var deepLinkFile: DFFile?
     @Published var showingDeepLinkPreview = false
     @Published var deepLinkTargetFileID: Int? = nil
+    @Published var deepLinkFilePassword: String? = nil
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {

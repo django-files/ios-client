@@ -20,7 +20,7 @@ class DeepLinks {
             print("Invalid deep link URL")
             return
         }
-        
+
         switch components.host {
         case "authorize":
             deepLinkAuth(components, context: context, sessionManager: sessionManager, hasExistingSessions: hasExistingSessions, showingServerConfirmation: showingServerConfirmation, pendingAuthURL: pendingAuthURL, pendingAuthSignature: pendingAuthSignature)
@@ -38,7 +38,7 @@ class DeepLinks {
     
     private func handlePreviewLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
         print("🔍 Handling preview deep link with components: \(components)")
-        
+
         guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: urlString),
               let fileIDString = components.queryItems?.first(where: { $0.name == "file_id" })?.value,
@@ -47,11 +47,13 @@ class DeepLinks {
             print("❌ Invalid preview deep link parameters")
             return
         }
-        
-        print("📡 Parsed deep link - Server: \(serverURL), FileID: \(fileID), FileName: \(fileName)")
-        
+
+        let filePassword = components.queryItems?.first(where: { $0.name == "file_password" })?.value?.removingPercentEncoding
+
+        print("📡 Parsed deep link - Server: \(serverURL), FileID: \(fileID), FileName: \(fileName), HasPassword: \(filePassword != nil)")
+
         let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
+
         Task {
             do {
                 let existingSessions = try context.fetch(descriptor)
@@ -66,24 +68,26 @@ class DeepLinks {
                         }
                         return
                     }
-                    
+    
                     let api = DFAPI(url: serverURL, token: session.token)
                     
-                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
+                    if let fileDetails = await api.getFileDetails(fileID: fileID, password: filePassword) {
                         if fileDetails.user != session.userID {
                             print("❌ File does not belong to current user")
                             await MainActor.run {
                                 selectedTab.wrappedValue = .files
                                 previewStateManager.deepLinkFile = fileDetails
                                 previewStateManager.showingDeepLinkPreview = true
+                                previewStateManager.deepLinkFilePassword = filePassword
                             }
                             return
                         }
-                        
+    
                         await MainActor.run {
                             sessionManager.selectedSession = session
                             selectedTab.wrappedValue = .files
                             previewStateManager.deepLinkTargetFileID = fileID
+                            previewStateManager.deepLinkFilePassword = filePassword
                         }
                     } else {
                         print("❌ Failed to fetch file details")
@@ -93,18 +97,19 @@ class DeepLinks {
                     }
                 } else {
                     print("🔑 Preview link for unknown server: \(serverURL.absoluteString)")
-                    
+
                     let api = DFAPI(url: serverURL, token: "")
                     print("🌐 Created API instance for server: \(serverURL)")
-                    
+
                     print("📥 Attempting to fetch file details for ID: \(fileID)")
-                    if let fileDetails = await api.getFileDetails(fileID: fileID) {
+                    if let fileDetails = await api.getFileDetails(fileID: fileID, password: filePassword) {
                         print("✅ Successfully fetched file details: \(fileDetails.name)")
                         await MainActor.run {
                             print("🎯 Setting up preview view")
                             selectedTab.wrappedValue = .files
                             previewStateManager.deepLinkFile = fileDetails
                             previewStateManager.showingDeepLinkPreview = true
+                            previewStateManager.deepLinkFilePassword = filePassword
                             print("🎯 Preview view setup complete")
                         }
                     } else {
@@ -129,9 +134,9 @@ class DeepLinks {
             print("Invalid server URL in filelist deep link")
             return
         }
-        
+
         let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
+
         Task {
             do {
                 let existingSessions = try context.fetch(descriptor)
@@ -157,7 +162,7 @@ class DeepLinks {
         }
 
         let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
+
         Task {
             do {
                 let existingSessions = try context.fetch(descriptor)
@@ -180,7 +185,7 @@ class DeepLinks {
             }
         }
     }
-    
+
     @MainActor func handleServerConfirmation(confirmed: Bool, setAsDefault: Bool, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>, context: ModelContext, sessionManager: SessionManager, hasExistingSessions: Binding<Bool>, selectedTab: Binding<TabViewWindow.Tab>) async {
         guard let serverURL = pendingAuthURL.wrappedValue,
               let signature = pendingAuthSignature.wrappedValue else {
@@ -220,7 +225,7 @@ class DeepLinks {
                 ToastManager.shared.showToast(message: "Problem signing into server \(error)")
                 print("Error creating new session: \(error)")
             }
-            
+
             pendingAuthURL.wrappedValue = nil
             pendingAuthSignature.wrappedValue = nil
         }
