@@ -23,11 +23,11 @@ struct ContentPreview: View {
         Group {
             if isLoading {
                 ProgressView()
-                    .onAppear {
-                        print("🔄 ContentPreview: Loading view appeared")
-                        print("📄 ContentPreview: MIME type: \(mimeType)")
-                        print("🔗 ContentPreview: File URL: \(fileURL)")
-                    }
+//                    .onAppear {
+//                        print("🔄 ContentPreview: Loading view appeared")
+//                        print("📄 ContentPreview: MIME type: \(mimeType)")
+//                        print("🔗 ContentPreview: File URL: \(fileURL)")
+//                    }
             } else if let error = error {
                 VStack {
                     Image(systemName: "exclamationmark.triangle")
@@ -36,24 +36,24 @@ struct ContentPreview: View {
                         .multilineTextAlignment(.center)
                         .padding()
                 }
-                .onAppear {
-                    print("❌ ContentPreview: Error view appeared - \(error.localizedDescription)")
-                }
+//                .onAppear {
+//                    print("❌ ContentPreview: Error view appeared - \(error.localizedDescription)")
+//                }
             } else {
                 contentView
-                    .onAppear {
-                        print("✅ ContentPreview: Content view appeared")
-                    }
+//                    .onAppear {
+//                        print("✅ ContentPreview: Content view appeared")
+//                    }
             }
         }
         .onAppear {
-            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
+//            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
             loadContent()
             loadFileDetails()
             isPreviewing = true
         }
         .onDisappear {
-            print("👋 ContentPreview: View disappeared")
+//            print("👋 ContentPreview: View disappeared")
             isPreviewing = false
         }
     }
@@ -145,17 +145,26 @@ struct ContentPreview: View {
     }
     
     private func loadContent() {
-        print("📥 ContentPreview: Starting content load")
-        isLoading = true
+//        print("📥 ContentPreview: Starting content load")
         
         // For video, audio, and PDF, we don't need to download the content as we'll use the URL directly
         if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") || mimeType == "application/pdf" {
-            print("🎥 ContentPreview: Using direct URL for media/PDF")
+//            print("🎥 ContentPreview: Using direct URL for media/PDF")
             isLoading = false
             return
         }
         
-        print("📥 ContentPreview: Downloading content from URL")
+        // Check if content is already cached
+        if let cachedData = ImageCache.shared.getContent(for: fileURL.absoluteString) {
+//            print("✅ ContentPreview: Found cached content")
+            self.content = cachedData
+            self.isLoading = false
+            return
+        }
+        
+//        print("📥 ContentPreview: Downloading content from URL")
+        isLoading = true
+        
         Task {
             do {
                 let data = try await CachedContentLoader.loadContent(from: fileURL)
@@ -164,7 +173,7 @@ struct ContentPreview: View {
                     self.isLoading = false
                 }
             } catch {
-                print("❌ ContentPreview: Download error - \(error.localizedDescription)")
+//                print("❌ ContentPreview: Download error - \(error.localizedDescription)")
                 await MainActor.run {
                     self.error = error
                     self.isLoading = false
@@ -174,24 +183,22 @@ struct ContentPreview: View {
     }
 
     private func loadFileDetails() {
-        print("📋 ContentPreview: Loading file details")
+//        print("📋 ContentPreview: Loading file details")
         guard let serverURL = URL(string: file.url)?.host else {
-            print("❌ ContentPreview: Could not extract server URL from file URL")
+//            print("❌ ContentPreview: Could not extract server URL from file URL")
             return
         }
         let baseURL = URL(string: "https://\(serverURL)")!
         let api = DFAPI(url: baseURL, token: "")
         
         Task {
-            print("🌐 ContentPreview: Fetching file details from API")
+//            print("🌐 ContentPreview: Fetching file details from API")
             if let details = await api.getFileDetails(fileID: file.id) {
-                print("✅ ContentPreview: Successfully fetched file details")
+//                print("✅ ContentPreview: Successfully fetched file details")
                 await MainActor.run {
                     self.fileDetails = details
                     self.selectedFileDetails = details
                 }
-            } else {
-                print("❌ ContentPreview: Failed to fetch file details")
             }
         }
     }
@@ -298,7 +305,36 @@ struct PageViewController: UIViewControllerRepresentable {
             vc.view.backgroundColor = .clear
             vc.view.isOpaque = false
             preloadedViewControllers[index] = vc
+            
+            // Trigger content loading for this view controller
+            Task {
+                await preloadContentForViewController(vc, file: file)
+            }
+            
             return vc
+        }
+        
+        private func preloadContentForViewController(_ vc: UIHostingController<ContentPreview>, file: DFFile) async {
+            // Only preload content for files that need it (not video, audio, or PDF)
+            if file.mime.starts(with: "video/") || file.mime.starts(with: "audio/") || file.mime == "application/pdf" {
+                return
+            }
+            
+            let urlString = parent.redirectURLs[file.raw] ?? file.raw
+            guard let url = URL(string: urlString) else { return }
+            
+            // Check if content is already cached
+            if ImageCache.shared.getContent(for: url.absoluteString) != nil {
+                return
+            }
+            
+            // Preload the content
+            do {
+                let _ = try await CachedContentLoader.loadContent(from: url)
+//                print("✅ PageViewController preloaded content for: \(file.name)")
+            } catch {
+//                print("❌ PageViewController failed to preload content for: \(file.name) - \(error.localizedDescription)")
+            }
         }
         
         func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
@@ -433,8 +469,35 @@ struct FilePreviewView: View {
             for fileToLoad in filesToLoad {
                 group.addTask {
                     await loadSingleFileRedirect(fileToLoad)
+                    // Also preload content for files that need it
+                    await preloadFileContent(fileToLoad)
                 }
             }
+        }
+    }
+    
+    @MainActor
+    private func preloadFileContent(_ file: DFFile) async {
+        // Only preload content for files that need it (not video, audio, or PDF)
+        if file.mime.starts(with: "video/") || file.mime.starts(with: "audio/") || file.mime == "application/pdf" {
+            return
+        }
+        
+        // Get the redirect URL if available, otherwise use the raw URL
+        let urlString = redirectURLs[file.raw] ?? file.raw
+        guard let url = URL(string: urlString) else { return }
+        
+        // Check if content is already cached
+        if ImageCache.shared.getContent(for: url.absoluteString) != nil {
+            return
+        }
+        
+        // Preload the content
+        do {
+            let _ = try await CachedContentLoader.loadContent(from: url)
+//            print("✅ Preloaded content for: \(file.name)")
+        } catch {
+//            print("❌ Failed to preload content for: \(file.name) - \(error.localizedDescription)")
         }
     }
     
@@ -442,12 +505,20 @@ struct FilePreviewView: View {
         GeometryReader { geometry in
             ZStack {
                 if redirectURLs[file.raw] == nil {
-                    ProgressView()
-                        .onAppear {
-                            Task {
-                                await preloadFiles()
-                            }
+                    VStack{
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .onAppear {
+                                    Task {
+                                        await preloadFiles()
+                                    }
+                                }
+                            Spacer()
                         }
+                        Spacer()
+                    }
                 } else {
                     PageViewController(
                         files: allFiles,
