@@ -21,30 +21,7 @@ struct ContentPreview: View {
     
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView()
-//                    .onAppear {
-//                        print("🔄 ContentPreview: Loading view appeared")
-//                        print("📄 ContentPreview: MIME type: \(mimeType)")
-//                        print("🔗 ContentPreview: File URL: \(fileURL)")
-//                    }
-            } else if let error = error {
-                VStack {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                    Text("Error: \(error.localizedDescription)")
-                        .multilineTextAlignment(.center)
-                        .padding()
-                }
-//                .onAppear {
-//                    print("❌ ContentPreview: Error view appeared - \(error.localizedDescription)")
-//                }
-            } else {
-                contentView
-//                    .onAppear {
-//                        print("✅ ContentPreview: Content view appeared")
-//                    }
-            }
+            contentView
         }
         .onAppear {
 //            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
@@ -101,8 +78,8 @@ struct ContentPreview: View {
                 } else {
                     Text("Unable to load image")
                 }
-            } else {
-                Text("Unable to load image")
+            } else if error != nil {
+                Text("Unable to load image \(String(describing: error))")
             }
         }
         .ignoresSafeArea()
@@ -110,8 +87,28 @@ struct ContentPreview: View {
     
     // Video Preview
     private var videoPreview: some View {
-        VideoPlayer(player: AVPlayer(url: fileURL))
-            .aspectRatio(contentMode: .fit)
+        GeometryReader { geometry in
+            ZStack {
+                VideoPlayerView(url: fileURL, isLoading: $isLoading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
+
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            LoadingView()
+                                .frame(width: 100, height: 100)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                    .background(Color.black.opacity(0.3))
+                }
+            }
+        }
     }
     
     // Audio Preview
@@ -439,6 +436,8 @@ struct FilePreviewView: View {
     
     @State private var showingShareSheet = false
     
+    @State private var isOverlayVisible = true
+    
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
     }
@@ -535,6 +534,11 @@ struct FilePreviewView: View {
                         onLoadMore: onLoadMore
                     )
                     .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isOverlayVisible.toggle()
+                        }
+                    }
                     .background(
                         FileDialogs(
                             showingDeleteConfirmation: $showingDeleteConfirmation,
@@ -569,95 +573,99 @@ struct FilePreviewView: View {
                     )
 
                     ZStack(alignment: .top) {
-                        VStack {
-                            HStack{
-                                Button(action: {
-                                    showingPreview = false
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 17))
-                                        .foregroundColor(.blue)
-                                        .padding()
-                                }
-                                .background(.ultraThinMaterial)
-                                .frame(width: 32, height: 32)
-                                .cornerRadius(16)
-                                .padding(.leading, 15)
-                                Spacer()
-                                Text(file.name)
-                                    .padding(5)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                    .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
-                                    .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
-                                Spacer()
-                                if !isDeepLinkPreview {
-                                    Menu {
-                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                            .padding()
-                                    } label: {
-                                        Image(systemName: "ellipsis")
-                                            .font(.system(size: 20))
+                        if isOverlayVisible {
+                            VStack {
+                                HStack{
+                                    Button(action: {
+                                        showingPreview = false
+                                    }) {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 17))
+                                            .foregroundColor(.blue)
                                             .padding()
                                     }
-                                    .menuStyle(.button)
                                     .background(.ultraThinMaterial)
                                     .frame(width: 32, height: 32)
                                     .cornerRadius(16)
-                                    .padding(.trailing, 10)
+                                    .padding(.leading, 15)
+                                    Spacer()
+                                    Text(file.name)
+                                        .padding(5)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                        .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
+                                        .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
+                                    Spacer()
+                                    if !isDeepLinkPreview {
+                                        Menu {
+                                            fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                                .padding()
+                                        } label: {
+                                            Image(systemName: "ellipsis")
+                                                .font(.system(size: 20))
+                                                .padding()
+                                        }
+                                        .menuStyle(.button)
+                                        .background(.ultraThinMaterial)
+                                        .frame(width: 32, height: 32)
+                                        .cornerRadius(16)
+                                        .padding(.trailing, 10)
+                                    }
                                 }
-                            }
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background {
-                                if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
-                                    Rectangle()
-                                        .fill(.ultraThinMaterial)
-                                        .ignoresSafeArea()
-                                }
-                            }
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                Button(action: {
-                                    showFileInfo = true
-                                }) {
-                                    Image(systemName: "info.circle")
-                                        .font(.system(size: 20))
-                                        .padding(8)
-                                }
-                                .buttonStyle(.borderless)
-                                
-                                Menu {
-                                    fileShareMenu(for: file)
-                                } label: {
-                                    Image(systemName: "link.icloud")
-                                        .font(.system(size: 20))
-                                        .padding(8)
-                                }
-                                .menuStyle(.button)
-                                
-                                Button(action: {
-                                    showingShareSheet = true
-                                }) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 20))
-                                        .offset(y: -2)
-                                        .padding(8)
-                                }
-                                .buttonStyle(.borderless)
-                                .padding(.leading, 1)
-                                .sheet(isPresented: $showingShareSheet) {
-                                    if let url = URL(string: file.url) {
-                                        ShareSheet(url: url)
-                                            .presentationDetents([.medium])
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity)
+                                .background {
+                                    if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
+                                        Rectangle()
+                                            .fill(.ultraThinMaterial)
+                                            .ignoresSafeArea()
                                     }
                                 }
                                 Spacer()
+                                if !file.mime.starts(with: "video/") {
+                                    HStack {
+                                        Spacer()
+                                        Button(action: {
+                                            showFileInfo = true
+                                        }) {
+                                            Image(systemName: "info.circle")
+                                                .font(.system(size: 20))
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        
+                                        Menu {
+                                            fileShareMenu(for: file)
+                                        } label: {
+                                            Image(systemName: "link.icloud")
+                                                .font(.system(size: 20))
+                                                .padding(8)
+                                        }
+                                        .menuStyle(.button)
+                                        
+                                        Button(action: {
+                                            showingShareSheet = true
+                                        }) {
+                                            Image(systemName: "square.and.arrow.up")
+                                                .font(.system(size: 20))
+                                                .offset(y: -2)
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .padding(.leading, 1)
+                                        .sheet(isPresented: $showingShareSheet) {
+                                            if let url = URL(string: file.url) {
+                                                ShareSheet(url: url)
+                                                    .presentationDetents([.medium])
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 155, height: 44)
+                                    .cornerRadius(20)
+                                }
                             }
-                            .background(.ultraThinMaterial)
-                            .frame(width: 155, height: 44)
-                            .cornerRadius(20)
                         }
                     }
                 }
