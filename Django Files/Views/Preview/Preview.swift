@@ -21,30 +21,7 @@ struct ContentPreview: View {
     
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView()
-//                    .onAppear {
-//                        print("🔄 ContentPreview: Loading view appeared")
-//                        print("📄 ContentPreview: MIME type: \(mimeType)")
-//                        print("🔗 ContentPreview: File URL: \(fileURL)")
-//                    }
-            } else if let error = error {
-                VStack {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                    Text("Error: \(error.localizedDescription)")
-                        .multilineTextAlignment(.center)
-                        .padding()
-                }
-//                .onAppear {
-//                    print("❌ ContentPreview: Error view appeared - \(error.localizedDescription)")
-//                }
-            } else {
-                contentView
-//                    .onAppear {
-//                        print("✅ ContentPreview: Content view appeared")
-//                    }
-            }
+            contentView
         }
         .onAppear {
 //            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
@@ -110,8 +87,28 @@ struct ContentPreview: View {
     
     // Video Preview
     private var videoPreview: some View {
-        VideoPlayer(player: AVPlayer(url: fileURL))
-            .aspectRatio(contentMode: .fit)
+        GeometryReader { geometry in
+            ZStack {
+                VideoPlayerView(url: fileURL, isLoading: $isLoading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
+                
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            LoadingView()
+                                .frame(width: 100, height: 100)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                    .background(Color.black.opacity(0.3))
+                }
+            }
+        }
     }
     
     // Audio Preview
@@ -147,6 +144,7 @@ struct ContentPreview: View {
     private func loadContent() {
 //        print("📥 ContentPreview: Starting content load")
         
+
         // For video, audio, and PDF, we don't need to download the content as we'll use the URL directly
         if mimeType.starts(with: "video/") || mimeType.starts(with: "audio/") || mimeType == "application/pdf" {
 //            print("🎥 ContentPreview: Using direct URL for media/PDF")
@@ -177,11 +175,12 @@ struct ContentPreview: View {
                 await MainActor.run {
                     self.error = error
                     self.isLoading = false
+
                 }
             }
         }
     }
-
+    
     private func loadFileDetails() {
 //        print("📋 ContentPreview: Loading file details")
         guard let serverURL = URL(string: file.url)?.host else {
@@ -438,6 +437,7 @@ struct FilePreviewView: View {
     @State private var fileToRename: DFFile? = nil
     
     @State private var showingShareSheet = false
+    @State private var isOverlayVisible = true
     
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
@@ -507,18 +507,22 @@ struct FilePreviewView: View {
                 if redirectURLs[file.raw] == nil {
                     VStack{
                         Spacer()
-                        HStack {
+
+                        HStack{
                             Spacer()
-                            ProgressView()
-                                .onAppear {
-                                    Task {
-                                        await preloadFiles()
-                                    }
-                                }
+                            LoadingView()
+                                .frame(width: 100, height: 100)
+
                             Spacer()
                         }
                         Spacer()
                     }
+                    .onAppear {
+                        Task {
+                            await preloadFiles()
+                        }
+                    }
+
                 } else {
                     PageViewController(
                         files: allFiles,
@@ -535,6 +539,11 @@ struct FilePreviewView: View {
                         onLoadMore: onLoadMore
                     )
                     .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isOverlayVisible.toggle()
+                        }
+                    }
                     .background(
                         FileDialogs(
                             showingDeleteConfirmation: $showingDeleteConfirmation,
@@ -569,15 +578,42 @@ struct FilePreviewView: View {
                     )
 
                     ZStack(alignment: .top) {
-                        VStack {
-                            HStack{
-                                Button(action: {
-                                    showingPreview = false
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 17))
-                                        .foregroundColor(.blue)
-                                        .padding()
+                        if isOverlayVisible {
+                            VStack {
+                                HStack{
+                                    Button(action: {
+                                        showingPreview = false
+                                    }) {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 17))
+                                            .foregroundColor(.blue)
+                                            .padding()
+                                    }
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(16)
+                                    .padding(.leading, 15)
+                                    Spacer()
+                                    Text(file.name)
+                                        .padding(5)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                        .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
+                                        .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
+                                    Spacer()
+                                    Menu {
+                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                            .padding()
+                                    } label: {
+                                        Image(systemName: "ellipsis")
+                                            .font(.system(size: 20))
+                                            .padding()
+                                    }
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(16)
+                                    .padding(.trailing, 10)
                                 }
                                 .background(.ultraThinMaterial)
                                 .frame(width: 32, height: 32)
@@ -654,10 +690,51 @@ struct FilePreviewView: View {
                                     }
                                 }
                                 Spacer()
+                                // Only show bottom overlay for non-video content to avoid covering video controls
+                                if !file.mime.starts(with: "video/") {
+                                    HStack {
+                                        Spacer()
+                                        Button(action: {
+                                            showFileInfo = true
+                                        }) {
+                                            Image(systemName: "info.circle")
+                                                .font(.system(size: 20))
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        
+                                        Menu {
+                                            fileShareMenu(for: file)
+                                        } label: {
+                                            Image(systemName: "link.icloud")
+                                                .font(.system(size: 20))
+                                                .padding(8)
+                                        }
+                                        .menuStyle(.button)
+                                        
+                                        Button(action: {
+                                            showingShareSheet = true
+                                        }) {
+                                            Image(systemName: "square.and.arrow.up")
+                                                .font(.system(size: 20))
+                                                .offset(y: -2)
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .padding(.leading, 1)
+                                        .sheet(isPresented: $showingShareSheet) {
+                                            if let url = URL(string: file.url) {
+                                                ShareSheet(url: url)
+                                                    .presentationDetents([.medium])
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 155, height: 44)
+                                    .cornerRadius(25)
+                                }
                             }
-                            .background(.ultraThinMaterial)
-                            .frame(width: 155, height: 44)
-                            .cornerRadius(20)
                         }
                     }
                 }
@@ -952,8 +1029,85 @@ struct FilePreviewView: View {
     }
 }
 
-// PDF View SwiftUI Wrapper
-
+// Custom Video Player View with Loading State
+struct VideoPlayerView: View {
+    let url: URL
+    @Binding var isLoading: Bool
+    @State private var player: AVPlayer?
+    
+    var body: some View {
+        Group {
+            if let player = player {
+                VideoPlayer(player: player)
+            } else {
+                Color.black
+            }
+        }
+        .onAppear {
+            setupPlayer()
+        }
+        .onDisappear {
+            cleanupPlayer()
+        }
+    }
+    
+    private func setupPlayer() {
+        isLoading = true
+        let newPlayer = AVPlayer(url: url)
+        self.player = newPlayer
+        
+        // Monitor the player item status
+        if let currentItem = newPlayer.currentItem {
+            // Check initial status
+            if currentItem.status == .readyToPlay {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
+            } else if currentItem.status == .failed {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
+            }
+            
+            // Set up status observation
+            let statusObserver = currentItem.observe(\.status, options: [.new]) { item, _ in
+                DispatchQueue.main.async {
+                    switch item.status {
+                    case .readyToPlay:
+                        self.isLoading = false
+                    case .failed:
+                        self.isLoading = false
+                    case .unknown:
+                        // Keep loading
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+            }
+            
+            // Set up periodic checking for video readiness (fallback)
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+                if currentItem.status == .readyToPlay {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                    }
+                    timer.invalidate()
+                } else if currentItem.status == .failed {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                    }
+                    timer.invalidate()
+                }
+            }
+        }
+    }
+    
+    private func cleanupPlayer() {
+        player?.pause()
+        player = nil
+    }
+}
 
 struct ShareSheet: View {
     let url: URL
