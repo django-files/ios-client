@@ -95,17 +95,8 @@ struct ContentPreview: View {
                     .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
 
                 if isLoading {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            LoadingView()
-                                .frame(width: 100, height: 100)
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                    .background(Color.black.opacity(0.3))
+                    LoadingView()
+                        .frame(width: 100, height: 100)
                 }
             }
         }
@@ -504,209 +495,204 @@ struct FilePreviewView: View {
         GeometryReader { geometry in
             ZStack {
                 if redirectURLs[file.raw] == nil {
-                    VStack{
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .onAppear {
-                                    Task {
-                                        await preloadFiles()
-                                    }
-                                }
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                } else {
-                    PageViewController(
-                        files: allFiles,
-                        currentIndex: currentIndex,
-                        redirectURLs: redirectURLs,
-                        showFileInfo: $showFileInfo,
-                        selectedFileDetails: $selectedFileDetails,
-                        onPageChange: { newIndex in
-                            onNavigate(newIndex)
-                            Task {
-                                await preloadFiles()
-                            }
-                        },
-                        onLoadMore: onLoadMore
-                    )
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isOverlayVisible.toggle()
-                        }
-                    }
-                    .background(
-                        FileDialogs(
-                            showingDeleteConfirmation: $showingDeleteConfirmation,
-                            fileIDsToDelete: $fileIDsToDelete,
-                            fileNameToDelete: $fileNameToDelete,
-                            showingExpirationDialog: $showingExpirationDialog,
-                            expirationText: $expirationText,
-                            fileToExpire: $fileToExpire,
-                            showingPasswordDialog: $showingPasswordDialog,
-                            passwordText: $passwordText,
-                            fileToPassword: $fileToPassword,
-                            showingRenameDialog: $showingRenameDialog,
-                            fileNameText: $fileNameText,
-                            fileToRename: $fileToRename,
-                            onDelete: { fileIDs in
-                                if await deleteFiles(fileIDs: fileIDs) {
-                                    showingPreview = false
-                                    return true
-                                }
-                                return false
-                            },
-                            onSetExpiration: { file, expr in
-                                await setFileExpr(file: file, expr: expr)
-                            },
-                            onSetPassword: { file, password in
-                                await setFilePassword(file: file, password: password)
-                            },
-                            onRename: { file, name in
-                                await renameFile(file: file, name: name)
-                            }
-                        )
-                    )
-
-                    ZStack(alignment: .top) {
-                        if isOverlayVisible {
-                            VStack {
-                                HStack{
-                                    Button(action: {
-                                        showingPreview = false
-                                    }) {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 17))
-                                            .foregroundColor(.blue)
-                                            .padding()
-                                    }
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(16)
-                                    .padding(.leading, 15)
-                                    Spacer()
-                                    Text(file.name)
-                                        .padding(5)
-                                        .font(.headline)
-                                        .lineLimit(1)
-                                        .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
-                                        .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
-                                    Spacer()
-                                    if !isDeepLinkPreview {
-                                        Menu {
-                                            fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                                .padding()
-                                        } label: {
-                                            Image(systemName: "ellipsis")
-                                                .font(.system(size: 20))
-                                                .padding()
-                                        }
-                                        .menuStyle(.button)
-                                        .background(.ultraThinMaterial)
-                                        .frame(width: 32, height: 32)
-                                        .cornerRadius(16)
-                                        .padding(.trailing, 10)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity)
-                                .background {
-                                    if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
-                                        Rectangle()
-                                            .fill(.ultraThinMaterial)
-                                            .ignoresSafeArea()
-                                    }
-                                }
-                                Spacer()
-                                if !file.mime.starts(with: "video/") {
-                                    HStack {
-                                        Spacer()
-                                        Button(action: {
-                                            showFileInfo = true
-                                        }) {
-                                            Image(systemName: "info.circle")
-                                                .font(.system(size: 20))
-                                                .padding(8)
-                                        }
-                                        .buttonStyle(.borderless)
-                                        
-                                        Menu {
-                                            fileShareMenu(for: file)
-                                        } label: {
-                                            Image(systemName: "link.icloud")
-                                                .font(.system(size: 20))
-                                                .padding(8)
-                                        }
-                                        .menuStyle(.button)
-                                        
-                                        Button(action: {
-                                            showingShareSheet = true
-                                        }) {
-                                            Image(systemName: "square.and.arrow.up")
-                                                .font(.system(size: 20))
-                                                .offset(y: -2)
-                                                .padding(8)
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .padding(.leading, 1)
-                                        .sheet(isPresented: $showingShareSheet) {
-                                            if let url = URL(string: file.url) {
-                                                ShareSheet(url: url)
-                                                    .presentationDetents([.medium])
-                                            }
-                                        }
-                                        Spacer()
-                                    }
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 155, height: 44)
-                                    .cornerRadius(20)
-                                }
-                            }
+                    LoadingView()
+                    .frame(width: 100, height: 100)
+                    .onAppear {
+                        Task {
+                            await preloadFiles()
                         }
                     }
                 }
             }
-            .offset(y: dragOffset.height)
-            .gesture(
-                DragGesture()
-                    .updating($dragState) { value, state, _ in
-                        state = .dragging(translation: value.translation)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                PageViewController(
+                    files: allFiles,
+                    currentIndex: currentIndex,
+                    redirectURLs: redirectURLs,
+                    showFileInfo: $showFileInfo,
+                    selectedFileDetails: $selectedFileDetails,
+                    onPageChange: { newIndex in
+                        onNavigate(newIndex)
+                        Task {
+                            await preloadFiles()
+                        }
+                    },
+                    onLoadMore: onLoadMore
+                )
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isOverlayVisible.toggle()
                     }
-                    .onChanged { value in
-                        let translation = value.translation
-                        // Only allow vertical dragging with initial resistance
-                        let dampingFactor: CGFloat = 0.5 // Increase this value for more resistance
-                        let dampenedHeight = pow(translation.height, dampingFactor) * 8
-                        dragOffset = CGSize(width: 0, height: max(0, dampenedHeight))
-                    }
-                    .onEnded { value in
-                        let translation = value.translation
-                        let velocity = CGSize(
-                            width: value.predictedEndLocation.x - value.location.x,
-                            height: value.predictedEndLocation.y - value.location.y
-                        )
-                        
-                        // Only handle vertical gestures for dismissal
-                        let progress = translation.height / geometry.size.height
-                        let velocityThreshold: CGFloat = 300
-                        let progressThreshold: CGFloat = 0.3
-                        
-                        if progress > progressThreshold || velocity.height > velocityThreshold {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                dragOffset = CGSize(width: 0, height: geometry.size.height)
+                }
+                .background(
+                    FileDialogs(
+                        showingDeleteConfirmation: $showingDeleteConfirmation,
+                        fileIDsToDelete: $fileIDsToDelete,
+                        fileNameToDelete: $fileNameToDelete,
+                        showingExpirationDialog: $showingExpirationDialog,
+                        expirationText: $expirationText,
+                        fileToExpire: $fileToExpire,
+                        showingPasswordDialog: $showingPasswordDialog,
+                        passwordText: $passwordText,
+                        fileToPassword: $fileToPassword,
+                        showingRenameDialog: $showingRenameDialog,
+                        fileNameText: $fileNameText,
+                        fileToRename: $fileToRename,
+                        onDelete: { fileIDs in
+                            if await deleteFiles(fileIDs: fileIDs) {
                                 showingPreview = false
+                                return true
                             }
-                        } else {
-                            // Reset position if not dismissed
-                            withAnimation(.spring()) {
-                                dragOffset = .zero
+                            return false
+                        },
+                        onSetExpiration: { file, expr in
+                            await setFileExpr(file: file, expr: expr)
+                        },
+                        onSetPassword: { file, password in
+                            await setFilePassword(file: file, password: password)
+                        },
+                        onRename: { file, name in
+                            await renameFile(file: file, name: name)
+                        }
+                    )
+                )
+
+                ZStack(alignment: .top) {
+                    if isOverlayVisible {
+                        VStack {
+                            HStack{
+                                Button(action: {
+                                    showingPreview = false
+                                }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 17))
+                                        .foregroundColor(.blue)
+                                        .padding()
+                                }
+                                .background(.ultraThinMaterial)
+                                .frame(width: 32, height: 32)
+                                .cornerRadius(16)
+                                .padding(.leading, 15)
+                                Spacer()
+                                Text(file.name)
+                                    .padding(5)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                    .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
+                                    .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
+                                Spacer()
+                                if !isDeepLinkPreview {
+                                    Menu {
+                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                            .padding()
+                                    } label: {
+                                        Image(systemName: "ellipsis")
+                                            .font(.system(size: 20))
+                                            .padding()
+                                    }
+                                    .menuStyle(.button)
+                                    .background(.ultraThinMaterial)
+                                    .frame(width: 32, height: 32)
+                                    .cornerRadius(16)
+                                    .padding(.trailing, 10)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background {
+                                if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
+                                    Rectangle()
+                                        .fill(.ultraThinMaterial)
+                                        .ignoresSafeArea()
+                                }
+                            }
+                            Spacer()
+                            if !file.mime.starts(with: "video/") {
+                                HStack {
+                                    Spacer()
+                                    Button(action: {
+                                        showFileInfo = true
+                                    }) {
+                                        Image(systemName: "info.circle")
+                                            .font(.system(size: 20))
+                                            .padding(8)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    
+                                    Menu {
+                                        fileShareMenu(for: file)
+                                    } label: {
+                                        Image(systemName: "link.icloud")
+                                            .font(.system(size: 20))
+                                            .padding(8)
+                                    }
+                                    .menuStyle(.button)
+                                    
+                                    Button(action: {
+                                        showingShareSheet = true
+                                    }) {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 20))
+                                            .offset(y: -2)
+                                            .padding(8)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .padding(.leading, 1)
+                                    .sheet(isPresented: $showingShareSheet) {
+                                        if let url = URL(string: file.url) {
+                                            ShareSheet(url: url)
+                                                .presentationDetents([.medium])
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .background(.ultraThinMaterial)
+                                .frame(width: 155, height: 44)
+                                .cornerRadius(20)
                             }
                         }
                     }
+                }
+        }
+        .offset(y: dragOffset.height)
+        .gesture(
+            DragGesture()
+                .updating($dragState) { value, state, _ in
+                    state = .dragging(translation: value.translation)
+                }
+                .onChanged { value in
+                    let translation = value.translation
+                    // Only allow vertical dragging with initial resistance
+                    let dampingFactor: CGFloat = 0.5 // Increase this value for more resistance
+                    let dampenedHeight = pow(translation.height, dampingFactor) * 8
+                    dragOffset = CGSize(width: 0, height: max(0, dampenedHeight))
+                }
+                .onEnded { value in
+                    let translation = value.translation
+                    let velocity = CGSize(
+                        width: value.predictedEndLocation.x - value.location.x,
+                        height: value.predictedEndLocation.y - value.location.y
+                    )
+                    
+                    // Only handle vertical gestures for dismissal
+                    let progress = translation.height / geometry.size.height
+                    let velocityThreshold: CGFloat = 300
+                    let progressThreshold: CGFloat = 0.3
+                    
+                    if progress > progressThreshold || velocity.height > velocityThreshold {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dragOffset = CGSize(width: 0, height: geometry.size.height)
+                            showingPreview = false
+                        }
+                    } else {
+                        // Reset position if not dismissed
+                        withAnimation(.spring()) {
+                            dragOffset = .zero
+                        }
+                    }
+                }
             )
         }
         .onChange(of: currentIndex) { _, _ in

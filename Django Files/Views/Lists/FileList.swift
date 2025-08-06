@@ -262,7 +262,8 @@ struct FileListView: View {
                             previewStateManager.deepLinkTargetFileID = nil
                         }
                         foundFile = true
-                    } else if !hasNextPage {
+                    } else if !hasNextPage || errorMessage != nil {
+                        // Stop if we hit an error or no more pages
                         break
                     }
                     currentPage += 1
@@ -289,15 +290,39 @@ struct FileListView: View {
                     Spacer()
                     VStack {
                         Spacer()
-                        Image(systemName: "document.on.document.fill")
-                            .font(.system(size: 50))
-                            .padding(.bottom)
-                            .shadow(color: .purple, radius: 15)
-                        Text("No files found")
-                            .font(.headline)
-                            .shadow(color: .purple, radius: 20)
-                        Text("Upload a file to get started")
-                            .foregroundColor(.secondary)
+                        if let errorMessage = errorMessage {
+                            // Show error message instead of "no files found"
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.orange)
+                                .padding(.bottom)
+                                .shadow(color: .orange, radius: 15)
+                            Text("Error loading files")
+                                .font(.headline)
+                                .shadow(color: .orange, radius: 20)
+                            Text(errorMessage)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                            Button("Retry") {
+                                Task {
+                                    await refreshFiles()
+                                }
+                            }
+                            .padding(.top)
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            // Show "no files found" when there's no error
+                            Image(systemName: "document.on.document.fill")
+                                .font(.system(size: 50))
+                                .padding(.bottom)
+                                .shadow(color: .purple, radius: 15)
+                            Text("No files found")
+                                .font(.headline)
+                                .shadow(color: .purple, radius: 20)
+                            Text("Upload a file to get started")
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding()
                     Spacer()
@@ -547,6 +572,7 @@ struct FileListView: View {
     private func uploadClipboard() async {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
+            ToastManager.shared.showToast(message: "Invalid server configuration")
             return
         }
         
@@ -560,11 +586,18 @@ struct FileListView: View {
             do {
                 try text.write(to: tempURL, atomically: true, encoding: .utf8)
                 let delegate = UploadProgressDelegate { _ in }
-                _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
                 try? FileManager.default.removeItem(at: tempURL)
-                await refreshFiles()
+                if response != nil {
+                    await refreshFiles()
+                    ToastManager.shared.showToast(message: "Text uploaded successfully")
+                } else {
+                    ToastManager.shared.showToast(message: "Failed to upload text")
+                }
             } catch {
+                try? FileManager.default.removeItem(at: tempURL)
                 print("Error uploading clipboard text: \(error)")
+                ToastManager.shared.showToast(message: "Error uploading text: \(error.localizedDescription)")
             }
             return
         }
@@ -577,11 +610,18 @@ struct FileListView: View {
                 do {
                     try imageData.write(to: tempURL)
                     let delegate = UploadProgressDelegate { _ in }
-                    _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                    let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
                     try? FileManager.default.removeItem(at: tempURL)
-                    await refreshFiles()
+                    if response != nil {
+                        await refreshFiles()
+                        ToastManager.shared.showToast(message: "Image uploaded successfully")
+                    } else {
+                        ToastManager.shared.showToast(message: "Failed to upload image")
+                    }
                 } catch {
+                    try? FileManager.default.removeItem(at: tempURL)
                     print("Error uploading clipboard image: \(error)")
+                    ToastManager.shared.showToast(message: "Error uploading image: \(error.localizedDescription)")
                 }
             }
             return
@@ -593,14 +633,24 @@ struct FileListView: View {
             do {
                 try videoData.write(to: tempURL)
                 let delegate = UploadProgressDelegate { _ in }
-                _ = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
                 try? FileManager.default.removeItem(at: tempURL)
-                await refreshFiles()
+                if response != nil {
+                    await refreshFiles()
+                    ToastManager.shared.showToast(message: "Video uploaded successfully")
+                } else {
+                    ToastManager.shared.showToast(message: "Failed to upload video")
+                }
             } catch {
+                try? FileManager.default.removeItem(at: tempURL)
                 print("Error uploading clipboard video: \(error)")
+                ToastManager.shared.showToast(message: "Error uploading video: \(error.localizedDescription)")
             }
             return
         }
+        
+        // If we get here, no content was found in clipboard
+        ToastManager.shared.showToast(message: "No content found in clipboard")
     }
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
@@ -710,33 +760,52 @@ struct FileListView: View {
     private func fetchFiles(page: Int, append: Bool = false) async {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
-            errorMessage = "Invalid server URL"
+            let errorMsg = "Invalid server URL"
+            errorMessage = errorMsg
             isLoading = false
+            // Show toast message for the error
+            ToastManager.shared.showToast(message: errorMsg)
             return
         }
         
         let api = DFAPI(url: url, token: serverInstance.token)
         
-        if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID) {
-            if append {
-                // Only append new files that aren't already in the list
-                let newFiles = filesResponse.files.filter { newFile in
-                    !files.contains { $0.id == newFile.id }
+        do {
+            if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID) {
+                if append {
+                    // Only append new files that aren't already in the list
+                    let newFiles = filesResponse.files.filter { newFile in
+                        !files.contains { $0.id == newFile.id }
+                    }
+                    files.append(contentsOf: newFiles)
+                } else {
+                    files = filesResponse.files
                 }
-                files.append(contentsOf: newFiles)
+                
+                hasNextPage = filesResponse.next != nil
+                currentPage = page
+                isLoading = false
+                // Clear any previous error message on success
+                errorMessage = nil
             } else {
-                files = filesResponse.files
+                if !append {
+                    files = []
+                }
+                let errorMsg = "Failed to load files from server"
+                errorMessage = errorMsg
+                isLoading = false
+                // Show toast message for the error
+                ToastManager.shared.showToast(message: errorMsg)
             }
-            
-            hasNextPage = filesResponse.next != nil
-            currentPage = page
-            isLoading = false
-        } else {
+        } catch {
             if !append {
                 files = []
             }
-            errorMessage = "Failed to load files from server"
+            let errorMsg = "Error loading files: \(error.localizedDescription)"
+            errorMessage = errorMsg
             isLoading = false
+            // Show toast message for the error
+            ToastManager.shared.showToast(message: errorMsg)
         }
     }
     
