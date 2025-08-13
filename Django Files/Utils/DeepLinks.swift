@@ -12,7 +12,7 @@ class DeepLinks {
     static let shared = DeepLinks()
     private init() {}
     
-    func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
+    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
         print("Deep link received: \(url)")
         guard url.scheme == "djangofiles" else { return }
         
@@ -36,7 +36,7 @@ class DeepLinks {
         }
     }
     
-    private func handlePreviewLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
+    @MainActor private func handlePreviewLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
         print("🔍 Handling preview deep link with components: \(components)")
 
         guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
@@ -128,7 +128,7 @@ class DeepLinks {
         }
     }
     
-    private func handleFileListDeepLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, selectedTab: Binding<TabViewWindow.Tab>) {
+    @MainActor private func handleFileListDeepLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, selectedTab: Binding<TabViewWindow.Tab>) {
         guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: urlString) else {
             print("Invalid server URL in filelist deep link")
@@ -154,7 +154,7 @@ class DeepLinks {
         }
     }
     
-    private func deepLinkAuth(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
+    @MainActor private func deepLinkAuth(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
         guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
             print("Unable to parse auth deep link.")
