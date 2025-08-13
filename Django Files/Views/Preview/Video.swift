@@ -48,7 +48,7 @@ struct VideoPlayerView: View {
             }
 
             // Set up status observation
-            let statusObserver = currentItem.observe(\.status, options: [.new]) { item, _ in
+            let _ = currentItem.observe(\.status, options: [.new]) { item, _ in
                 DispatchQueue.main.async {
                     switch item.status {
                     case .readyToPlay:

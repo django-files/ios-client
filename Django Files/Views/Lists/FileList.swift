@@ -413,7 +413,7 @@ struct FileListView: View {
                     },
                     onLoadMore: {
                         if hasNextPage && !isLoading {
-                            await loadNextPage()
+                            loadNextPage()
                         }
                     }
                 )
@@ -797,15 +797,6 @@ struct FileListView: View {
                 // Show toast message for the error
                 ToastManager.shared.showToast(message: errorMsg)
             }
-        } catch {
-            if !append {
-                files = []
-            }
-            let errorMsg = "Error loading files: \(error.localizedDescription)"
-            errorMessage = errorMsg
-            isLoading = false
-            // Show toast message for the error
-            ToastManager.shared.showToast(message: errorMsg)
         }
     }
     
