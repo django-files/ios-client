@@ -262,12 +262,17 @@ extension DFAPI {
         return nil
     }
     
-    public func getFileDetails(fileID: Int, selectedServer: DjangoFilesSession? = nil) async -> DFFile? {
+    public func getFileDetails(fileID: Int, password: String? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFFile? {
         do {
+            var parameters: [String: String] = [:]
+            if let password = password {
+                parameters["password"] = password
+            }
+            
             let responseBody = try await makeAPIRequest(
                 body: Data(),
                 path: getAPIPath(.file) + "\(fileID)",
-                parameters: [:],
+                parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )

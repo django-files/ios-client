@@ -30,7 +30,6 @@ struct ImageScrollView: UIViewRepresentable {
         doubleTapGesture.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTapGesture)
     
-        // Calculate initial zoom scale
         let widthScale = UIScreen.main.bounds.width / image.size.width
         let heightScale = UIScreen.main.bounds.height / image.size.height
         let minScale = min(widthScale, heightScale)
@@ -38,11 +37,13 @@ struct ImageScrollView: UIViewRepresentable {
         scrollView.minimumZoomScale = minScale
         scrollView.maximumZoomScale = 5.0
         
-        // Set content size to image size
         scrollView.contentSize = image.size
         
-        // Set initial zoom scale
         scrollView.zoomScale = minScale
+        
+        scrollView.decelerationRate = .fast
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
         
         return scrollView
     }
@@ -65,39 +66,39 @@ struct ImageScrollView: UIViewRepresentable {
             return imageView
         }
         
-       func updateZoomScaleForSize(_ size: CGSize) {
-           guard let imageView = imageView,
-               let image = imageView.image,
-               let scrollView = scrollView,
-               size.width > 0,
-               size.height > 0,
-               image.size.width > 0,
-               image.size.height > 0 else { return }
-           
-           let widthScale = size.width / image.size.width
-           let heightScale = size.height / image.size.height
-           let minScale = min(widthScale, heightScale)
+        func updateZoomScaleForSize(_ size: CGSize) {
+            guard let imageView = imageView,
+                  let image = imageView.image,
+                  let scrollView = scrollView,
+                  size.width > 0,
+                  size.height > 0,
+                  image.size.width > 0,
+                  image.size.height > 0 else { return }
             
-           scrollView.minimumZoomScale = minScale
-           scrollView.maximumZoomScale = max(minScale * 5, 5.0)
+            let widthScale = size.width / image.size.width
+            let heightScale = size.height / image.size.height
+            let minScale = min(widthScale, heightScale)
+            
+            scrollView.minimumZoomScale = minScale
+            scrollView.maximumZoomScale = max(minScale * 5, 5.0)
         }
-       
-       @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-           guard let scrollView = gesture.view as? UIScrollView else { return }
-           
-           if scrollView.zoomScale > scrollView.minimumZoomScale {
-               scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
-           } else {
-               let point = gesture.location(in: imageView)
-               let size = scrollView.bounds.size
-               let w = size.width / (scrollView.maximumZoomScale / 5)
-               let h = size.height / (scrollView.maximumZoomScale / 5)
-               let x = point.x - (w / 2.0)
-               let y = point.y - (h / 2.0)
-               let rect = CGRect(x: x, y: y, width: w, height: h)
-               scrollView.zoom(to: rect, animated: true)
-           }
-       }
+        
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+            
+            if scrollView.zoomScale > scrollView.minimumZoomScale {
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                let point = gesture.location(in: imageView)
+                let size = scrollView.bounds.size
+                let w = size.width / (scrollView.maximumZoomScale / 5)
+                let h = size.height / (scrollView.maximumZoomScale / 5)
+                let x = point.x - (w / 2.0)
+                let y = point.y - (h / 2.0)
+                let rect = CGRect(x: x, y: y, width: w, height: h)
+                scrollView.zoom(to: rect, animated: true)
+            }
+        }
         
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
             guard let imageView = imageView else { return }

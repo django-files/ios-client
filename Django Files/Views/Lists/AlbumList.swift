@@ -114,11 +114,8 @@ struct AlbumListView: View {
                 }
                 
                 if isLoading && hasNextPage {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                        Spacer()
-                    }
+                    ProgressView()
+                        .frame(width: 50, height: 50)
                 }
             }
         }

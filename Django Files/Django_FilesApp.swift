@@ -11,10 +11,16 @@ import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
 
+class PreviewStateManager: ObservableObject {
+    @Published var deepLinkFile: DFFile?
+    @Published var showingDeepLinkPreview = false
+    @Published var deepLinkTargetFileID: Int? = nil
+    @Published var deepLinkFilePassword: String? = nil
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    // Skip Firebase initialization if disabled via launch arguments
     let shouldDisableFirebase = ProcessInfo.processInfo.arguments.contains("--DisableFirebase")
     if !shouldDisableFirebase {
         FirebaseApp.configure()
@@ -36,6 +42,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct Django_FilesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var previewStateManager = PreviewStateManager()
+    @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -112,8 +120,19 @@ struct Django_FilesApp: App {
                     TabViewWindow(sessionManager: sessionManager, selectedTab: $selectedTab)
                 }
             }
+            .environmentObject(previewStateManager)
             .onOpenURL { url in
-                handleDeepLink(url)
+                DeepLinks.shared.handleDeepLink(
+                    url,
+                    context: sharedModelContainer.mainContext,
+                    sessionManager: sessionManager,
+                    previewStateManager: previewStateManager,
+                    selectedTab: $selectedTab,
+                    hasExistingSessions: $hasExistingSessions,
+                    showingServerConfirmation: $showingServerConfirmation,
+                    pendingAuthURL: $pendingAuthURL,
+                    pendingAuthSignature: $pendingAuthSignature
+                )
             }
             .sheet(isPresented: $showingServerConfirmation) {
                 ServerConfirmationView(
@@ -121,16 +140,51 @@ struct Django_FilesApp: App {
                     signature: $pendingAuthSignature,
                     onConfirm: { setAsDefault in
                         Task {
-                            await handleServerConfirmation(confirmed: true, setAsDefault: setAsDefault)
+                            await DeepLinks.shared.handleServerConfirmation(
+                                confirmed: true,
+                                setAsDefault: setAsDefault,
+                                pendingAuthURL: $pendingAuthURL,
+                                pendingAuthSignature: $pendingAuthSignature,
+                                context: sharedModelContainer.mainContext,
+                                sessionManager: sessionManager,
+                                hasExistingSessions: $hasExistingSessions,
+                                selectedTab: $selectedTab
+                            )
                         }
                     },
                     onCancel: {
                         Task {
-                            await handleServerConfirmation(confirmed: false, setAsDefault: false)
+                            await DeepLinks.shared.handleServerConfirmation(
+                                confirmed: false,
+                                setAsDefault: false,
+                                pendingAuthURL: $pendingAuthURL,
+                                pendingAuthSignature: $pendingAuthSignature,
+                                context: sharedModelContainer.mainContext,
+                                sessionManager: sessionManager,
+                                hasExistingSessions: $hasExistingSessions,
+                                selectedTab: $selectedTab
+                            )
                         }
                     },
                     context: sharedModelContainer.mainContext
                 )
+            }
+            .fullScreenCover(isPresented: $previewStateManager.showingDeepLinkPreview) {
+                if let file = previewStateManager.deepLinkFile {
+                    FilePreviewView(
+                        file: .constant(file),
+                        server: .constant(nil),
+                        showingPreview: $previewStateManager.showingDeepLinkPreview,
+                        showFileInfo: $showFileInfo,
+                        fileListDelegate: nil,
+                        allFiles: .constant([file]),
+                        currentIndex: 0,
+                        onNavigate: { _ in }
+                    )
+                    .onDisappear {
+                        previewStateManager.deepLinkFile = nil
+                    }
+                }
             }
         }
         .modelContainer(sharedModelContainer)
@@ -139,145 +193,6 @@ struct Django_FilesApp: App {
             SidebarCommands()
         }
 #endif
-    }
-    
-    private func handleDeepLink(_ url: URL) {
-        print("Deep link received: \(url)")
-        guard url.scheme == "djangofiles" else { return }
-        
-        // Extract the signature from the URL parameters
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
-            print("Invalid deep link URL")
-            return
-        }
-        print("Deep link host: \(components.host ?? "unknown")")
-        switch components.host {
-        case "authorize":
-            deepLinkAuth(components)
-        case "serverlist":
-            selectedTab = .settings
-        case "filelist":
-            handleFileListDeepLink(components)
-        default:
-            ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
-            print("Unsupported deep link type: \(components.host ?? "unknown")")
-        }
-    }
-    
-    private func handleFileListDeepLink(_ components: URLComponents) {
-        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: urlString) else {
-            print("Invalid server URL in filelist deep link")
-            return
-        }
-        
-        // Find the session with matching URL and select it
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        Task {
-            do {
-                let existingSessions = try context.fetch(descriptor)
-                if let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    await MainActor.run {
-                        sessionManager.selectedSession = matchingSession
-                        selectedTab = .files
-                    }
-                } else {
-                    print("No session found for URL: \(serverURL.absoluteString)")
-                }
-            } catch {
-                print("Error fetching sessions: \(error)")
-            }
-        }
-    }
-    
-    private func deepLinkAuth(_ components: URLComponents) {
-        guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
-            print("Unable to parse auth deep link.")
-            return
-        }
-
-        // Check if a session with this URL already exists
-        let context = sharedModelContainer.mainContext
-        let descriptor = FetchDescriptor<DjangoFilesSession>()
-        
-        Task {
-            do {
-                let existingSessions = try context.fetch(descriptor)
-                if let existingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    // If session exists, just select it and update UI
-                    await MainActor.run {
-                        sessionManager.selectedSession = existingSession
-                        hasExistingSessions = true
-                        ToastManager.shared.showToast(message: "Connected to existing server \(existingSession.url)")
-                    }
-                    return
-                }
-                
-                // No existing session, show confirmation dialog
-                await MainActor.run {
-                    pendingAuthURL = serverURL
-                    pendingAuthSignature = signature
-                    showingServerConfirmation = true
-                }
-            } catch {
-                print("Error checking for existing sessions: \(error)")
-            }
-        }
-    }
-    
-    private func handleServerConfirmation(confirmed: Bool, setAsDefault: Bool) async {
-        guard let serverURL = pendingAuthURL,
-              let signature = pendingAuthSignature else {
-            return
-        }
-
-        // If user cancelled, just clear the pending data and return
-        if !confirmed {
-            pendingAuthURL = nil
-            pendingAuthSignature = nil
-            return
-        }
-
-        await MainActor.run {
-            // Create and authenticate the new session
-            let context = sharedModelContainer.mainContext
-            
-            do {
-                let descriptor = FetchDescriptor<DjangoFilesSession>()
-                let existingSessions = try context.fetch(descriptor)
-                
-                // Create and authenticate the new session
-                Task {
-                    if let newSession = await sessionManager.createAndAuthenticateSession(
-                        url: serverURL,
-                        signature: signature,
-                        context: context
-                    ) {
-                        if setAsDefault {
-                            // Reset all other sessions to not be default
-                            for session in existingSessions {
-                                session.defaultSession = false
-                            }
-                            newSession.defaultSession = true
-                        }
-                        sessionManager.selectedSession = newSession
-                        hasExistingSessions = true
-                        selectedTab = .files
-                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
-                    }
-                }
-            } catch {
-                ToastManager.shared.showToast(message: "Problem signing into server \(error)")
-                print("Error creating new session: \(error)")
-            }
-            
-            // Clear pending auth data
-            pendingAuthURL = nil
-            pendingAuthSignature = nil
-        }
     }
     
     private func checkDefaultServer() {
@@ -313,10 +228,10 @@ struct Django_FilesApp: App {
             if hasExistingSessions {
                 checkDefaultServer()
             }
-            isLoading = false  // Set loading to false after check completes
+            isLoading = false
         } catch {
             print("Error checking for existing sessions: \(error)")
-            isLoading = false  // Ensure we exit loading state even on error
+            isLoading = false
         }
     }
 }

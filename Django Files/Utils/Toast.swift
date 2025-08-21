@@ -13,7 +13,7 @@ class ToastManager {
     func showToast(message: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else { return }
-        
+
         // Create a label for the toast
         let toastContainer = UIView()
         toastContainer.backgroundColor = UIColor.darkGray.withAlphaComponent(0.9)
@@ -67,7 +67,7 @@ class ToastManager {
             toastContainer.alpha = 1
         }) { _ in
             // Dismiss the toast after a delay
-            UIView.animate(withDuration: 0.2, delay: 1.5, options: .curveEaseOut, animations: {
+            UIView.animate(withDuration: 0.2, delay: 2.0, options: .curveEaseOut, animations: {
                 toastContainer.alpha = 0
             }) { _ in
                 toastContainer.removeFromSuperview()

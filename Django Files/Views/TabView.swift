@@ -10,6 +10,7 @@ import SwiftData
 
 struct TabViewWindow: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var previewStateManager: PreviewStateManager
     @ObservedObject var sessionManager: SessionManager
     @Binding var selectedTab: Tab
     
@@ -22,6 +23,7 @@ struct TabViewWindow: View {
     @State private var showLoginSheet = false
     @State private var filesNavigationPath = NavigationPath()
     @State private var albumsNavigationPath = NavigationPath()
+    @State private var showFileInfo = false
     
     init(sessionManager: SessionManager, selectedTab: Binding<Tab>) {
         self.sessionManager = sessionManager
@@ -71,6 +73,13 @@ struct TabViewWindow: View {
                 }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
+                        // Clear navigation paths when switching servers
+                        filesNavigationPath = NavigationPath()
+                        albumsNavigationPath = NavigationPath()
+
+                        // Force view refresh
+                        serverChangeRefreshTrigger = UUID()
+
                         sessionManager.saveSelectedSession()
                         Task {
                             await refreshUserData(session: session)
@@ -91,6 +100,7 @@ struct TabViewWindow: View {
                     .tag(Tab.settings)
             }
         }
+        .environmentObject(previewStateManager)
         .onAppear {
             sessionManager.loadLastSelectedSession(from: sessions)
             if let selectedSession = sessionManager.selectedSession {

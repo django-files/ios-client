@@ -11,6 +11,7 @@ import Foundation
 class ImageCache {
     static let shared = ImageCache()
     private let cache = NSCache<NSString, UIImage>()
+    private let contentCache = NSCache<NSString, NSData>()
     
     private init() {
         // Cache is unlimited
@@ -22,6 +23,14 @@ class ImageCache {
     
     func get(for key: String) -> UIImage? {
         return cache.object(forKey: key as NSString)
+    }
+    
+    func setContent(_ data: Data, for key: String) {
+        contentCache.setObject(data as NSData, forKey: key as NSString)
+    }
+    
+    func getContent(for key: String) -> Data? {
+        return contentCache.object(forKey: key as NSString) as Data?
     }
 }
 
@@ -96,5 +105,22 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                 }
             }
         }
+    }
+}
+
+// Add a new generic content loader
+struct CachedContentLoader {
+    static func loadContent(from url: URL) async throws -> Data {
+        let urlString = url.absoluteString
+        
+        // Check cache first
+        if let cachedData = ImageCache.shared.getContent(for: urlString) {
+            return cachedData
+        }
+        
+        // Download and cache if not found
+        let (data, _) = try await URLSession.shared.data(from: url)
+        ImageCache.shared.setContent(data, for: urlString)
+        return data
     }
 }
