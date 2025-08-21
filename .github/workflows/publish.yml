@@ -40,6 +40,12 @@ jobs:
         run: |
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
+      - name: "Install iOS 18.3 Platform"
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app
+          # sudo xcodebuild -downloadPlatform iOS
+          # sudo xcodebuild -downloadPlatform iOS -platform iOS -version 18.4
+
       - name: "Fastlane ${{ env.command }}"
         run: fastlane ${{ env.command }}
         env:
