@@ -614,12 +614,10 @@ struct FilePreviewView: View {
             .sheet(isPresented: $showFileInfo) {
                 if let details = selectedFileDetails {
                     PreviewFileInfo(file: details)
-                        .presentationBackground(.ultraThinMaterial)
                         .presentationDetents([.medium])
                         .presentationDragIndicator(.visible)
                 } else {
                     PreviewFileInfo(file: file)
-                        .presentationBackground(.ultraThinMaterial)
                         .presentationDetents([.medium])
                         .presentationDragIndicator(.visible)
                 }
