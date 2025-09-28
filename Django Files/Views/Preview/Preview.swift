@@ -3,6 +3,12 @@ import AVKit
 import HighlightSwift
 import UIKit
 
+extension UIPageViewController {
+    var scrollView: UIScrollView? {
+        return view.subviews.first { $0 is UIScrollView } as? UIScrollView
+    }
+}
+
 
 struct ContentPreview: View {
     let mimeType: String
@@ -62,7 +68,9 @@ struct ContentPreview: View {
         TextPreview(
             content: content,
             mimeType: mimeType,
-            fileName: fileURL.lastPathComponent
+            fileName: fileURL.lastPathComponent,
+            isLoading: isLoading,
+            error: error
         )
         .background(.black)
     }
@@ -205,6 +213,7 @@ struct PageViewController: UIViewControllerRepresentable {
     @Binding var selectedFileDetails: DFFile?
     var onPageChange: (Int) -> Void
     var onLoadMore: (() async -> Void)?
+    var isDragging: Bool
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -227,6 +236,9 @@ struct PageViewController: UIViewControllerRepresentable {
     
     func updateUIViewController(_ pageViewController: UIPageViewController, context: Context) {
         context.coordinator.parent = self
+        
+        // Disable scrolling when dragging is active
+        pageViewController.scrollView?.isScrollEnabled = !isDragging
         
         // Only update if the current index has changed and we're not in the middle of a transition
         if let currentVC = pageViewController.viewControllers?.first as? UIHostingController<ContentPreview>,
@@ -411,7 +423,7 @@ struct FilePreviewView: View {
     
     @State private var redirectURLs: [String: String] = [:]
     @State private var dragOffset = CGSize.zero
-    @GestureState private var dragState = DragState.inactive
+    @State private var isDragging = false
     @State private var selectedFileDetails: DFFile?
     
     @State private var showingDeleteConfirmation = false
@@ -436,20 +448,6 @@ struct FilePreviewView: View {
     
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
-    }
-    
-    private enum DragState {
-        case inactive
-        case dragging(translation: CGSize)
-        
-        var translation: CGSize {
-            switch self {
-            case .inactive:
-                return .zero
-            case .dragging(let translation):
-                return translation
-            }
-        }
     }
     
     @MainActor
@@ -497,7 +495,7 @@ struct FilePreviewView: View {
     }
     
     var body: some View {
-        NavigationStack{
+        NavigationStack {
             GeometryReader { geometry in
                 ZStack {
                     if redirectURLs[file.raw] == nil {
@@ -524,7 +522,8 @@ struct FilePreviewView: View {
                                 await preloadFiles()
                             }
                         },
-                        onLoadMore: onLoadMore
+                        onLoadMore: onLoadMore,
+                        isDragging: isDragging
                     )
                     .ignoresSafeArea()
                     .background(.black)
@@ -565,45 +564,6 @@ struct FilePreviewView: View {
                             }
                         )
                     )
-            }
-            .offset(y: dragOffset.height)
-            .gesture(
-                DragGesture()
-                    .updating($dragState) { value, state, _ in
-                        state = .dragging(translation: value.translation)
-                    }
-                    .onChanged { value in
-                        let translation = value.translation
-                        // Only allow vertical dragging with initial resistance
-                        let dampingFactor: CGFloat = 0.5 // Increase this value for more resistance
-                        let dampenedHeight = pow(translation.height, dampingFactor) * 8
-                        dragOffset = CGSize(width: 0, height: max(0, dampenedHeight))
-                    }
-                    .onEnded { value in
-                        let translation = value.translation
-                        let velocity = CGSize(
-                            width: value.predictedEndLocation.x - value.location.x,
-                            height: value.predictedEndLocation.y - value.location.y
-                        )
-                        
-                        // Only handle vertical gestures for dismissal
-                        let progress = translation.height / geometry.size.height
-                        let velocityThreshold: CGFloat = 300
-                        let progressThreshold: CGFloat = 0.3
-                        
-                        if progress > progressThreshold || velocity.height > velocityThreshold {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                dragOffset = CGSize(width: 0, height: geometry.size.height)
-                                showingPreview = false
-                            }
-                        } else {
-                            // Reset position if not dismissed
-                            withAnimation(.spring()) {
-                                dragOffset = .zero
-                            }
-                        }
-                    }
-                )
             }
             .onChange(of: currentIndex) { _, _ in
                 // Preload files when current index changes externally
@@ -670,7 +630,31 @@ struct FilePreviewView: View {
             }
             .toolbarVisibility(isOverlayVisible ? .visible : .hidden, for: .navigationBar)
             .toolbarVisibility(isOverlayVisible ? .visible : .hidden, for: .bottomBar)
+            }
         }
+       .offset(dragOffset)
+       .simultaneousGesture(
+           DragGesture()
+               .onChanged { gesture in
+                   if gesture.translation.height > 10 {
+                        dragOffset = gesture.translation
+                        isDragging = true
+                   }
+               }
+               .onEnded { gesture in
+                   isDragging = false
+                   if gesture.translation.height > 150 {
+                       withAnimation(.spring()) {
+                           showingPreview = false
+                       }
+                   } else {
+                       // Otherwise, animate the view back to its original position
+                       withAnimation(.spring()) {
+                           dragOffset = .zero
+                       }
+                   }
+               }
+       )
     }
     
     @MainActor

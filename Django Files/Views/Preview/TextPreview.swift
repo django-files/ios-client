@@ -12,15 +12,25 @@ struct TextPreview: View {
     let content: Data?
     let mimeType: String
     let fileName: String
+    let isLoading: Bool
+    let error: Error?
     
     var body: some View {
         ScrollView(showsIndicators: true) {
             ZStack {
-                if let content = content, let text = String(data: content, encoding: .utf8) {
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        LoadingView()
+                            .frame(width: 100, height: 100)
+                        Spacer()
+                    }
+                } else if let content = content, let text = String(data: content, encoding: .utf8) {
                     CodeText(text)
                         .highlightLanguage(determineLanguage(from: mimeType, fileName: fileName))
                         .padding()
-                } else {
+                } else if error != nil {
+                    // Only show error message if there's an actual error
                     Text("Unable to decode text content")
                         .foregroundColor(.red)
                 }
