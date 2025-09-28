@@ -16,6 +16,7 @@ struct ContentPreview: View {
     let file: DFFile
     var showFileInfo: Binding<Bool>
     @Binding var selectedFileDetails: DFFile?
+    @Binding var isContentScrolling: Bool
 
     @State private var content: Data?
     @State private var isLoading = true
@@ -70,7 +71,8 @@ struct ContentPreview: View {
             mimeType: mimeType,
             fileName: fileURL.lastPathComponent,
             isLoading: isLoading,
-            error: error
+            error: error,
+            isContentScrolling: $isContentScrolling
         )
         .background(.black)
     }
@@ -82,7 +84,7 @@ struct ContentPreview: View {
                     AnimatedImageScrollView(data: content)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else if let uiImage = UIImage(data: content) {
-                    ImageScrollView(image: uiImage)
+                    ImageScrollView(image: uiImage, isContentScrolling: $isContentScrolling)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
                     Text("Unable to load image")
@@ -211,6 +213,7 @@ struct PageViewController: UIViewControllerRepresentable {
     var redirectURLs: [String: String]
     var showFileInfo: Binding<Bool>
     @Binding var selectedFileDetails: DFFile?
+    @Binding var isContentScrolling: Bool
     var onPageChange: (Int) -> Void
     var onLoadMore: (() async -> Void)?
     var isDragging: Bool
@@ -304,7 +307,8 @@ struct PageViewController: UIViewControllerRepresentable {
                 fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.raw)!,
                 file: file,
                 showFileInfo: parent.showFileInfo,
-                selectedFileDetails: parent.$selectedFileDetails
+                selectedFileDetails: parent.$selectedFileDetails,
+                isContentScrolling: parent.$isContentScrolling
             )
             let vc = UIHostingController(rootView: contentPreview)
             vc.view.backgroundColor = .clear
@@ -445,6 +449,7 @@ struct FilePreviewView: View {
     @State private var showingShareSheet = false
     
     @State private var isOverlayVisible = true
+    @State private var isContentScrolling = false
     
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
@@ -516,6 +521,7 @@ struct FilePreviewView: View {
                         redirectURLs: redirectURLs,
                         showFileInfo: $showFileInfo,
                         selectedFileDetails: $selectedFileDetails,
+                        isContentScrolling: $isContentScrolling,
                         onPageChange: { newIndex in
                             onNavigate(newIndex)
                             Task {
@@ -634,21 +640,41 @@ struct FilePreviewView: View {
         }
        .offset(dragOffset)
        .simultaneousGesture(
-           DragGesture()
+           DragGesture(minimumDistance: 100)
                .onChanged { gesture in
-                   if gesture.translation.height > 10 {
-                        dragOffset = gesture.translation
-                        isDragging = true
+                   // Don't trigger dismiss if content is currently scrolling
+                   guard !isContentScrolling else { return }
+                   
+                   // Only trigger dismiss if gesture is clearly a dismiss intent
+                   // Check if this is a vertical downward gesture with minimal horizontal movement
+                   let isVerticalGesture = abs(gesture.translation.height) > abs(gesture.translation.width) * 2
+                   let isDownwardGesture = gesture.translation.height > 0
+                   let hasMinimalHorizontalMovement = abs(gesture.translation.width) < 20
+                   
+                   if isVerticalGesture && isDownwardGesture && hasMinimalHorizontalMovement && gesture.translation.height > 15 {
+                       dragOffset = gesture.translation
+                       isDragging = true
                    }
                }
                .onEnded { gesture in
                    isDragging = false
-                   if gesture.translation.height > 150 {
+                   
+                   // Don't dismiss if content was scrolling
+                   guard !isContentScrolling else {
+                       dragOffset = .zero
+                       return
+                   }
+                   
+                   // Only dismiss if gesture was clearly a dismiss intent
+                   let isVerticalGesture = abs(gesture.translation.height) > abs(gesture.translation.width) * 2
+                   let isDownwardGesture = gesture.translation.height > 0
+                   let hasMinimalHorizontalMovement = abs(gesture.translation.width) < 30
+                   
+                   if isVerticalGesture && isDownwardGesture && hasMinimalHorizontalMovement && gesture.translation.height > 120 {
                        withAnimation(.spring()) {
                            showingPreview = false
                        }
                    } else {
-                       // Otherwise, animate the view back to its original position
                        withAnimation(.spring()) {
                            dragOffset = .zero
                        }

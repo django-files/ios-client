@@ -14,31 +14,45 @@ struct TextPreview: View {
     let fileName: String
     let isLoading: Bool
     let error: Error?
+    @Binding var isContentScrolling: Bool
     
     var body: some View {
-        ScrollView(showsIndicators: true) {
-            ZStack {
-                if isLoading {
-                    HStack {
-                        Spacer()
-                        LoadingView()
-                            .frame(width: 100, height: 100)
-                        Spacer()
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: true) {
+                ZStack {
+                    if isLoading {
+                        HStack {
+                            Spacer()
+                            LoadingView()
+                                .frame(width: 100, height: 100)
+                            Spacer()
+                        }
+                    } else if let content = content, let text = String(data: content, encoding: .utf8) {
+                        CodeText(text)
+                            .highlightLanguage(determineLanguage(from: mimeType, fileName: fileName))
+                            .padding()
+                    } else if error != nil {
+                        // Only show error message if there's an actual error
+                        Text("Unable to decode text content")
+                            .foregroundColor(.red)
                     }
-                } else if let content = content, let text = String(data: content, encoding: .utf8) {
-                    CodeText(text)
-                        .highlightLanguage(determineLanguage(from: mimeType, fileName: fileName))
-                        .padding()
-                } else if error != nil {
-                    // Only show error message if there's an actual error
-                    Text("Unable to decode text content")
-                        .foregroundColor(.red)
                 }
+                .padding(.top, 40)
             }
-            .padding(.top, 40)
+            .refreshable(action: {}) // Empty refreshable to disable pull-to-refresh
+            .scrollDisabled(false) // Explicitly enable scrolling
+            .simultaneousGesture(
+                DragGesture()
+                    .onChanged { _ in
+                        isContentScrolling = true
+                    }
+                    .onEnded { _ in
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isContentScrolling = false
+                        }
+                    }
+            )
         }
-        .refreshable(action: {}) // Empty refreshable to disable pull-to-refresh
-        .scrollDisabled(false) // Explicitly enable scrolling
     }
     
     // Helper function to determine the highlight language based on file type
