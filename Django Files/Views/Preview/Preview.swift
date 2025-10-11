@@ -207,6 +207,12 @@ struct ContentPreview: View {
     }
 }
 
+func textWidth(text: String, font: UIFont) -> CGFloat {
+    let attributes: [NSAttributedString.Key: Any] = [.font: font]
+    let size = text.size(withAttributes: attributes)
+    return size.width
+}
+
 struct PageViewController: UIViewControllerRepresentable {
     var files: [DFFile]
     var currentIndex: Int
@@ -402,6 +408,17 @@ struct PageViewController: UIViewControllerRepresentable {
     }
 }
 
+extension View {
+    @ViewBuilder
+    func adaptiveSystemButtonStyle() -> some View {
+        if #available(iOS 26.0, *) {
+            self.buttonStyle(.glass)
+        } else {
+            self.buttonStyle(.bordered)
+        }
+    }
+}
+
 struct FilePreviewView: View {
     @Binding var file: DFFile
     let server: Binding<DjangoFilesSession?>
@@ -451,8 +468,30 @@ struct FilePreviewView: View {
     @State private var isOverlayVisible = true
     @State private var isContentScrolling = false
     
+    @State private var marqueeOffset = 3.0
+    @State private var animationID = UUID()
+    
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
+    }
+    
+    private func resetMarqueeAnimation() {
+        // Generate new animation ID to cancel previous animations
+        animationID = UUID()
+        
+        // Immediately reset the offset to initial position without animation
+        marqueeOffset = 3.0
+        
+        // Start animation if filename is long enough
+        if file.name.count > 26 {
+            // Use a slight delay to ensure the reset happens first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let baseAnimation = Animation.linear(duration: 8).delay(6).repeatForever()
+                withAnimation(baseAnimation) {
+                    marqueeOffset = -textWidth(text: file.name, font: UIFont.systemFont(ofSize: 5))
+                }
+            }
+        }
     }
     
     @MainActor
@@ -597,30 +636,66 @@ struct FilePreviewView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(file.name)
-                        .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
+                    Button(action: {
+                        showFileInfo = true
+                    }) {
+                        VStack {
+                            Text(file.name)
+                                .hidden()
+                                .overlay(alignment: file.name.count > 26 ? .leading : .center) {
+                                    Text(file.name)
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                        .font(.subheadline)
+
+                                }
+                                .offset(x: file.name.count > 26 ? marqueeOffset : 0)
+                                .id(animationID)
+                                .onAppear {
+                                    resetMarqueeAnimation()
+                                }
+                                .onChange(of: file.name) { _, _ in
+                                    resetMarqueeAnimation()
+                                }
+                                .mask(
+                                    LinearGradient(
+                                        gradient: Gradient(stops: [
+                                            .init(color: .clear, location: 0.0),   // Fades in from left
+                                            .init(color: .black, location: file.name.count < 26 ? 0.0 : 0.04),   // Fully visible area starts
+                                            .init(color: .black, location: file.name.count < 26 ? 1.0 : 0.96),   // Fully visible area ends
+                                            .init(color: .clear, location: 1.0)    // Fades out on right
+                                        ]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(maxWidth: .infinity)
+                            
+                            ZStack {
+                                Text(file.formattedDate())
+                                    .font(.caption)
+                            }
+//                            if let gpsArea = file.meta?["GPSArea"]?.value as? String {
+//                                Text(gpsArea)
+//                                    .font(.custom("SF Pro", size: 11, relativeTo: .caption))
+//                            }
+                        }
+                    }
+                    .frame(minWidth: 200)
+                    .adaptiveSystemButtonStyle()
                 }
-                ToolbarItem {
+                ToolbarItem(placement: .topBarTrailing) {
                     if !isDeepLinkPreview {
                         Menu {
                             fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                         } label: {
                             Image(systemName: "ellipsis")
+                                .foregroundColor(Color.white)
                         }
+
                     }
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button(action: {
-                        showFileInfo = true
-                    }) {
-                        Image(systemName: "info.circle")
-                    }
-                    Menu {
-                        fileShareMenu(for: file)
-                    } label: {
-                        Image(systemName: "link.icloud")
-                    }
-                    
                     Button(action: {
                         showingShareSheet = true
                     }) {
@@ -631,6 +706,25 @@ struct FilePreviewView: View {
                             ShareSheet(url: url)
                                 .presentationDetents([.medium])
                         }
+                    }
+                    Spacer()
+//                    Menu {
+//                        fileShareMenu(for: file)
+//                    } label: {
+//                        Image(systemName: "link.icloud")
+//                    }
+//                    Button(action: {
+//                        showFileInfo = true
+//                    }) {
+//                        Image(systemName: "info.circle")
+//                    }
+//                    Spacer()
+                    Button(action: {
+                        fileIDsToDelete = [file.id]
+                        fileNameToDelete = file.name
+                        showingDeleteConfirmation = true
+                    }) {
+                        Image(systemName: "trash")
                     }
                 }
             }
