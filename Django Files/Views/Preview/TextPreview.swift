@@ -17,41 +17,23 @@ struct TextPreview: View {
     @Binding var isContentScrolling: Bool
     
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: true) {
-                ZStack {
-                    if isLoading {
-                        HStack {
-                            Spacer()
-                            LoadingView()
-                                .frame(width: 100, height: 100)
-                            Spacer()
-                        }
-                    } else if let content = content, let text = String(data: content, encoding: .utf8) {
-                        CodeText(text)
-                            .highlightLanguage(determineLanguage(from: mimeType, fileName: fileName))
-                            .padding()
-                    } else if error != nil {
-                        // Only show error message if there's an actual error
-                        Text("Unable to decode text content")
-                            .foregroundColor(.red)
-                    }
-                }
-                .padding(.top, 40)
+        if isLoading {
+            HStack {
+                Spacer()
+                LoadingView()
+                    .frame(width: 100, height: 100)
+                Spacer()
             }
-            .refreshable(action: {}) // Empty refreshable to disable pull-to-refresh
-            .scrollDisabled(false) // Explicitly enable scrolling
-            .simultaneousGesture(
-                DragGesture()
-                    .onChanged { _ in
-                        isContentScrolling = true
-                    }
-                    .onEnded { _ in
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            isContentScrolling = false
-                        }
-                    }
+        } else if let content = content, let text = String(data: content, encoding: .utf8) {
+            TextScrollView(
+                text: text,
+                language: determineLanguage(from: mimeType, fileName: fileName),
+                isContentScrolling: $isContentScrolling
             )
+            .ignoresSafeArea()
+        } else if error != nil {
+            Text("Unable to decode text content")
+                .foregroundColor(.red)
         }
     }
     
@@ -134,6 +116,85 @@ struct TextPreview: View {
                 }
             default:
                 return .plaintext
+            }
+        }
+    }
+}
+
+struct TextScrollView: UIViewRepresentable {
+    let text: String
+    let language: HighlightLanguage
+    @Binding var isContentScrolling: Bool
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.showsHorizontalScrollIndicator = false
+        
+        // Create a hosting controller for the SwiftUI CodeText
+        let hostingController = UIHostingController(rootView: AnyView(
+            CodeText(text)
+                .highlightLanguage(language)
+        ))
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.layoutMargins = .zero
+        hostingController.view.insetsLayoutMarginsFromSafeArea = false
+        
+        // Add the hosting controller's view to the scroll view
+        scrollView.addSubview(hostingController.view)
+        context.coordinator.hostingController = hostingController
+        
+        // Set up constraints with negative top margin to eliminate padding
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hostingController.view.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: -35),
+            hostingController.view.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            hostingController.view.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
+        ])
+        
+        return scrollView
+    }
+    
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        // Update the text content if needed
+        if let hostingController = context.coordinator.hostingController {
+            hostingController.rootView = AnyView(
+                CodeText(text)
+                    .highlightLanguage(language)
+            )
+        }
+    }
+    
+    class Coordinator: NSObject, UIScrollViewDelegate {
+        let parent: TextScrollView
+        weak var hostingController: UIHostingController<AnyView>?
+        
+        init(_ parent: TextScrollView) {
+            self.parent = parent
+        }
+        
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            parent.isContentScrolling = true
+        }
+        
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.parent.isContentScrolling = false
+                }
+            }
+        }
+        
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.parent.isContentScrolling = false
             }
         }
     }
