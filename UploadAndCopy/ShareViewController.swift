@@ -64,35 +64,13 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         for extensionItem in extensionItems {
             for ele in extensionItem.attachments! {
                 let itemProvider = ele
+                print(ele)
 
-                if itemProvider.hasItemConformingToTypeIdentifier("public.image") {
-                    itemProvider.loadItem(forTypeIdentifier: "public.image", options: nil, completionHandler: { (item, error) in
+                if itemProvider.hasItemConformingToTypeIdentifier("public.png") || itemProvider.hasItemConformingToTypeIdentifier("public.image") {
+                    let typeIdentifier = itemProvider.hasItemConformingToTypeIdentifier("public.png") ? "public.png" : "public.image"
+                    itemProvider.loadItem(forTypeIdentifier: typeIdentifier, options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
-                            self.shortText.isHidden = true
-                            self.shareLabel.text = "Upload Image"
-                            self.shareURL = item as? URL
-                            self.imageView.image = item as? UIImage
-                            if self.shareURL == nil && self.imageView.image != nil{
-                                let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
-                                let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).png")
-                                do{
-                                    try self.imageView.image!.pngData()?.write(to: targetURL)
-                                    self.isTempFile = true
-                                    self.shareURL = targetURL
-                                }
-                                catch {
-                                    self.showMessageAndDismiss(message: "Invalid image.")
-                                }
-                            }
-                            else if self.imageView.image == nil && self.shareURL != nil{
-                                self.imageView.image = self.downsample(imageAt: self.shareURL!, to: self.imageView.bounds.size)
-                            }
-                            else{
-                                self.showMessageAndDismiss(message: "Invalid image.")
-                            }
-                            self.imageView.setNeedsDisplay()
-                            self.activityIndicator.stopAnimating()
-                            self.shareButton.isEnabled = true
+                            self.handleImageItem(item: item, error: error)
                         }
                     })
                     loaded = true
@@ -180,6 +158,66 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             }
         }
         
+    }
+    
+    func handleImageItem(item: NSSecureCoding?, error: Error?) {
+        self.shortText.isHidden = true
+        self.shareLabel.text = "Upload Image"
+        
+        if let error = error {
+            self.showMessageAndDismiss(message: "Error loading image: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let item = item else {
+            self.showMessageAndDismiss(message: "Invalid image.")
+            return
+        }
+        
+        // Handle different item types
+        if let url = item as? URL {
+            // Item is a URL
+            self.shareURL = url
+            self.imageView.image = self.downsample(imageAt: url, to: self.imageView.bounds.size)
+        } else if let image = item as? UIImage {
+            // Item is a UIImage - need to save it to a temp file
+            self.imageView.image = image
+            let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
+            let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).png")
+            do {
+                if let pngData = image.pngData() {
+                    try pngData.write(to: targetURL)
+                    self.isTempFile = true
+                    self.shareURL = targetURL
+                } else {
+                    self.showMessageAndDismiss(message: "Invalid image.")
+                    return
+                }
+            } catch {
+                self.showMessageAndDismiss(message: "Could not save image: \(error.localizedDescription)")
+                return
+            }
+        } else if let data = item as? Data {
+            // Item is Data - save it to a temp file and create UIImage
+            let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
+            let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).png")
+            do {
+                try data.write(to: targetURL)
+                self.isTempFile = true
+                self.shareURL = targetURL
+                self.imageView.image = self.downsample(imageAt: targetURL, to: self.imageView.bounds.size)
+            } catch {
+                self.showMessageAndDismiss(message: "Could not save image: \(error.localizedDescription)")
+                return
+            }
+        } else {
+            self.showMessageAndDismiss(message: "Invalid image type.")
+            return
+        }
+        
+        self.imageView.setNeedsDisplay()
+        self.activityIndicator.stopAnimating()
+        self.shareButton.isEnabled = true
     }
     
     func getAvailableServers() {
