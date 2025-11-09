@@ -9,8 +9,9 @@ import UIKit
 import Social
 import SwiftData
 import CoreHaptics
+import SwiftUI
 
-class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTaskDelegate, UITextViewDelegate {
+class ShareViewController: UIViewController, URLSessionTaskDelegate {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -23,17 +24,8 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         }
     }()
     
-    @IBOutlet weak var viewOverlay: UIView!
-    @IBOutlet weak var shareButton: UIButton!
-    @IBOutlet weak var cancelButton: UIButton!
-    @IBOutlet weak var progressBar: UIProgressView!
-    @IBOutlet weak var imageView: UIImageView!
-    @IBOutlet weak var availableServers: UIButton!
-    @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
-    @IBOutlet weak var shortTextLabel: UILabel!
-    @IBOutlet weak var textView: UITextView!
-    @IBOutlet weak var shortText: UITextField!
-    @IBOutlet weak var shareLabel: UILabel!
+    private var hostingController: UIHostingController<ShareView>?
+    private var viewModel = ShareViewModel()
     
     var isTempFile = false
     var doShorten = false
@@ -41,25 +33,34 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
     var shareURL: URL?
     
     override func viewDidLoad() {
-        viewOverlay.layer.cornerRadius = 15
-        activityIndicator.startAnimating()
-        self.activityIndicator.hidesWhenStopped = true
+        super.viewDidLoad()
         
-        shortText.delegate = self
-        textView.delegate = self
+        // Setup SwiftUI view
+        viewModel.shareViewController = self
+        let shareView = ShareView(viewModel: viewModel)
+        hostingController = UIHostingController(rootView: shareView)
         
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+        guard let hostingController = hostingController else { return }
+        
+        addChild(hostingController)
+        view.addSubview(hostingController.view)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        hostingController.didMove(toParent: self)
+        
+        // Load available servers
+        getAvailableServers()
         
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
             self.showMessageAndDismiss(message: "Nothing to share.")
             return
         }
         
-        getAvailableServers()
-        
-        self.progressBar.isHidden = true
-        self.textView.isHidden = true
         var loaded: Bool = false
         for extensionItem in extensionItems {
             for ele in extensionItem.attachments! {
@@ -79,11 +80,11 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                 else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
                     itemProvider.loadItem(forTypeIdentifier: "public.file-url", options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
-                            self.shortText.isHidden = true
-                            self.shareLabel.text = "Upload File"
+                            self.viewModel.showShortText = false
+                            self.viewModel.shareLabel = "Upload File"
                             self.shareURL = item as? URL
-                            self.activityIndicator.stopAnimating()
-                            self.shareButton.isEnabled = true
+                            self.viewModel.isLoading = false
+                            self.viewModel.isShareEnabled = true
                         }
                     })
                     loaded = true
@@ -92,19 +93,17 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                 else if itemProvider.hasItemConformingToTypeIdentifier("public.url"){
                     itemProvider.loadItem(forTypeIdentifier: "public.url", options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
-                            self.shortText.isHidden = false
-                            self.shortTextLabel.isHidden = false
-                            self.shortText.placeholder = self.randomString(length: 5)
+                            self.viewModel.showShortText = true
+                            self.viewModel.shortTextPlaceholder = self.randomString(length: 5)
                             self.shareURL = item as? URL
-                            self.shareLabel.text = "Shorten Link"
-                            self.textView.isHidden = false
-                            self.textView.isEditable = false
-                            self.textView.text = self.shareURL!.absoluteString
+                            self.viewModel.shareLabel = "Shorten Link"
+                            self.viewModel.previewText = self.shareURL!.absoluteString
+                            self.viewModel.isTextEditable = false
                             if self.shareURL!.absoluteString.hasPrefix("http://") || self.shareURL!.absoluteString.hasPrefix("https://"){
                                 self.doShorten = true
                             }
-                            self.activityIndicator.stopAnimating()
-                            self.shareButton.isEnabled = true
+                            self.viewModel.isLoading = false
+                            self.viewModel.isShareEnabled = true
                         }
                     })
                     loaded = true
@@ -113,13 +112,12 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                 else if itemProvider.hasItemConformingToTypeIdentifier("public.text") || itemProvider.hasItemConformingToTypeIdentifier("public.plain-text") {
                     itemProvider.loadItem(forTypeIdentifier: itemProvider.registeredTypeIdentifiers[0], options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
-                            self.shortText.isHidden = true
-                            self.shortTextLabel.isHidden = true
-                            self.textView.isHidden = false
+                            self.viewModel.showShortText = false
                             
                             if let text = item as? String {
                                 // Show the text preview
-                                self.textView.text = text
+                                self.viewModel.previewText = text
+                                self.viewModel.isTextEditable = true
                                 
                                 // Create a temporary file to store the text
                                 let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
@@ -128,13 +126,13 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                                     try text.write(to: targetURL, atomically: true, encoding: .utf8)
                                     self.isTempFile = true
                                     self.shareURL = targetURL
-                                    self.shareLabel.text = "Upload Text"
+                                    self.viewModel.shareLabel = "Upload Text"
                                 } catch {
                                     self.showMessageAndDismiss(message: "Could not share text.")
                                 }
                             }
-                            self.activityIndicator.stopAnimating()
-                            self.shareButton.isEnabled = true
+                            self.viewModel.isLoading = false
+                            self.viewModel.isShareEnabled = true
                         }
                     })
                     loaded = true
@@ -144,9 +142,9 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                     itemProvider.loadItem(forTypeIdentifier: "public.data", options: nil, completionHandler: { (item, error) in
                         DispatchQueue.main.async {
                             self.shareURL = item as? URL
-                            self.shareLabel.text = "Upload File"
-                            self.activityIndicator.stopAnimating()
-                            self.shareButton.isEnabled = true
+                            self.viewModel.shareLabel = "Upload File"
+                            self.viewModel.isLoading = false
+                            self.viewModel.isShareEnabled = true
                         }
                     })
                     loaded = true
@@ -157,12 +155,11 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                 break
             }
         }
-        
     }
     
     func handleImageItem(item: NSSecureCoding?, error: Error?) {
-        self.shortText.isHidden = true
-        self.shareLabel.text = "Upload Image"
+        self.viewModel.showShortText = false
+        self.viewModel.shareLabel = "Upload Image"
         
         if let error = error {
             self.showMessageAndDismiss(message: "Error loading image: \(error.localizedDescription)")
@@ -178,10 +175,11 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         if let url = item as? URL {
             // Item is a URL
             self.shareURL = url
-            self.imageView.image = self.downsample(imageAt: url, to: self.imageView.bounds.size)
+            let previewSize = CGSize(width: 300, height: 300)
+            self.viewModel.previewImage = self.downsample(imageAt: url, to: previewSize)
         } else if let image = item as? UIImage {
             // Item is a UIImage - need to save it to a temp file
-            self.imageView.image = image
+            self.viewModel.previewImage = image
             let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
             let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID.init().uuidString).png")
             do {
@@ -205,7 +203,8 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
                 try data.write(to: targetURL)
                 self.isTempFile = true
                 self.shareURL = targetURL
-                self.imageView.image = self.downsample(imageAt: targetURL, to: self.imageView.bounds.size)
+                let previewSize = CGSize(width: 300, height: 300)
+                self.viewModel.previewImage = self.downsample(imageAt: targetURL, to: previewSize)
             } catch {
                 self.showMessageAndDismiss(message: "Could not save image: \(error.localizedDescription)")
                 return
@@ -215,9 +214,8 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             return
         }
         
-        self.imageView.setNeedsDisplay()
-        self.activityIndicator.stopAnimating()
-        self.shareButton.isEnabled = true
+        self.viewModel.isLoading = false
+        self.viewModel.isShareEnabled = true
     }
     
     func getAvailableServers() {
@@ -231,39 +229,24 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
             let sessions = try context.fetch(descriptor)
 
             guard !sessions.isEmpty else {
-                availableServers.setTitle("No servers available", for: .normal)
+                viewModel.availableSessions = []
                 return
             }
 
             // Pick the default session, or fallback to the first one
             let defaultSession = sessions.first(where: { $0.defaultSession }) ?? sessions.first!
 
-            // Build menu actions
-            let actions = sessions.map { session in
-                UIAction(title: session.url) { _ in
-                    self.session = session
-                    self.availableServers.setTitle(session.url, for: .normal)
-                }
-            }
-
-            let menu = UIMenu(title: "Select a Server", options: .displayInline, children: actions)
-            availableServers.menu = menu
-            availableServers.showsMenuAsPrimaryAction = true
-
-            // Set the default selected title and session
-            availableServers.setTitle(defaultSession.url, for: .normal)
+            // Update view model
+            viewModel.availableSessions = sessions
+            viewModel.selectedSession = defaultSession
             session = defaultSession
 
         } catch {
             self.showMessageAndDismiss(message: error.localizedDescription)
-            availableServers.setTitle("Error loading servers", for: .normal)
+            viewModel.availableSessions = []
         }
     }
     
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-    }
- 
     func getDefaultServer() -> DjangoFilesSession? {
         var selectedServer: DjangoFilesSession?
         do{
@@ -289,67 +272,103 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
       return String((0..<length).map{ _ in letters.randomElement()! })
     }
     
-    func shareFile() async {
-        self.progressBar.isHidden = false
-        self.progressBar.progress = 0
+    func handleShare(from viewModel: ShareViewModel) {
+        // Update session if changed
+        if let selectedSession = viewModel.selectedSession {
+            session = selectedSession
+        }
+        
+        if doShorten && !isShortLinkValid(shortText: viewModel.shortText) {
+            DispatchQueue.main.async {
+                viewModel.alertMessage = "Short URL can only contain lowercase letters, numbers, hyphens, and underscores."
+                viewModel.shouldAutoDismiss = false
+                viewModel.showAlert = true
+            }
+            return
+        }
+        
+        viewModel.isShareEnabled = false
+        viewModel.isLoading = true
+        
+        Task {
+            if !doShorten {
+                await shareFile(viewModel: viewModel)
+            } else {
+                await shareLink(viewModel: viewModel)
+            }
+        }
+    }
+    
+    func handleCancel() {
+        if self.isTempFile {
+            do{
+                if let shareURL = self.shareURL, FileManager.default.fileExists(atPath: shareURL.path(percentEncoded: false)) {
+                    try FileManager.default.removeItem(at: shareURL)
+                }
+            }
+            catch { }
+        }
+        self.dismiss(animated: false, completion: {
+            self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
+        })
+    }
+    
+    func shareFile(viewModel: ShareViewModel) async {
+        viewModel.showProgress = true
+        viewModel.uploadProgress = 0
         
         // If we're sharing text and it's been edited, update the file content
-        if let text = textView.text, !textView.isHidden {
+        if !viewModel.previewText.isEmpty && viewModel.isTextEditable {
             do {
-                try text.write(to: shareURL!, atomically: true, encoding: .utf8)
+                try viewModel.previewText.write(to: shareURL!, atomically: true, encoding: .utf8)
             } catch {
-                self.showMessageAndDismiss(message: "Could not update text content.")
+                DispatchQueue.main.async {
+                    self.showMessageAndDismiss(message: "Could not update text content.")
+                }
                 return
             }
         }
         
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        Task{
-            let task = await api.uploadFileStreamed(url: shareURL!, taskDelegate: self)
-            let response = await task?.waitForComplete()
-            
-            self.activityIndicator.stopAnimating()
+        let task = await api.uploadFileStreamed(url: shareURL!, taskDelegate: self)
+        let response = await task?.waitForComplete()
+        
+        DispatchQueue.main.async {
+            viewModel.isLoading = false
             
             if response == nil{
-                DispatchQueue.main.async {
-                    self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
-                }
+                self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
             }
             else{
-                DispatchQueue.main.async {
-                    UIPasteboard.general.string = response?.url
-                    NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
-                    self.notifyClipboard()
-                }
+                UIPasteboard.general.string = response?.url
+                NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+                self.notifyClipboard()
             }
         }
     }
     
-    func shareLink() async {
-        let shortLink: String = (self.shortText.text == nil || self.shortText.text == "") ? randomString(length: 5) : self.shortText.text!
+    func shareLink(viewModel: ShareViewModel) async {
+        let shortLink: String = viewModel.shortText.isEmpty ? randomString(length: 5) : viewModel.shortText
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        Task{
-            let response = await api.createShort(url: shareURL!, short: shortLink, selectedServer: session)
-            self.activityIndicator.stopAnimating()
+        let response = await api.createShort(url: shareURL!, short: shortLink, selectedServer: session)
+        
+        DispatchQueue.main.async {
+            viewModel.isLoading = false
             
             if response == nil{
-                DispatchQueue.main.async {
-                    self.showMessageAndDismiss(message: "Bad server response.")
-                }
+                self.showMessageAndDismiss(message: "Bad server response.")
             }
             else{
-                DispatchQueue.main.async {
-                    UIPasteboard.general.string = response?.url
-                    NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
-                    self.notifyClipboard()
-                }
+                UIPasteboard.general.string = response?.url
+                NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+                self.notifyClipboard()
             }
         }
     }
     
-    func isShortLinkValid() -> Bool{
+    func isShortLinkValid(shortText: String) -> Bool{
         let validUrl = /[a-z0-9\-_]+/
-        if (shortText.text?.wholeMatch(of: validUrl)) != nil {
+        if shortText.wholeMatch(of: validUrl) != nil {
             return true
         }
         else{
@@ -357,59 +376,21 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         }
     }
     
-    @IBAction func onShare(_ sender: Any) {
-        if doShorten && !isShortLinkValid(){
-            shortText.becomeFirstResponder()
-            return
-        }
-        
-        shareButton.isEnabled = false
-        self.activityIndicator.startAnimating()
-        
-        Task {
-            if !doShorten{
-                await shareFile()
-            }
-            else{
-                await shareLink()
-            }
-        }
-    }
-    
     @objc func clipboardChanged() { }
-
-    @objc func keyboardWillShow(notification: NSNotification) {
-        if let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
-            if self.view.frame.origin.y == 0 {
-                self.view.frame.origin.y -= keyboardSize.height
-            }
-        }
-    }
-
-    @objc func keyboardWillHide(notification: NSNotification) {
-        if self.view.frame.origin.y != 0 {
-            self.view.frame.origin.y = 0
-        }
-    }
     
-    @IBAction func onCancel(_ sender: Any) {
-        if self.isTempFile {
-            do{
-                if FileManager.default.fileExists(atPath: self.shareURL!.path(percentEncoded: false)) {
-                    try FileManager.default.removeItem(at: self.shareURL!)
+    func dismissAfterAlert(shouldComplete: Bool = false) {
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false, block: { _ in
+            DispatchQueue.main.async {
+                if shouldComplete {
+                    // For success messages, complete the request
+                    self.extensionContext!.completeRequest(returningItems: [])
+                } else {
+                    // For error messages, cancel the request
+                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
                 }
             }
-            catch { }
-        }
-        UIView.animate(withDuration: 0.2, animations: {
-            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
-        }, completion: { finished in
-            if finished{
-                self.dismiss(animated: true, completion: {
-                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
-                })
-            }
-        })
+        } )
+        self.dismiss(animated: false)
     }
     
     func notifyClipboard() {
@@ -425,43 +406,30 @@ class ShareViewController: UIViewController, UITextFieldDelegate, URLSessionTask
         let generator = UINotificationFeedbackGenerator()
         generator.prepare()
         generator.notificationOccurred(.success)
-        let alert = UIAlertController(title: "Django Files", message: "Link copied to clipboard", preferredStyle: .alert)
-        self.present(alert, animated: true, completion: nil)
-        UIView.animate(withDuration: 0.2, animations: {
-            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
-        }, completion: { finished in
-            if finished{
-                self.view.isHidden = true
-            }
-        })
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { _ in
-            alert.dismiss(animated: true, completion: nil)
-            self.extensionContext!.completeRequest(returningItems: [])
-        } )
+        
+        DispatchQueue.main.async {
+            self.viewModel.alertMessage = "Link copied to clipboard"
+            self.viewModel.shouldAutoDismiss = true
+            self.viewModel.showAlert = true
+        }
+        
+        // The alert will auto-dismiss and complete the request via dismissAfterAlert
     }
     
     func showMessageAndDismiss(message: String){
-        let alert = UIAlertController(title: "Django Files", message: message, preferredStyle: .alert)
-        self.present(alert, animated: true, completion: nil)
-        UIView.animate(withDuration: 0.2, animations: {
-            self.view.transform = CGAffineTransformMakeTranslation(0, self.view.frame.size.height);
-        }, completion: { finished in
-            if finished{
-                self.view.isHidden = true
-            }
-        })
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false, block: { _ in
-            DispatchQueue.main.async {
-                alert.dismiss(animated: true, completion: nil)
-                self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
-            }
-        } )
+        DispatchQueue.main.async {
+            self.viewModel.alertMessage = message
+            self.viewModel.shouldAutoDismiss = false
+            self.viewModel.showAlert = true
+        }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64)
     {
         let uploadProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
-        self.progressBar.progress = uploadProgress
+        DispatchQueue.main.async {
+            self.viewModel.uploadProgress = uploadProgress
+        }
     }
     
     func downsample(imageAt imageURL: URL,
