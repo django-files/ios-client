@@ -73,12 +73,11 @@ struct ShareView: View {
             }
             .padding(.bottom, 16)
             
-            if viewModel.showProgress {
-                ProgressView(value: viewModel.uploadProgress)
-                    .progressViewStyle(.linear)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-            }
+            ProgressView(value: viewModel.uploadProgress)
+                .progressViewStyle(.linear)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .opacity(viewModel.showProgress ? 1 : 0)
             
             // Destination selector
             VStack(alignment: .leading, spacing: 8) {
