@@ -138,13 +138,14 @@ struct ShareView: View {
                     .scaleEffect(1.5)
             }
         }
-        .alert("Django Files", isPresented: $viewModel.showAlert) {
-        } message: {
-            Text(viewModel.alertMessage)
-        }
+        .toastNotification(
+            message: viewModel.alertMessage,
+            isPresented: $viewModel.showAlert,
+            duration: 2.5
+        )
         .onChange(of: viewModel.showAlert) { oldValue, newValue in
             if newValue && viewModel.shouldAutoDismiss {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     if viewModel.showAlert && viewModel.shouldAutoDismiss {
                         viewModel.dismissAlert()
                     }
@@ -198,63 +199,90 @@ class ShareViewModel: ObservableObject {
     }
 }
 
-//#Preview {
-//    let viewModel = ShareViewModel()
-//    viewModel.availableSessions = [
-//        DjangoFilesSession(url: "https://example.com", token: "token1"),
-//        DjangoFilesSession(url: "https://test.com", token: "token2")
-//    ]
-//    viewModel.selectedSession = viewModel.availableSessions.first
-//    viewModel.shareLabel = "Share Image"
-//    viewModel.previewImage = UIImage(systemName: "photo")
-//    viewModel.showShortText = true
-//    viewModel.shortTextPlaceholder = "Enter short URL"
-//    viewModel.isShareEnabled = true
-//    viewModel.isLoading = false
-//    
-//    return ShareView(viewModel: viewModel)
-//}
-//
-//#Preview("Text Preview") {
-//    let viewModel = ShareViewModel()
-//    viewModel.availableSessions = [
-//        DjangoFilesSession(url: "https://example.com", token: "token1")
-//    ]
-//    viewModel.selectedSession = viewModel.availableSessions.first
-//    viewModel.shareLabel = "Share Text"
-//    viewModel.previewText = "This is a sample text that can be shared."
-//    viewModel.isTextEditable = true
-//    viewModel.isShareEnabled = true
-//    viewModel.isLoading = false
-//    
-//    return ShareView(viewModel: viewModel)
-//}
-//
-//#Preview("File Upload") {
-//    let viewModel = ShareViewModel()
-//    viewModel.availableSessions = [
-//        DjangoFilesSession(url: "https://example.com", token: "token1")
-//    ]
-//    viewModel.selectedSession = viewModel.availableSessions.first
-//    viewModel.shareLabel = "Upload File"
-//    viewModel.isShareEnabled = true
-//    viewModel.isLoading = false
-//    
-//    return ShareView(viewModel: viewModel)
-//}
-//
-//#Preview("Loading State") {
-//    let viewModel = ShareViewModel()
-//    viewModel.availableSessions = [
-//        DjangoFilesSession(url: "https://example.com", token: "token1")
-//    ]
-//    viewModel.selectedSession = viewModel.availableSessions.first
-//    viewModel.shareLabel = "Uploading..."
-//    viewModel.showProgress = true
-//    viewModel.uploadProgress = 0.5
-//    viewModel.isLoading = true
-//    viewModel.isShareEnabled = false
-//    
-//    return ShareView(viewModel: viewModel)
-//}
+// Toast Notification View Modifier
+struct ToastNotificationModifier: ViewModifier {
+    let message: String
+    @Binding var isPresented: Bool
+    let duration: Double
+    
+    @State private var showToast: Bool = false
+    @State private var dismissTask: DispatchWorkItem?
+    
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if isPresented {
+                    VStack {
+                        Text(message)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                            .background {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(.regularMaterial)
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 4)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 16)
+                            .opacity(showToast ? 1 : 0)
+                            .offset(y: showToast ? 0 : -50)
+                    }
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showToast)
+                    .onAppear {
+                        showToast = true
+                        
+                        // Cancel any existing dismiss task
+                        dismissTask?.cancel()
+                        
+                        // Auto-dismiss after duration
+                        let task = DispatchWorkItem {
+                            withAnimation {
+                                showToast = false
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                isPresented = false
+                            }
+                        }
+                        dismissTask = task
+                        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: task)
+                    }
+                    .onChange(of: isPresented) { oldValue, newValue in
+                        if !newValue {
+                            dismissTask?.cancel()
+                            showToast = false
+                        } else if newValue && !oldValue {
+                            // Reset when shown again
+                            showToast = true
+                            let task = DispatchWorkItem {
+                                withAnimation {
+                                    showToast = false
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    isPresented = false
+                                }
+                            }
+                            dismissTask = task
+                            DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: task)
+                        }
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func toastNotification(
+        message: String,
+        isPresented: Binding<Bool>,
+        duration: Double = 2.5
+    ) -> some View {
+        modifier(ToastNotificationModifier(
+            message: message,
+            isPresented: isPresented,
+            duration: duration
+        ))
+    }
+}
 
