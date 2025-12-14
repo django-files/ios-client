@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ImageScrollView: UIViewRepresentable {
     let image: UIImage
+    @Binding var isContentScrolling: Bool
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -119,6 +120,24 @@ struct ImageScrollView: UIViewRepresentable {
             }
             
             imageView.frame = frameToCenter
+        }
+        
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            parent.isContentScrolling = true
+        }
+        
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.parent.isContentScrolling = false
+                }
+            }
+        }
+        
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.parent.isContentScrolling = false
+            }
         }
     }
 }

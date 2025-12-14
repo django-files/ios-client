@@ -3,6 +3,12 @@ import AVKit
 import HighlightSwift
 import UIKit
 
+extension UIPageViewController {
+    var scrollView: UIScrollView? {
+        return view.subviews.first { $0 is UIScrollView } as? UIScrollView
+    }
+}
+
 
 struct ContentPreview: View {
     let mimeType: String
@@ -10,6 +16,7 @@ struct ContentPreview: View {
     let file: DFFile
     var showFileInfo: Binding<Bool>
     @Binding var selectedFileDetails: DFFile?
+    @Binding var isContentScrolling: Bool
 
     @State private var content: Data?
     @State private var isLoading = true
@@ -42,7 +49,6 @@ struct ContentPreview: View {
                 pdfPreview
             } else if mimeType.starts(with: "text/") || (mimeType.starts(with: "application/") && mimeType.contains("json")) {
                 textPreview
-                    .padding(.top, 60)
             } else if mimeType.starts(with: "image/") {
                 imagePreview
             } else if mimeType.starts(with: "video/") {
@@ -62,8 +68,12 @@ struct ContentPreview: View {
         TextPreview(
             content: content,
             mimeType: mimeType,
-            fileName: fileURL.lastPathComponent
+            fileName: fileURL.lastPathComponent,
+            isLoading: isLoading,
+            error: error,
+            isContentScrolling: $isContentScrolling
         )
+        .background(.black)
     }
 
     private var imagePreview: some View {
@@ -73,7 +83,7 @@ struct ContentPreview: View {
                     AnimatedImageScrollView(data: content)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else if let uiImage = UIImage(data: content) {
-                    ImageScrollView(image: uiImage)
+                    ImageScrollView(image: uiImage, isContentScrolling: $isContentScrolling)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
                     Text("Unable to load image")
@@ -83,6 +93,7 @@ struct ContentPreview: View {
             }
         }
         .ignoresSafeArea()
+        .background(.black)
     }
     
     // Video Preview
@@ -100,12 +111,14 @@ struct ContentPreview: View {
                 }
             }
         }
+        .background(.black)
     }
     
     // Audio Preview
     private var audioPreview: some View {
         AudioPlayerView(url: fileURL)
             .padding()
+            .background(.black)
     }
     
     // PDF Preview
@@ -130,6 +143,7 @@ struct ContentPreview: View {
                 .foregroundColor(.secondary)
         }
         .padding()
+        .background(.black)
     }
     
     private func loadContent() {
@@ -192,14 +206,22 @@ struct ContentPreview: View {
     }
 }
 
+func textWidth(text: String, font: UIFont) -> CGFloat {
+    let attributes: [NSAttributedString.Key: Any] = [.font: font]
+    let size = text.size(withAttributes: attributes)
+    return size.width
+}
+
 struct PageViewController: UIViewControllerRepresentable {
     var files: [DFFile]
     var currentIndex: Int
     var redirectURLs: [String: String]
     var showFileInfo: Binding<Bool>
     @Binding var selectedFileDetails: DFFile?
+    @Binding var isContentScrolling: Bool
     var onPageChange: (Int) -> Void
     var onLoadMore: (() async -> Void)?
+    var isDragging: Bool
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -222,6 +244,9 @@ struct PageViewController: UIViewControllerRepresentable {
     
     func updateUIViewController(_ pageViewController: UIPageViewController, context: Context) {
         context.coordinator.parent = self
+        
+        // Disable scrolling when dragging is active
+        pageViewController.scrollView?.isScrollEnabled = !isDragging
         
         // Only update if the current index has changed and we're not in the middle of a transition
         if let currentVC = pageViewController.viewControllers?.first as? UIHostingController<ContentPreview>,
@@ -287,7 +312,8 @@ struct PageViewController: UIViewControllerRepresentable {
                 fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.raw)!,
                 file: file,
                 showFileInfo: parent.showFileInfo,
-                selectedFileDetails: parent.$selectedFileDetails
+                selectedFileDetails: parent.$selectedFileDetails,
+                isContentScrolling: parent.$isContentScrolling
             )
             let vc = UIHostingController(rootView: contentPreview)
             vc.view.backgroundColor = .clear
@@ -381,6 +407,17 @@ struct PageViewController: UIViewControllerRepresentable {
     }
 }
 
+extension View {
+    @ViewBuilder
+    func adaptiveSystemButtonStyle() -> some View {
+        if #available(iOS 26.0, *) {
+            self.buttonStyle(.glass)
+        } else {
+            self.buttonStyle(.bordered)
+        }
+    }
+}
+
 struct FilePreviewView: View {
     @Binding var file: DFFile
     let server: Binding<DjangoFilesSession?>
@@ -406,7 +443,7 @@ struct FilePreviewView: View {
     
     @State private var redirectURLs: [String: String] = [:]
     @State private var dragOffset = CGSize.zero
-    @GestureState private var dragState = DragState.inactive
+    @State private var isDragging = false
     @State private var selectedFileDetails: DFFile?
     
     @State private var showingDeleteConfirmation = false
@@ -428,21 +465,30 @@ struct FilePreviewView: View {
     @State private var showingShareSheet = false
     
     @State private var isOverlayVisible = true
+    @State private var isContentScrolling = false
+    
+    @State private var marqueeOffset = 3.0
+    @State private var animationID = UUID()
     
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
     }
     
-    private enum DragState {
-        case inactive
-        case dragging(translation: CGSize)
+    private func resetMarqueeAnimation() {
+        // Generate new animation ID to cancel previous animations
+        animationID = UUID()
         
-        var translation: CGSize {
-            switch self {
-            case .inactive:
-                return .zero
-            case .dragging(let translation):
-                return translation
+        // Immediately reset the offset to initial position without animation
+        marqueeOffset = 3.0
+        
+        // Start animation if filename is long enough
+        if file.name.count > 26 {
+            // Use a slight delay to ensure the reset happens first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let baseAnimation = Animation.linear(duration: 8).delay(6).repeatForever()
+                withAnimation(baseAnimation) {
+                    marqueeOffset = -textWidth(text: file.name, font: UIFont.systemFont(ofSize: 5))
+                }
             }
         }
     }
@@ -492,228 +538,242 @@ struct FilePreviewView: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                if redirectURLs[file.raw] == nil {
-                    LoadingView()
-                    .frame(width: 100, height: 100)
-                    .onAppear {
-                        Task {
-                            await preloadFiles()
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            ZStack {
-                PageViewController(
-                    files: allFiles,
-                    currentIndex: currentIndex,
-                    redirectURLs: redirectURLs,
-                    showFileInfo: $showFileInfo,
-                    selectedFileDetails: $selectedFileDetails,
-                    onPageChange: { newIndex in
-                        onNavigate(newIndex)
-                        Task {
-                            await preloadFiles()
-                        }
-                    },
-                    onLoadMore: onLoadMore
-                )
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isOverlayVisible.toggle()
-                    }
-                }
-                .background(
-                    FileDialogs(
-                        showingDeleteConfirmation: $showingDeleteConfirmation,
-                        fileIDsToDelete: $fileIDsToDelete,
-                        fileNameToDelete: $fileNameToDelete,
-                        showingExpirationDialog: $showingExpirationDialog,
-                        expirationText: $expirationText,
-                        fileToExpire: $fileToExpire,
-                        showingPasswordDialog: $showingPasswordDialog,
-                        passwordText: $passwordText,
-                        fileToPassword: $fileToPassword,
-                        showingRenameDialog: $showingRenameDialog,
-                        fileNameText: $fileNameText,
-                        fileToRename: $fileToRename,
-                        onDelete: { fileIDs in
-                            if await deleteFiles(fileIDs: fileIDs) {
-                                showingPreview = false
-                                return true
+        NavigationStack {
+            GeometryReader { geometry in
+                ZStack {
+                    if redirectURLs[file.raw] == nil {
+                        LoadingView()
+                        .frame(width: 100, height: 100)
+                        .onAppear {
+                            Task {
+                                await preloadFiles()
                             }
-                            return false
-                        },
-                        onSetExpiration: { file, expr in
-                            await setFileExpr(file: file, expr: expr)
-                        },
-                        onSetPassword: { file, password in
-                            await setFilePassword(file: file, password: password)
-                        },
-                        onRename: { file, name in
-                            await renameFile(file: file, name: name)
                         }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack {
+                    PageViewController(
+                        files: allFiles,
+                        currentIndex: currentIndex,
+                        redirectURLs: redirectURLs,
+                        showFileInfo: $showFileInfo,
+                        selectedFileDetails: $selectedFileDetails,
+                        isContentScrolling: $isContentScrolling,
+                        onPageChange: { newIndex in
+                            onNavigate(newIndex)
+                            Task {
+                                await preloadFiles()
+                            }
+                        },
+                        onLoadMore: onLoadMore,
+                        isDragging: isDragging
                     )
-                )
-
-                ZStack(alignment: .top) {
-                    if isOverlayVisible {
-                        VStack {
-                            HStack{
-                                Button(action: {
+                    .ignoresSafeArea()
+                    .background(.black)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isOverlayVisible.toggle()
+                        }
+                    }
+                    .background(
+                        FileDialogs(
+                            showingDeleteConfirmation: $showingDeleteConfirmation,
+                            fileIDsToDelete: $fileIDsToDelete,
+                            fileNameToDelete: $fileNameToDelete,
+                            showingExpirationDialog: $showingExpirationDialog,
+                            expirationText: $expirationText,
+                            fileToExpire: $fileToExpire,
+                            showingPasswordDialog: $showingPasswordDialog,
+                            passwordText: $passwordText,
+                            fileToPassword: $fileToPassword,
+                            showingRenameDialog: $showingRenameDialog,
+                            fileNameText: $fileNameText,
+                            fileToRename: $fileToRename,
+                            onDelete: { fileIDs in
+                                if await deleteFiles(fileIDs: fileIDs) {
                                     showingPreview = false
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 17))
-                                        .foregroundColor(.blue)
-                                        .padding()
+                                    return true
                                 }
-                                .background(.ultraThinMaterial)
-                                .frame(width: 32, height: 32)
-                                .cornerRadius(16)
-                                .padding(.leading, 15)
-                                Spacer()
-                                Text(file.name)
-                                    .padding(5)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                    .foregroundColor(file.mime.starts(with: "text") ? .primary : .white)
-                                    .shadow(color: .black, radius: file.mime.starts(with: "text") ? 0 : 3)
-                                Spacer()
-                                if !isDeepLinkPreview {
-                                    Menu {
-                                        fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                                            .padding()
-                                    } label: {
-                                        Image(systemName: "ellipsis")
-                                            .font(.system(size: 20))
-                                            .padding()
-                                    }
-                                    .menuStyle(.button)
-                                    .background(.ultraThinMaterial)
-                                    .frame(width: 32, height: 32)
-                                    .cornerRadius(16)
-                                    .padding(.trailing, 10)
-                                }
+                                return false
+                            },
+                            onSetExpiration: { file, expr in
+                                await setFileExpr(file: file, expr: expr)
+                            },
+                            onSetPassword: { file, password in
+                                await setFilePassword(file: file, password: password)
+                            },
+                            onRename: { file, name in
+                                await renameFile(file: file, name: name)
                             }
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background {
-                                if file.mime.starts(with: "text") || file.mime.starts(with: "application") {
-                                    Rectangle()
-                                        .fill(.ultraThinMaterial)
-                                        .ignoresSafeArea()
-                                }
-                            }
-                            Spacer()
-                            if !file.mime.starts(with: "video/") {
-                                HStack {
-                                    Spacer()
-                                    Button(action: {
-                                        showFileInfo = true
-                                    }) {
-                                        Image(systemName: "info.circle")
-                                            .font(.system(size: 20))
-                                            .padding(8)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    
-                                    Menu {
-                                        fileShareMenu(for: file)
-                                    } label: {
-                                        Image(systemName: "link.icloud")
-                                            .font(.system(size: 20))
-                                            .padding(8)
-                                    }
-                                    .menuStyle(.button)
-                                    
-                                    Button(action: {
-                                        showingShareSheet = true
-                                    }) {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 20))
-                                            .offset(y: -2)
-                                            .padding(8)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .padding(.leading, 1)
-                                    .sheet(isPresented: $showingShareSheet) {
-                                        if let url = URL(string: file.url) {
-                                            ShareSheet(url: url)
-                                                .presentationDetents([.medium])
-                                        }
-                                    }
-                                    Spacer()
-                                }
-                                .background(.ultraThinMaterial)
-                                .frame(width: 155, height: 44)
-                                .cornerRadius(20)
-                            }
-                        }
-                    }
-                }
-        }
-        .offset(y: dragOffset.height)
-        .gesture(
-            DragGesture()
-                .updating($dragState) { value, state, _ in
-                    state = .dragging(translation: value.translation)
-                }
-                .onChanged { value in
-                    let translation = value.translation
-                    // Only allow vertical dragging with initial resistance
-                    let dampingFactor: CGFloat = 0.5 // Increase this value for more resistance
-                    let dampenedHeight = pow(translation.height, dampingFactor) * 8
-                    dragOffset = CGSize(width: 0, height: max(0, dampenedHeight))
-                }
-                .onEnded { value in
-                    let translation = value.translation
-                    let velocity = CGSize(
-                        width: value.predictedEndLocation.x - value.location.x,
-                        height: value.predictedEndLocation.y - value.location.y
+                        )
                     )
-                    
-                    // Only handle vertical gestures for dismissal
-                    let progress = translation.height / geometry.size.height
-                    let velocityThreshold: CGFloat = 300
-                    let progressThreshold: CGFloat = 0.3
-                    
-                    if progress > progressThreshold || velocity.height > velocityThreshold {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            dragOffset = CGSize(width: 0, height: geometry.size.height)
-                            showingPreview = false
-                        }
-                    } else {
-                        // Reset position if not dismissed
-                        withAnimation(.spring()) {
-                            dragOffset = .zero
-                        }
+            }
+            .onChange(of: currentIndex) { _, _ in
+                // Preload files when current index changes externally
+                Task {
+                    await preloadFiles()
+                }
+            }
+            .sheet(isPresented: $showFileInfo) {
+                if let details = selectedFileDetails {
+                    PreviewFileInfo(file: details)
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.visible)
+                } else {
+                    PreviewFileInfo(file: file)
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.visible)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: {
+                        showingPreview = false
+                    }) {
+                        Image(systemName: "xmark")
                     }
                 }
-            )
-        }
-        .onChange(of: currentIndex) { _, _ in
-            // Preload files when current index changes externally
-            Task {
-                await preloadFiles()
+                ToolbarItem(placement: .principal) {
+                    Button(action: {
+                        showFileInfo = true
+                    }) {
+                        VStack {
+                            Text(file.name)
+                                .hidden()
+                                .overlay(alignment: file.name.count > 26 ? .leading : .center) {
+                                    Text(file.name)
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                        .font(.subheadline)
+
+                                }
+                                .offset(x: file.name.count > 26 ? marqueeOffset : 0)
+                                .id(animationID)
+                                .onAppear {
+                                    resetMarqueeAnimation()
+                                }
+                                .onChange(of: file.name) { _, _ in
+                                    resetMarqueeAnimation()
+                                }
+                                .mask(
+                                    LinearGradient(
+                                        gradient: Gradient(stops: [
+                                            .init(color: .clear, location: 0.0),   // Fades in from left
+                                            .init(color: .black, location: file.name.count < 26 ? 0.0 : 0.04),   // Fully visible area starts
+                                            .init(color: .black, location: file.name.count < 26 ? 1.0 : 0.96),   // Fully visible area ends
+                                            .init(color: .clear, location: 1.0)    // Fades out on right
+                                        ]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(maxWidth: .infinity)
+                            
+                            ZStack {
+                                Text(file.formattedDate())
+                                    .font(.caption)
+                            }
+//                            if let gpsArea = file.meta?["GPSArea"]?.value as? String {
+//                                Text(gpsArea)
+//                                    .font(.custom("SF Pro", size: 11, relativeTo: .caption))
+//                            }
+                        }
+                    }
+                    .frame(minWidth: 200)
+                    .adaptiveSystemButtonStyle()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !isDeepLinkPreview {
+                        Menu {
+                            fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .foregroundColor(Color.white)
+                        }
+
+                    }
+                }
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button(action: {
+                        showingShareSheet = true
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .sheet(isPresented: $showingShareSheet) {
+                        if let url = URL(string: file.url) {
+                            ShareSheet(url: url)
+                                .presentationDetents([.medium])
+                        }
+                    }
+                    Spacer()
+//                    Menu {
+//                        fileShareMenu(for: file)
+//                    } label: {
+//                        Image(systemName: "link.icloud")
+//                    }
+//                    Button(action: {
+//                        showFileInfo = true
+//                    }) {
+//                        Image(systemName: "info.circle")
+//                    }
+//                    Spacer()
+                    Button(action: {
+                        fileIDsToDelete = [file.id]
+                        fileNameToDelete = file.name
+                        showingDeleteConfirmation = true
+                    }) {
+                        Image(systemName: "trash")
+                    }
+                }
+            }
+            .toolbarVisibility(isOverlayVisible ? .visible : .hidden, for: .navigationBar)
+            .toolbarVisibility(isOverlayVisible ? .visible : .hidden, for: .bottomBar)
             }
         }
-        .sheet(isPresented: $showFileInfo) {
-            if let details = selectedFileDetails {
-                PreviewFileInfo(file: details)
-                    .presentationBackground(.ultraThinMaterial)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            } else {
-                PreviewFileInfo(file: file)
-                    .presentationBackground(.ultraThinMaterial)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            }
-        }
+       .offset(dragOffset)
+       .simultaneousGesture(
+           DragGesture(minimumDistance: 100)
+               .onChanged { gesture in
+                   // Don't trigger dismiss if content is currently scrolling
+                   guard !isContentScrolling else { return }
+                   
+                   // Only trigger dismiss if gesture is clearly a dismiss intent
+                   // Check if this is a vertical downward gesture with minimal horizontal movement
+                   let isVerticalGesture = abs(gesture.translation.height) > abs(gesture.translation.width) * 2
+                   let isDownwardGesture = gesture.translation.height > 0
+                   let hasMinimalHorizontalMovement = abs(gesture.translation.width) < 20
+                   
+                   if isVerticalGesture && isDownwardGesture && hasMinimalHorizontalMovement && gesture.translation.height > 15 {
+                       dragOffset = gesture.translation
+                       isDragging = true
+                   }
+               }
+               .onEnded { gesture in
+                   isDragging = false
+                   
+                   // Don't dismiss if content was scrolling
+                   guard !isContentScrolling else {
+                       dragOffset = .zero
+                       return
+                   }
+                   
+                   // Only dismiss if gesture was clearly a dismiss intent
+                   let isVerticalGesture = abs(gesture.translation.height) > abs(gesture.translation.width) * 2
+                   let isDownwardGesture = gesture.translation.height > 0
+                   let hasMinimalHorizontalMovement = abs(gesture.translation.width) < 30
+                   
+                   if isVerticalGesture && isDownwardGesture && hasMinimalHorizontalMovement && gesture.translation.height > 120 {
+                       withAnimation(.spring()) {
+                           showingPreview = false
+                       }
+                   } else {
+                       withAnimation(.spring()) {
+                           dragOffset = .zero
+                       }
+                   }
+               }
+       )
     }
     
     @MainActor

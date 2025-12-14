@@ -205,7 +205,7 @@ struct FileListView: View {
     @State private var showFileInfo: Bool = false
     @State private var showingUserFilter: Bool = false
     @State private var users: [DFUser] = []
-    
+
     // Add computed property for selected username
     private var selectedUsername: String? {
         if let userID = filterUserID {

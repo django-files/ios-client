@@ -25,22 +25,22 @@ struct FileContextMenuButtons: View {
                 } label: {
                     Label("Open Preview", systemImage: "arrow.up.forward.app")
                 }
-            
-            
-                Button {
-                    onCopyShareLink()
-                    notifyClipboard()
-                } label: {
-                    Label("Copy Share Link", systemImage: "link")
-                }
                 
-                Button {
-                    onCopyRawLink()
-                    notifyClipboard()
-                } label: {
-                    Label("Copy Raw Link", systemImage: "link.circle")
-                }
             }
+            Button {
+                onCopyShareLink()
+                notifyClipboard()
+            } label: {
+                Label("Copy Share Link", systemImage: "link")
+            }
+            
+            Button {
+                onCopyRawLink()
+                notifyClipboard()
+            } label: {
+                Label("Copy Raw Link", systemImage: "link.circle")
+            }
+//            }
             
             Button {
                 openRawBrowser()

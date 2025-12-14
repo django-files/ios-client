@@ -106,7 +106,7 @@ struct PreviewFileInfo: View {
             // Photo Information Section
             if let dateTime = file.exif?["DateTimeOriginal"]?.value as? String {
                 HStack {
-                    Image(systemName: "camera")
+                    Image(systemName: "calendar.badge.clock")
                         .frame(width: 15, height: 15)
                         .font(.caption)
                     Text("Captured: \(formatExifDate(dateTime))")
@@ -142,7 +142,7 @@ struct PreviewFileInfo: View {
                     let make = file.exif?["Make"]?.value as? String ?? ""
                     let cameraName = make.isEmpty || model.contains(make) ? model : "\(make) \(model)"
                     HStack {
-                        Image(systemName: "camera.aperture")
+                        Image(systemName: "camera")
                             .frame(width: 15, height: 15)
                         Text("Camera: \(cameraName)")
                             .font(.caption)

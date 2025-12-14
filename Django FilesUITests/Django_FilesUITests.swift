@@ -44,7 +44,7 @@ final class Django_FilesUITests: XCTestCase {
         // Skip performance testing in simulator as it's not reliable
         return
         #else
-        if #available(iOS 18.0, *) {
+        if #available(iOS 26.0, *) {
             // This measures how long it takes to launch your application.
             measure(metrics: [XCTApplicationLaunchMetric()]) {
                 XCUIApplication().launch()
