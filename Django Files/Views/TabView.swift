@@ -31,7 +31,7 @@ struct TabViewWindow: View {
     }
     
     enum Tab {
-        case files, albums, shorts, settings, mobileWeb
+        case files, albums, shorts, streams, settings, mobileWeb
     }
     
     var body: some View {
@@ -63,6 +63,13 @@ struct TabViewWindow: View {
                                 Label("Shorts", systemImage: "link")
                             }
                             .tag(Tab.shorts)
+
+                        StreamListView(server: $sessionManager.selectedSession)
+                            .id(serverChangeRefreshTrigger)
+                            .tabItem {
+                                Label("Streams", systemImage: "video.fill")
+                            }
+                            .tag(Tab.streams)
                     }
                     
                     SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)

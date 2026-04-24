@@ -18,6 +18,14 @@ class PreviewStateManager: ObservableObject {
     @Published var deepLinkFilePassword: String? = nil
 }
 
+class StreamStateManager: ObservableObject {
+    @Published var showingDeepLinkStream = false
+    @Published var deepLinkServerURL: URL? = nil
+    @Published var deepLinkStreamName: String? = nil
+    @Published var deepLinkToken: String = ""
+    @Published var deepLinkPassword: String? = nil
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
@@ -43,6 +51,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct Django_FilesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var previewStateManager = PreviewStateManager()
+    @StateObject private var streamStateManager = StreamStateManager()
     @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -121,12 +130,14 @@ struct Django_FilesApp: App {
                 }
             }
             .environmentObject(previewStateManager)
+            .environmentObject(streamStateManager)
             .onOpenURL { url in
                 DeepLinks.shared.handleDeepLink(
                     url,
                     context: sharedModelContainer.mainContext,
                     sessionManager: sessionManager,
                     previewStateManager: previewStateManager,
+                    streamStateManager: streamStateManager,
                     selectedTab: $selectedTab,
                     hasExistingSessions: $hasExistingSessions,
                     showingServerConfirmation: $showingServerConfirmation,
@@ -183,6 +194,30 @@ struct Django_FilesApp: App {
                     )
                     .onDisappear {
                         previewStateManager.deepLinkFile = nil
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $streamStateManager.showingDeepLinkStream) {
+                if let serverURL = streamStateManager.deepLinkServerURL,
+                   let streamName = streamStateManager.deepLinkStreamName {
+                    NavigationStack {
+                        StreamView(
+                            serverURL: serverURL,
+                            streamName: streamName,
+                            token: streamStateManager.deepLinkToken,
+                            password: streamStateManager.deepLinkPassword
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    streamStateManager.showingDeepLinkStream = false
+                                }
+                            }
+                        }
+                    }
+                    .onDisappear {
+                        streamStateManager.deepLinkServerURL = nil
+                        streamStateManager.deepLinkStreamName = nil
                     }
                 }
             }

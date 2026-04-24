@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-public final class DjangoFilesSession: Equatable, @unchecked Sendable {
+public final class DjangoFilesSession: Equatable {
     var url: String
     var defaultSession: Bool = false
     var token: String

@@ -12,7 +12,7 @@ class DeepLinks {
     static let shared = DeepLinks()
     private init() {}
     
-    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
+    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, streamStateManager: StreamStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
         print("Deep link received: \(url)")
         guard url.scheme == "djangofiles" else { return }
         
@@ -30,6 +30,8 @@ class DeepLinks {
             handleFileListDeepLink(components, context: context, sessionManager: sessionManager, selectedTab: selectedTab)
         case "preview":
             handlePreviewLink(components, context: context, sessionManager: sessionManager, previewStateManager: previewStateManager, selectedTab: selectedTab)
+        case "stream":
+            handleStreamLink(components, context: context, sessionManager: sessionManager, streamStateManager: streamStateManager, selectedTab: selectedTab)
         default:
             ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
             print("Unsupported deep link type: \(components.host ?? "unknown")")
@@ -128,6 +130,39 @@ class DeepLinks {
         }
     }
     
+    /// Deep link: `djangofiles://stream/?url=<server_url>&name=<stream_name>&password=<optional>`
+    @MainActor private func handleStreamLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, streamStateManager: StreamStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
+        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
+              let serverURL = URL(string: urlString),
+              let streamName = components.queryItems?.first(where: { $0.name == "name" })?.value?.removingPercentEncoding else {
+            print("Invalid stream deep link parameters")
+            ToastManager.shared.showToast(message: "Invalid stream link")
+            return
+        }
+        let password = components.queryItems?.first(where: { $0.name == "password" })?.value?.removingPercentEncoding
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+
+        Task {
+            do {
+                let existingSessions = try context.fetch(descriptor)
+                let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString && $0.auth })
+                let token = matchingSession?.token ?? ""
+                await MainActor.run {
+                    streamStateManager.deepLinkServerURL = serverURL
+                    streamStateManager.deepLinkStreamName = streamName
+                    streamStateManager.deepLinkToken = token
+                    streamStateManager.deepLinkPassword = password
+                    streamStateManager.showingDeepLinkStream = true
+                }
+            } catch {
+                print("Error resolving stream deep link: \(error)")
+                await MainActor.run {
+                    ToastManager.shared.showToast(message: "Could not open stream")
+                }
+            }
+        }
+    }
+
     @MainActor private func handleFileListDeepLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, selectedTab: Binding<TabViewWindow.Tab>) {
         guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: urlString) else {
@@ -155,9 +190,16 @@ class DeepLinks {
     }
     
     @MainActor private func deepLinkAuth(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
-        guard let signature = components.queryItems?.first(where: { $0.name == "signature" })?.value?.removingPercentEncoding,
-              let serverURL = URL(string: components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding ?? "") else {
+        // URLComponents.queryItems already percent-decodes values, so call
+        // removingPercentEncoding only as a safety fallback for double-encoded inputs.
+        guard let rawSignature = components.queryItems?.first(where: { $0.name == "signature" })?.value,
+              let signature = rawSignature.removingPercentEncoding ?? rawSignature as String?,
+              !signature.isEmpty,
+              let rawURLString = components.queryItems?.first(where: { $0.name == "url" })?.value,
+              let urlString = rawURLString.removingPercentEncoding ?? rawURLString as String?,
+              let serverURL = URL(string: urlString) else {
             print("Unable to parse auth deep link.")
+            ToastManager.shared.showToast(message: "Invalid authorization link")
             return
         }
 
@@ -166,15 +208,20 @@ class DeepLinks {
         Task {
             do {
                 let existingSessions = try context.fetch(descriptor)
-                if let existingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
+                // Only skip the auth flow if we already have a valid, authenticated session.
+                // If the session exists but is not authenticated, fall through so the user
+                // can complete sign-in with the new signature.
+                if let existingSession = existingSessions.first(where: {
+                    $0.url == serverURL.absoluteString && $0.auth
+                }) {
                     await MainActor.run {
                         sessionManager.selectedSession = existingSession
                         hasExistingSessions.wrappedValue = true
-                        ToastManager.shared.showToast(message: "Connected to existing server \(existingSession.url)")
+                        ToastManager.shared.showToast(message: "Already signed into \(existingSession.url)")
                     }
                     return
                 }
-                
+
                 await MainActor.run {
                     pendingAuthURL.wrappedValue = serverURL
                     pendingAuthSignature.wrappedValue = signature
@@ -182,6 +229,9 @@ class DeepLinks {
                 }
             } catch {
                 print("Error checking for existing sessions: \(error)")
+                await MainActor.run {
+                    ToastManager.shared.showToast(message: "Error opening authorization link")
+                }
             }
         }
     }
@@ -219,6 +269,8 @@ class DeepLinks {
                         hasExistingSessions.wrappedValue = true
                         selectedTab.wrappedValue = .files
                         ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
+                    } else {
+                        ToastManager.shared.showToast(message: "Failed to sign in. The link may have expired.")
                     }
                 }
             } catch {
