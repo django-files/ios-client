@@ -12,6 +12,25 @@
 
 import SwiftUI
 import AVKit
+import UIKit
+
+// MARK: - AVPlayer wrapper without transport controls
+
+private struct AVPlayerLayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.showsPlaybackControls = false
+        vc.videoGravity = .resizeAspect
+        return vc
+    }
+
+    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
+        vc.player = player
+    }
+}
 
 // MARK: - Slash Command Definitions
 
@@ -60,6 +79,7 @@ struct StreamView: View {
     // HLS player
     @State private var player: AVPlayer?
     @State private var playerObservation: NSKeyValueObservation?
+    @State private var stalledObserver: NSObjectProtocol?
     @State private var isVideoLoading = true
 
     // Stream info
@@ -67,6 +87,8 @@ struct StreamView: View {
     @State private var isPublic: Bool = true
     @State private var viewerCount: Int = 0
     @State private var viewerRefreshTimer: Timer?
+    @State private var streamStartedAt: Date?
+    @State private var streamEndedAt: Date?
 
     // Chat
     @StateObject private var chatManager: StreamChatManager
@@ -84,6 +106,7 @@ struct StreamView: View {
     @State private var controlsFadeTimer: Timer?
     @State private var showChatDrawer = false
     @State private var chatDrawerOffset: CGFloat = 0
+    @State private var isPlaying = true
 
     private var effectiveFullscreen: Bool { isFullscreen || verticalSizeClass == .compact }
 
@@ -129,11 +152,26 @@ struct StreamView: View {
 
     private var portraitLayout: some View {
         VStack(spacing: 0) {
-            // Video with fullscreen button overlay
-            ZStack(alignment: .bottomTrailing) {
+            // Video with controls overlay
+            ZStack {
                 videoPlayerContent
                     .frame(height: 220)
 
+                if player != nil {
+                    // Play/pause — bottom leading
+                    Button { togglePlayPause() } label: {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(10)
+                }
+
+                // Fullscreen — bottom trailing
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = true }
                 } label: {
@@ -143,6 +181,7 @@ struct StreamView: View {
                         .padding(8)
                         .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding(10)
             }
 
@@ -166,40 +205,63 @@ struct StreamView: View {
     // MARK: - Fullscreen Layout
 
     private var fullscreenLayout: some View {
-        GeometryReader { geo in
-            let hInset = max(geo.safeAreaInsets.leading, geo.safeAreaInsets.trailing, 16)
-            ZStack(alignment: .bottom) {
-                // Video fills entire screen
-                videoPlayerContent
-                    .ignoresSafeArea()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggleControls() }
+        ZStack {
+            // Black background fills behind safe areas
+            Color.black.ignoresSafeArea()
 
-                // Chat drawer (slides up from bottom)
-                if showChatDrawer {
-                    chatDrawer(in: geo, hInset: hInset)
+            // Video fills entire screen (behind safe areas)
+            videoPlayerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { toggleControls() }
+
+            // Controls overlay — constrained to safe area so no manual inset math needed
+            GeometryReader { geo in
+                ZStack(alignment: .bottom) {
+                    // Chat drawer
+                    if showChatDrawer {
+                        chatDrawer(height: min(geo.size.height * 0.55, 420))
+                    }
+
+                    VStack(spacing: 0) {
+                        // Fading top bar
+                        fullscreenTopBar
+                            .opacity(showFullscreenControls ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
+
+                        Spacer()
+
+                        // Centered play/pause
+                        if player != nil {
+                            Button { togglePlayPause() } label: {
+                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 32, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(16)
+                                    .background(.black.opacity(0.4), in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(showFullscreenControls ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
+                        }
+
+                        Spacer()
+
+                        // Always-visible bottom bar
+                        fullscreenBottomBar
+                    }
                 }
-
-                // Fading top bar — title / badge / viewer count / exit
-                fullscreenTopBar(in: geo, hInset: hInset)
-                    .opacity(showFullscreenControls ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
-                    .frame(maxHeight: .infinity, alignment: .top)
-
-                // Always-visible bottom bar — chat toggle only
-                fullscreenBottomBar(in: geo, hInset: hInset)
             }
         }
-        .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
     }
 
-    private func chatDrawer(in geo: GeometryProxy, hInset: CGFloat) -> some View {
-        let drawerHeight = min(geo.size.height * 0.55, 420.0)
-        return VStack(spacing: 0) {
+    private func chatDrawer(height: CGFloat) -> some View {
+        VStack(spacing: 0) {
             Capsule()
                 .fill(Color(white: 0.6, opacity: 0.8))
                 .frame(width: 36, height: 4)
@@ -211,16 +273,14 @@ struct StreamView: View {
                 chatDisabledView
             }
         }
-        .frame(height: drawerHeight)
+        .frame(height: height)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, hInset)
+        .padding(.horizontal, 16)
         .offset(y: chatDrawerOffset)
         .gesture(
             DragGesture()
-                .onChanged { value in
-                    chatDrawerOffset = max(0, value.translation.height)
-                }
+                .onChanged { value in chatDrawerOffset = max(0, value.translation.height) }
                 .onEnded { value in
                     if value.translation.height > 100 {
                         withAnimation(.easeOut(duration: 0.25)) { showChatDrawer = false }
@@ -231,7 +291,7 @@ struct StreamView: View {
         .transition(.move(edge: .bottom))
     }
 
-    private func fullscreenTopBar(in geo: GeometryProxy, hInset: CGFloat) -> some View {
+    private var fullscreenTopBar: some View {
         HStack {
             Text(chatManager.streamTitle.isEmpty ? streamName : chatManager.streamTitle)
                 .font(.subheadline.bold())
@@ -240,40 +300,24 @@ struct StreamView: View {
                 .shadow(radius: 2)
             Spacer()
             liveBadge
-            Button {
-                showViewersList = true
-            } label: {
+            Button { showViewersList = true } label: {
                 Label("\(viewerCount)", systemImage: "eye")
                     .font(.caption)
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)
-
-            if verticalSizeClass != .compact {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = false }
-                } label: {
-                    Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-            }
         }
-        .padding(.leading, max(geo.safeAreaInsets.leading, 16))
-        .padding(.trailing, max(geo.safeAreaInsets.trailing, 16))
-        .padding(.top, geo.safeAreaInsets.top + 8)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(colors: [.black.opacity(0.6), .clear],
                            startPoint: .top, endPoint: .bottom)
         )
     }
 
-    private func fullscreenBottomBar(in geo: GeometryProxy, hInset: CGFloat) -> some View {
+    private var fullscreenBottomBar: some View {
         HStack {
+            // Chat toggle — always visible
             Button {
                 withAnimation(.spring(duration: 0.3)) {
                     showChatDrawer.toggle()
@@ -288,12 +332,25 @@ struct StreamView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain)
+
             Spacer()
+
+            // Exit fullscreen — portrait only (landscape users rotate to exit)
+            if verticalSizeClass != .compact {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = false }
+                } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .padding(.leading, max(geo.safeAreaInsets.leading, 16))
-        .padding(.trailing, max(geo.safeAreaInsets.trailing, 16))
-        .padding(.bottom, max(geo.safeAreaInsets.bottom, 12))
-        .padding(.top, 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(colors: [.clear, .black.opacity(0.4)],
                            startPoint: .top, endPoint: .bottom)
@@ -307,7 +364,7 @@ struct StreamView: View {
         ZStack {
             Color.black
             if let player {
-                VideoPlayer(player: player)
+                AVPlayerLayerView(player: player)
             } else if isVideoLoading {
                 ProgressView().tint(.white)
             } else {
@@ -329,6 +386,16 @@ struct StreamView: View {
             showFullscreenControls.toggle()
         }
         if showFullscreenControls { resetControlsTimer() }
+    }
+
+    private func togglePlayPause() {
+        isPlaying.toggle()
+        if isPlaying { player?.play() } else { player?.pause() }
+        // Show controls briefly so the user sees the state change
+        if effectiveFullscreen {
+            withAnimation(.easeInOut(duration: 0.2)) { showFullscreenControls = true }
+            resetControlsTimer()
+        }
     }
 
     private func resetControlsTimer() {
@@ -368,7 +435,7 @@ struct StreamView: View {
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .center, spacing: 4) {
                 liveBadge
                 Button {
                     showViewersList = true
@@ -538,22 +605,58 @@ struct StreamView: View {
 
     private var viewersSheet: some View {
         NavigationStack {
-            List(chatManager.viewers) { viewer in
-                HStack(spacing: 10) {
-                    AsyncImage(url: URL(string: viewer.avatarUrl)) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
-                        Color(UIColor.secondarySystemBackground)
-                    }
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(viewer.displayName).font(.subheadline)
-                        if !viewer.username.isEmpty && viewer.username != viewer.displayName {
-                            Text("@\(viewer.username)")
+            List {
+                // Stream timing
+                if streamStartedAt != nil || streamEndedAt != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let started = streamStartedAt {
+                            if isLive {
+                                Label {
+                                    Text("Live for ") + Text(started, style: .relative)
+                                } icon: {
+                                    Image(systemName: "play.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            } else {
+                                Label(
+                                    "Started \(DateFormatter.localizedString(from: started, dateStyle: .none, timeStyle: .short))",
+                                    systemImage: "play.circle"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let ended = streamEndedAt {
+                            Label(
+                                "Ended \(DateFormatter.localizedString(from: ended, dateStyle: .none, timeStyle: .short))",
+                                systemImage: "stop.circle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .listRowBackground(Color(UIColor.secondarySystemBackground))
+                }
+
+                ForEach(chatManager.viewers) { viewer in
+                    HStack(spacing: 10) {
+                        AsyncImage(url: URL(string: viewer.avatarUrl)) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Color(UIColor.secondarySystemBackground)
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(viewer.displayName).font(.subheadline)
+                            if !viewer.username.isEmpty && viewer.username != viewer.displayName {
+                                Text("@\(viewer.username)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -574,6 +677,8 @@ struct StreamView: View {
         if let s = initialStream {
             isLive = s.isLive
             isPublic = s.isPublic
+            streamStartedAt = s.startedAt
+            streamEndedAt = s.endedAt
         }
 
         setupHLSPlayer()
@@ -588,6 +693,8 @@ struct StreamView: View {
         player = nil
         playerObservation?.invalidate()
         playerObservation = nil
+        if let obs = stalledObserver { NotificationCenter.default.removeObserver(obs) }
+        stalledObserver = nil
         chatManager.disconnect()
         viewerRefreshTimer?.invalidate()
         viewerRefreshTimer = nil
@@ -608,12 +715,53 @@ struct StreamView: View {
         isVideoLoading = true
         let item = AVPlayerItem(url: hlsURL)
         let newPlayer = AVPlayer(playerItem: item)
-        newPlayer.automaticallyWaitsToMinimizeStalling = false
+        // Keep the default (true): AVPlayer buffers before playing and auto-recovers
+        // brief network stalls by buffering more. Setting false causes a tight
+        // play→pause→recover loop when the buffer is momentarily empty.
         self.player = newPlayer
+        isPlaying = true
         newPlayer.play()
 
-        playerObservation = item.observe(\.status, options: [.new]) { observedItem, _ in
-            DispatchQueue.main.async { self.isVideoLoading = observedItem.status == .unknown }
+        // Drive the loading indicator via timeControlStatus.
+        // With automaticallyWaitsToMinimizeStalling = true, brief network stalls
+        // show up as .waitingToPlayAtSpecifiedRate (handled internally), not .paused.
+        // .paused only fires when the stream truly ends or the player gives up.
+        playerObservation = newPlayer.observe(\.timeControlStatus, options: [.new]) { player, _ in
+            DispatchQueue.main.async {
+                switch player.timeControlStatus {
+                case .waitingToPlayAtSpecifiedRate:
+                    self.isVideoLoading = true
+                case .playing:
+                    self.isVideoLoading = false
+                case .paused:
+                    self.isVideoLoading = false
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        // Recover from explicit stall notifications (deeper than timeControlStatus).
+        stalledObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.playbackStalledNotification,
+            object: item,
+            queue: .main
+        ) { _ in
+            guard self.isPlaying else { return }
+            self.recoverFromStall()
+        }
+    }
+
+    /// Seeks to the live edge then resumes. Only called on explicit stall events,
+    /// not on every .paused transition, to avoid a busy-loop during initial load.
+    private func recoverFromStall() {
+        guard let player, let item = player.currentItem,
+              item.status != .failed else { return }
+        if let range = item.seekableTimeRanges.last {
+            let end = CMTimeRangeGetEnd(range.timeRangeValue)
+            player.seek(to: end) { _ in player.play() }
+        } else {
+            player.play()
         }
     }
 
@@ -744,7 +892,14 @@ struct StreamView: View {
         // Only match when still typing the command word (no space yet means no arg being entered)
         guard text.hasPrefix("/"), !text.contains(" ") else { hideAutocomplete(); return }
         let typed = text.lowercased()
-        let matches = availableCommands.filter { $0.command.hasPrefix(typed) }
+        let matches = availableCommands.filter { cmd in
+            guard cmd.command.hasPrefix(typed) else { return false }
+            // iOS has a dedicated Rejoin button — /join adds no value in autocomplete
+            if cmd.command == "/join" { return false }
+            // /leave only makes sense while joined
+            if cmd.command == "/leave" && chatManager.isManuallyDisconnected { return false }
+            return true
+        }
         if matches.isEmpty {
             hideAutocomplete()
         } else {

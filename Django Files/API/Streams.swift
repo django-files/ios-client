@@ -323,18 +323,28 @@ class StreamChatManager: NSObject, ObservableObject {
         case "chat-history":
             if let vid = event.viewerId { myViewerId = vid }
             messages = []
-            event.messages?.forEach { messages.append(DisplayChatMessage(from: $0)) }
-            if let vs = event.viewers { viewers = vs }
+            event.messages?.forEach { msg in
+                let resolved = StreamChatMessage(
+                    userId: msg.userId,
+                    username: msg.username,
+                    displayName: msg.displayName,
+                    avatarUrl: resolveAvatarURL(msg.avatarUrl),
+                    message: msg.message,
+                    timestamp: msg.timestamp
+                )
+                messages.append(DisplayChatMessage(from: resolved))
+            }
+            if let vs = event.viewers { viewers = vs.map(resolveViewer) }
 
         case "chat-message":
             if let msg = buildMessage(from: event) { messages.append(msg) }
 
         case "chat-viewers":
-            if let vs = event.viewers { viewers = vs }
+            if let vs = event.viewers { viewers = vs.map(resolveViewer) }
 
         case "chat-viewer-joined":
             if let v = event.viewer, !viewers.contains(where: { $0.id == v.id }) {
-                viewers.append(v)
+                viewers.append(resolveViewer(v))
             }
 
         case "chat-viewer-left":
@@ -376,13 +386,32 @@ class StreamChatManager: NSObject, ObservableObject {
         }
     }
 
+    /// Turns a server-relative path like `/static/images/default_avatar.png`
+    /// into a fully-qualified URL. Absolute URLs and nil pass through unchanged.
+    private func resolveAvatarURL(_ path: String?) -> String? {
+        guard let path, !path.isEmpty, path.hasPrefix("/") else { return path }
+        let base = serverURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(base)\(path)"
+    }
+
+    private func resolveViewer(_ viewer: ChatViewer) -> ChatViewer {
+        guard viewer.avatarUrl.hasPrefix("/") else { return viewer }
+        return ChatViewer(
+            viewerId: viewer.viewerId,
+            userId: viewer.userId,
+            username: viewer.username,
+            displayName: viewer.displayName,
+            avatarUrl: resolveAvatarURL(viewer.avatarUrl) ?? viewer.avatarUrl
+        )
+    }
+
     private func buildMessage(from event: StreamChatEvent) -> DisplayChatMessage? {
         guard let msg = event.message else { return nil }
         let sm = StreamChatMessage(
             userId: event.userId,
             username: event.username,
             displayName: event.displayName ?? event.username ?? "Anonymous",
-            avatarUrl: event.avatarUrl,
+            avatarUrl: resolveAvatarURL(event.avatarUrl),
             message: msg,
             timestamp: event.timestamp
         )
