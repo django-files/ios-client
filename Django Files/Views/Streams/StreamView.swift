@@ -81,6 +81,8 @@ struct StreamView: View {
     @State private var playerObservation: NSKeyValueObservation?
     @State private var stalledObserver: NSObjectProtocol?
     @State private var isVideoLoading = true
+    @State private var volume: Float = 1.0
+    @State private var isMuted: Bool = false
 
     // Stream info
     @State private var isLive: Bool = false
@@ -169,17 +171,30 @@ struct StreamView: View {
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     .padding(10)
+
                 }
 
-                // Fullscreen — bottom trailing
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = true }
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                // Mute + Fullscreen — bottom trailing
+                HStack(spacing: 6) {
+                    if player != nil {
+                        Button { toggleMute() } label: {
+                            Image(systemName: muteIcon())
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(8)
+                                .background(.black.opacity(0.5), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = true }
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding(10)
@@ -335,6 +350,16 @@ struct StreamView: View {
 
             Spacer()
 
+            // Mute toggle
+            Button { toggleMute() } label: {
+                Image(systemName: muteIcon())
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(.black.opacity(0.45), in: Circle())
+            }
+            .buttonStyle(.plain)
+
             // Exit fullscreen — portrait only (landscape users rotate to exit)
             if verticalSizeClass != .compact {
                 Button {
@@ -396,6 +421,20 @@ struct StreamView: View {
             withAnimation(.easeInOut(duration: 0.2)) { showFullscreenControls = true }
             resetControlsTimer()
         }
+    }
+
+    private func toggleMute() {
+        isMuted.toggle()
+        player?.isMuted = isMuted
+        // If they unmute while slider is at 0, restore to full volume
+        if !isMuted && volume < 0.01 { volume = 1.0; player?.volume = 1.0 }
+    }
+
+    private func muteIcon() -> String {
+        if isMuted || volume < 0.01 { return "speaker.slash.fill" }
+        if volume < 0.34 { return "speaker.fill" }
+        if volume < 0.67 { return "speaker.wave.1.fill" }
+        return "speaker.wave.2.fill"
     }
 
     private func resetControlsTimer() {
@@ -718,6 +757,8 @@ struct StreamView: View {
         // Keep the default (true): AVPlayer buffers before playing and auto-recovers
         // brief network stalls by buffering more. Setting false causes a tight
         // play→pause→recover loop when the buffer is momentarily empty.
+        newPlayer.volume = volume
+        newPlayer.isMuted = isMuted
         self.player = newPlayer
         isPlaying = true
         newPlayer.play()
