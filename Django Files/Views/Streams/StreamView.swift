@@ -14,6 +14,122 @@ import SwiftUI
 import AVKit
 import UIKit
 
+// MARK: - Audio Route Picker (AirPlay / speaker / headphones / Bluetooth)
+//
+// AVRoutePickerView must be in the live UIKit view hierarchy to present its
+// system sheet. Embedding it inside a SwiftUI ToolbarItem doesn't work.
+// Solution: on button tap, attach a 1×1 proxy view to the key window,
+// trigger the picker's internal button, then remove it via the delegate.
+
+private struct RoutePickerButton: View {
+    enum BackgroundShape { case circle, roundedRect }
+
+    var tint: Color = .primary
+    var size: CGFloat = 16
+    var padding: CGFloat = 10
+    var backgroundShape: BackgroundShape = .circle
+
+    var body: some View {
+        Button(action: showRoutePicker) {
+            Image(systemName: "airplayaudio")
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(tint)
+                .padding(padding)
+                .background {
+                    switch backgroundShape {
+                    case .circle:
+                        Circle().fill(.black.opacity(0.45))
+                    case .roundedRect:
+                        RoundedRectangle(cornerRadius: 8).fill(.black.opacity(0.5))
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func showRoutePicker() {
+        guard
+            let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first
+        else { return }
+        RoutePickerWindow.present(in: windowScene)
+    }
+}
+
+/// Hosts AVRoutePickerView in its own UIWindow at alert level so the system
+/// sheet has a proper presentation context. Tears itself down via the delegate.
+private final class RoutePickerWindow: UIWindow, AVRoutePickerViewDelegate {
+    private static var retained: [RoutePickerWindow] = []
+
+    private let routePicker = AVRoutePickerView()
+    private var fallbackTimer: Timer?
+
+    static func present(in scene: UIWindowScene) {
+        let win = RoutePickerWindow(windowScene: scene)
+        win.frame = scene.coordinateSpace.bounds
+        win.backgroundColor = .clear
+        win.windowLevel = .alert + 1
+
+        let vc = UIViewController()
+        vc.view.backgroundColor = .clear
+        win.rootViewController = vc
+        win.isHidden = false
+
+        let size: CGFloat = 44
+        let bounds = scene.coordinateSpace.bounds
+        win.routePicker.frame = CGRect(
+            x: bounds.midX - size / 2,
+            y: bounds.maxY - 120,
+            width: size, height: size
+        )
+        win.routePicker.alpha = 0.011
+        win.routePicker.delegate = win
+        vc.view.addSubview(win.routePicker)
+
+        win.triggerPicker()
+        retained.append(win)
+    }
+
+    private func triggerPicker() {
+        func firstButton(in view: UIView) -> UIButton? {
+            if let b = view as? UIButton { return b }
+            for sub in view.subviews { if let b = firstButton(in: sub) { return b } }
+            return nil
+        }
+        firstButton(in: routePicker)?.sendActions(for: .touchUpInside)
+
+        // If no sheet appears within 0.5 s (no available routes, or simulator),
+        // tear the window down so it doesn't block touches.
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            self?.tearDown()
+        }
+    }
+
+    private func tearDown() {
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+        isHidden = true
+        RoutePickerWindow.retained.removeAll { $0 === self }
+    }
+
+    override init(windowScene: UIWindowScene) {
+        super.init(frame: .zero)
+        self.windowScene = windowScene
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // Cancel the fallback timer — a sheet is actually appearing.
+    func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+        tearDown()
+    }
+}
+
 // MARK: - AVPlayer wrapper without transport controls
 
 private struct AVPlayerLayerView: UIViewControllerRepresentable {
@@ -118,6 +234,9 @@ struct StreamView: View {
     // Auth check
     private var isAuthenticated: Bool { !token.isEmpty }
 
+    // Broadcast
+    @State private var showBroadcast = false
+
     init(serverURL: URL, streamName: String, token: String,
          initialStream: DFStream? = nil, password: String? = nil) {
         self.serverURL = serverURL
@@ -144,6 +263,14 @@ struct StreamView: View {
         .onAppear { onAppear() }
         .onDisappear { onDisappear() }
         .sheet(isPresented: $showViewersList) { viewersSheet }
+        .fullScreenCover(isPresented: $showBroadcast) {
+            StreamBroadcastView(
+                serverURL: serverURL,
+                streamName: streamName,
+                token: token,
+                streamTitle: chatManager.streamTitle
+            )
+        }
         .onChange(of: verticalSizeClass) { _, _ in
             // When rotating back to portrait, clear manual fullscreen only if
             // the user hadn't explicitly set it — landscape auto-fullscreen handles itself.
@@ -157,7 +284,6 @@ struct StreamView: View {
             // Video with controls overlay
             ZStack {
                 videoPlayerContent
-                    .frame(height: 220)
 
                 if player != nil {
                     // Play/pause — bottom leading
@@ -174,7 +300,7 @@ struct StreamView: View {
 
                 }
 
-                // Mute + Fullscreen — bottom trailing
+                // Mute + Route + Fullscreen — bottom trailing
                 HStack(spacing: 6) {
                     if player != nil {
                         Button { toggleMute() } label: {
@@ -185,6 +311,8 @@ struct StreamView: View {
                                 .background(.black.opacity(0.5), in: Circle())
                         }
                         .buttonStyle(.plain)
+
+                        RoutePickerButton(tint: .white, size: 14, padding: 8, backgroundShape: .circle)
                     }
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { isFullscreen = true }
@@ -199,6 +327,8 @@ struct StreamView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding(10)
             }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16/9, contentMode: .fit)
 
             streamInfoBar
                 .padding(.horizontal, 12)
@@ -215,6 +345,19 @@ struct StreamView: View {
         }
         .navigationTitle(chatManager.streamTitle.isEmpty ? streamName : chatManager.streamTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if initialStream?.isOwner == true {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showBroadcast = true
+                    } label: {
+                        Label("Go Live", systemImage: "video.badge.waveform.fill")
+                            .labelStyle(.iconOnly)
+                            .foregroundStyle(isLive ? .red : .accentColor)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Fullscreen Layout
@@ -359,6 +502,8 @@ struct StreamView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain)
+
+            RoutePickerButton(tint: .white, size: 15, padding: 10, backgroundShape: .circle)
 
             // Exit fullscreen — portrait only (landscape users rotate to exit)
             if verticalSizeClass != .compact {
