@@ -43,6 +43,16 @@ struct DFStream: Codable, Identifiable {
     }
 }
 
+struct DFStreamIngestInfo: Codable {
+    let rtmpHost: String
+    let rtmpPort: Int
+
+    enum CodingKeys: String, CodingKey {
+        case rtmpHost = "rtmp_host"
+        case rtmpPort = "rtmp_port"
+    }
+}
+
 struct DFStreamsResponse: Codable {
     let streams: [DFStream]
     let next: Int?
@@ -519,6 +529,22 @@ extension DFAPI {
             method: .get,
             selectedServer: selectedServer
         )
+    }
+
+    public func getStreamIngestInfo(selectedServer: DjangoFilesSession? = nil) async -> DFStreamIngestInfo? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: "/api/stream/ingest/",
+                parameters: [:],
+                method: .get,
+                headerFields: [.accept: "application/json"],
+                selectedServer: selectedServer
+            )
+            return try JSONDecoder().decode(DFStreamIngestInfo.self, from: responseBody)
+        } catch {
+            print("getStreamIngestInfo failed: \(error)")
+            return nil
+        }
     }
 
     public func getStreamViewerCount(name: String, selectedServer: DjangoFilesSession? = nil) async -> Int? {

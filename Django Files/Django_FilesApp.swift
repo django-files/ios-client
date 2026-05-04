@@ -27,6 +27,14 @@ class StreamStateManager: ObservableObject {
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {
+    /// Set to a non-nil mask to temporarily lock orientation (e.g. portrait-only for broadcast).
+    static var orientationLock: UIInterfaceOrientationMask? = nil
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        AppDelegate.orientationLock ?? .all
+    }
+
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     let shouldDisableFirebase = ProcessInfo.processInfo.arguments.contains("--DisableFirebase")
