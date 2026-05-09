@@ -31,6 +31,9 @@ class AlbumStateManager: ObservableObject {
     @Published var deepLinkSession: DjangoFilesSession? = nil
     @Published var deepLinkAlbumID: Int? = nil
     @Published var deepLinkAlbumName: String? = nil
+    // Set when an authenticated user follows an album deep link — triggers in-app navigation
+    @Published var deepLinkNavigationAlbumID: Int? = nil
+    @Published var deepLinkNavigationAlbumName: String? = nil
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {

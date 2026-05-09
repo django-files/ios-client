@@ -367,14 +367,17 @@ struct FileListView: View {
                 }
                 .id(files[index].id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button() {
-                        fileIDsToDelete = [files[index].id]
-                        fileNameToDelete = files[index].name
-                        showingDeleteConfirmation = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+                    let fileIsOwned = (server.wrappedValue?.userID != nil && files[index].user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                    if fileIsOwned {
+                        Button() {
+                            fileIDsToDelete = [files[index].id]
+                            fileNameToDelete = files[index].name
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(.red)
                     }
-                    .tint(.red)
                 }
 
                 if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
@@ -657,9 +660,11 @@ struct FileListView: View {
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
+        let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
         return FileContextMenuButtons(
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
+            isOwner: isOwner,
             onPreview: {
                 selectedFile = file
                 showingPreview = true

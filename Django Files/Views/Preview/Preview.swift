@@ -494,6 +494,10 @@ struct FilePreviewView: View {
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
     }
+
+    private var isOwner: Bool {
+        (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+    }
     
     private func resetMarqueeAnimation() {
         // Generate new animation ID to cancel previous animations
@@ -739,12 +743,14 @@ struct FilePreviewView: View {
 //                        Image(systemName: "info.circle")
 //                    }
 //                    Spacer()
-                    Button(action: {
-                        fileIDsToDelete = [file.id]
-                        fileNameToDelete = file.name
-                        showingDeleteConfirmation = true
-                    }) {
-                        Image(systemName: "trash")
+                    if isOwner {
+                        Button(action: {
+                            fileIDsToDelete = [file.id]
+                            fileNameToDelete = file.name
+                            showingDeleteConfirmation = true
+                        }) {
+                            Image(systemName: "trash")
+                        }
                     }
                 }
             }
@@ -893,9 +899,10 @@ struct FilePreviewView: View {
     }
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
-        FileContextMenuButtons(
+        return FileContextMenuButtons(
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
+            isOwner: isOwner,
             onPreview: {
                 // No-op since we're already previewing
             },

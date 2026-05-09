@@ -123,6 +123,25 @@ extension DFAPI {
         }
     }
     
+    // Fetch a single album by ID
+    func getAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> DFAlbum? {
+        do {
+            let path = "\(getAPIPath(.album))\(albumId)"
+            let responseBody = try await makeAPIRequest(
+                path: path,
+                parameters: [:],
+                method: .get,
+                expectedResponse: .ok,
+                selectedServer: selectedServer
+            )
+            let decoder = JSONDecoder()
+            return try decoder.decode(DFAlbum.self, from: responseBody)
+        } catch {
+            print("Error fetching album \(albumId): \(error)")
+            return nil
+        }
+    }
+
     // Delete an album by ID
     func deleteAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {

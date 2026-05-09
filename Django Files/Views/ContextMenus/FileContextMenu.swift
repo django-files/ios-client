@@ -1,10 +1,11 @@
 import SwiftUI
 
 struct FileContextMenuButtons: View {
-    
+
     var isPreviewing: Bool = false
     var isPrivate: Bool = false
-    
+    var isOwner: Bool = true
+
     var onPreview: () -> Void = {}
     var onCopyShareLink: () -> Void = {}
     var onCopyRawLink: () -> Void = {}
@@ -16,7 +17,7 @@ struct FileContextMenuButtons: View {
     var manageAlbums: () -> Void = {}
     var renameFile: () -> Void = {}
     var deleteFile: () -> Void = {}
-    
+
     var body: some View {
         Group {
             if !isPreviewing {
@@ -25,7 +26,7 @@ struct FileContextMenuButtons: View {
                 } label: {
                     Label("Open Preview", systemImage: "arrow.up.forward.app")
                 }
-                
+
             }
             Button {
                 onCopyShareLink()
@@ -33,7 +34,7 @@ struct FileContextMenuButtons: View {
             } label: {
                 Label("Copy Share Link", systemImage: "link")
             }
-            
+
             Button {
                 onCopyRawLink()
                 notifyClipboard()
@@ -41,55 +42,50 @@ struct FileContextMenuButtons: View {
                 Label("Copy Raw Link", systemImage: "link.circle")
             }
 //            }
-            
+
             Button {
                 openRawBrowser()
             } label: {
                 Label("Open Raw in Browser", systemImage: "globe")
             }
-            
-            Divider()
-            Button {
-                onTogglePrivate()
-            } label: {
-                if isPrivate {
-                    Label("Make Public", systemImage: "lock.open")
-                } else {
-                    Label("Make Private", systemImage: "lock")
-                }
-            }
-            
-            Button {
-                setExpire()
-            } label: {
-                Label("Set Expire", systemImage: "calendar.badge.exclamationmark")
-            }
-            
-            Button {
-                setPassword()
-            } label: {
-                Label("Set Password", systemImage: "key")
-            }
 
-//            Divider()
-//            Button {
-//                addToAlbum()
-//            } label: {
-//                Label("Add To Album", systemImage: "rectangle.stack.badge.plus")
-//            }
-//
-            Divider()
-            
-            Button {
-                renameFile()
-            } label: {
-                Label("Rename File", systemImage: "character.cursor.ibeam")
-            }
-            Divider()
-            Button(role: .destructive) {
-                deleteFile()
-            } label: {
-                Label("Delete File", systemImage: "trash")
+            if isOwner {
+                Divider()
+                Button {
+                    onTogglePrivate()
+                } label: {
+                    if isPrivate {
+                        Label("Make Public", systemImage: "lock.open")
+                    } else {
+                        Label("Make Private", systemImage: "lock")
+                    }
+                }
+
+                Button {
+                    setExpire()
+                } label: {
+                    Label("Set Expire", systemImage: "calendar.badge.exclamationmark")
+                }
+
+                Button {
+                    setPassword()
+                } label: {
+                    Label("Set Password", systemImage: "key")
+                }
+
+                Divider()
+
+                Button {
+                    renameFile()
+                } label: {
+                    Label("Rename File", systemImage: "character.cursor.ibeam")
+                }
+                Divider()
+                Button(role: .destructive) {
+                    deleteFile()
+                } label: {
+                    Label("Delete File", systemImage: "trash")
+                }
             }
         }
     }

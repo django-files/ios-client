@@ -213,8 +213,7 @@ class DeepLinks {
     }
 
     /// Deep link: `djangofiles://album/?url=<server_url>&album_id=<id>&album_name=<optional_name>`
-    /// Works for unauthenticated users — public albums are fetched with an empty token.
-    /// If the user is already authenticated with the server their token is used automatically.
+    /// Authenticated users are taken directly into the albums tab. Unauthenticated users see the guest cover sheet.
     @MainActor private func handleAlbumLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, albumStateManager: AlbumStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
         guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
               let serverURL = URL(string: urlString),
@@ -231,11 +230,20 @@ class DeepLinks {
             do {
                 let existingSessions = try context.fetch(descriptor)
                 let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString && $0.auth })
-                let token = matchingSession?.token ?? ""
-                albumStateManager.deepLinkSession = DjangoFilesSession(url: serverURL.absoluteString, token: token)
-                albumStateManager.deepLinkAlbumID = albumID
-                albumStateManager.deepLinkAlbumName = albumName
-                albumStateManager.showingDeepLinkAlbum = true
+
+                if let matchingSession = matchingSession {
+                    // Authenticated: navigate inside the normal albums tab
+                    sessionManager.selectedSession = matchingSession
+                    selectedTab.wrappedValue = .albums
+                    albumStateManager.deepLinkNavigationAlbumID = albumID
+                    albumStateManager.deepLinkNavigationAlbumName = albumName
+                } else {
+                    // Guest: show the full-screen cover sheet
+                    albumStateManager.deepLinkSession = DjangoFilesSession(url: serverURL.absoluteString, token: "")
+                    albumStateManager.deepLinkAlbumID = albumID
+                    albumStateManager.deepLinkAlbumName = albumName
+                    albumStateManager.showingDeepLinkAlbum = true
+                }
             } catch {
                 print("Error resolving album deep link: \(error)")
                 ToastManager.shared.showToast(message: "Could not open album")
