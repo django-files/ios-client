@@ -25,6 +25,7 @@ struct ContentPreview: View {
     @State private var lastImageScale: CGFloat = 1.0
     @State private var isPreviewing: Bool = false
     @State private var fileDetails: DFFile?
+    @State private var videoPlayRequested = false
     
     var body: some View {
         Group {
@@ -100,14 +101,34 @@ struct ContentPreview: View {
     private var videoPreview: some View {
         GeometryReader { geometry in
             ZStack {
-                VideoPlayerView(url: fileURL, isLoading: $isLoading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
+                if videoPlayRequested {
+                    VideoPlayerView(url: fileURL, isLoading: $isLoading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                        .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
 
-                if isLoading {
-                    LoadingView()
-                        .frame(width: 100, height: 100)
+                    if isLoading {
+                        LoadingView()
+                            .frame(width: 100, height: 100)
+                    }
+                } else {
+                    if let thumbURL = URL(string: file.thumb), !file.thumb.isEmpty {
+                        CachedAsyncImage(url: thumbURL) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        } placeholder: {
+                            Color.black
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    Button(action: { videoPlayRequested = true }) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 72))
+                            .foregroundColor(.white)
+                            .shadow(radius: 10)
+                    }
                 }
             }
         }

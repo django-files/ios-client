@@ -25,8 +25,36 @@ import RTMPHaishinKit
 
 private struct CameraPreviewView: UIViewRepresentable {
     let hkView: MTHKView
+    let deviceOrientation: UIDeviceOrientation
+
     func makeUIView(context: Context) -> MTHKView { hkView }
-    func updateUIView(_ uiView: MTHKView, context: Context) {}
+
+    func updateUIView(_ uiView: MTHKView, context: Context) {
+        // Defer until Auto Layout has set real bounds.
+        DispatchQueue.main.async { applyTransform(to: uiView) }
+    }
+
+    private func applyTransform(to view: MTHKView) {
+        let w = view.bounds.width
+        let h = view.bounds.height
+        guard w > 0, h > 0 else { return }
+
+        // Scale factor that fills the portrait bounds after a 90° rotation.
+        let fillScale = max(w, h) / min(w, h)
+
+        let t: CGAffineTransform
+        switch deviceOrientation {
+        case .landscapeLeft:
+            t = CGAffineTransform(rotationAngle: .pi / 2).scaledBy(x: fillScale, y: fillScale)
+        case .landscapeRight:
+            t = CGAffineTransform(rotationAngle: -.pi / 2).scaledBy(x: fillScale, y: fillScale)
+        case .portraitUpsideDown:
+            t = CGAffineTransform(rotationAngle: .pi)
+        default:
+            t = .identity
+        }
+        UIView.animate(withDuration: 0.25) { view.transform = t }
+    }
 }
 
 // MARK: - Broadcaster ViewModel
@@ -173,21 +201,43 @@ struct StreamBroadcastView: View {
     let streamName: String
     let token: String
     let streamTitle: String
+    let ownerUsername: String
     let rtmpPort: Int
 
     @StateObject private var broadcaster = RTMPBroadcaster()
+    @StateObject private var chatManager: StreamChatManager
     @State private var useFrontCamera = true
     @State private var showEndConfirmation = false
     @State private var permissionDenied = false
     @State private var didSetup = false
     @State private var ingestInfo: DFStreamIngestInfo?
     @State private var showIngestInfo = false
+    @State private var showChatDrawer = false
+    @State private var chatDrawerOffset: CGFloat = 0
     @State private var deviceOrientation: UIDeviceOrientation = {
         let o = UIDevice.current.orientation
         return o.isValidInterfaceOrientation ? o : .portrait
     }()
 
     @Environment(\.dismiss) private var dismiss
+
+    init(serverURL: URL, streamName: String, token: String, streamTitle: String,
+         ownerUsername: String = "", rtmpPort: Int) {
+        self.serverURL = serverURL
+        self.streamName = streamName
+        self.token = token
+        self.streamTitle = streamTitle
+        self.ownerUsername = ownerUsername
+        self.rtmpPort = rtmpPort
+        _chatManager = StateObject(wrappedValue: StreamChatManager(
+            serverURL: serverURL,
+            token: token,
+            streamName: streamName,
+            isOwner: true,
+            ownerUsername: ownerUsername,
+            title: streamTitle
+        ))
+    }
 
     // MARK: - Rotation helpers
 
@@ -206,7 +256,7 @@ struct StreamBroadcastView: View {
             Color.black.ignoresSafeArea()
 
             if !permissionDenied {
-                CameraPreviewView(hkView: broadcaster.previewView)
+                CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation)
                     .ignoresSafeArea()
             }
 
@@ -220,6 +270,53 @@ struct StreamBroadcastView: View {
             if permissionDenied {
                 permissionDeniedOverlay
             }
+
+            // Chat drawer — slides up from the bottom
+            if showChatDrawer {
+                GeometryReader { geo in
+                    VStack(spacing: 0) {
+                        Spacer()
+                        VStack(spacing: 0) {
+                            Capsule()
+                                .fill(Color(white: 0.6, opacity: 0.8))
+                                .frame(width: 36, height: 4)
+                                .padding(.vertical, 8)
+
+                            if chatManager.liveChat {
+                                chatPanel
+                            } else {
+                                VStack(spacing: 8) {
+                                    Spacer()
+                                    Image(systemName: "bubble.left.and.bubble.right")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(.secondary)
+                                    Text("Live chat is disabled")
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .frame(height: min(geo.size.height * 0.55, 420))
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 44 + geo.safeAreaInsets.bottom)
+                        .offset(y: chatDrawerOffset)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in chatDrawerOffset = max(0, value.translation.height) }
+                                .onEnded { value in
+                                    if value.translation.height > 100 {
+                                        withAnimation(.easeOut(duration: 0.25)) { showChatDrawer = false }
+                                    }
+                                    withAnimation(.spring()) { chatDrawerOffset = 0 }
+                                }
+                        )
+                        .transition(.move(edge: .bottom))
+                    }
+                }
+                .ignoresSafeArea()
+            }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -230,6 +327,7 @@ struct StreamBroadcastView: View {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             Task { await broadcaster.teardown() }
+            chatManager.disconnect()
         }
         .onReceive(
             NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)
@@ -355,8 +453,22 @@ struct StreamBroadcastView: View {
 
     private var bottomBar: some View {
         HStack(alignment: .center) {
-            // Left placeholder mirrors mute button to keep record button centered
-            Color.clear.frame(width: 52, height: 52)
+            // Chat toggle
+            Button {
+                withAnimation(.spring(duration: 0.3)) {
+                    showChatDrawer.toggle()
+                    chatDrawerOffset = 0
+                }
+            } label: {
+                Image(systemName: showChatDrawer ? "bubble.left.fill" : "bubble.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .rotationEffect(controlRotation)
+                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+            }
+            .buttonStyle(.plain)
 
             Spacer()
 
@@ -425,6 +537,61 @@ struct StreamBroadcastView: View {
         }
         .buttonStyle(.plain)
         .disabled(broadcaster.broadcastState.isConnecting || permissionDenied)
+    }
+
+    // MARK: - Chat Panel
+
+    @State private var chatInputText: String = ""
+    @FocusState private var chatInputFocused: Bool
+
+    private var chatPanel: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(chatManager.messages) { msg in
+                            ChatMessageRow(message: msg, ownerUsername: chatManager.ownerUsername)
+                                .id(msg.id)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                }
+                .onChange(of: chatManager.messages.count) { _, _ in
+                    if let last = chatManager.messages.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                TextField("Message…", text: $chatInputText)
+                    .textFieldStyle(.roundedBorder)
+                    .submitLabel(.send)
+                    .focused($chatInputFocused)
+                    .onSubmit { sendChatMessage() }
+
+                Button { sendChatMessage() } label: {
+                    Image(systemName: "paperplane.fill")
+                        .foregroundStyle(chatInputText.trimmingCharacters(in: .whitespaces).isEmpty
+                                         ? Color.secondary : Color.accentColor)
+                }
+                .disabled(chatInputText.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func sendChatMessage() {
+        let text = chatInputText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        chatInputText = ""
+        chatManager.sendMessage(text)
     }
 
     // MARK: - Ingest Info Sheet
@@ -525,7 +692,10 @@ struct StreamBroadcastView: View {
             permissionDenied = true
             return
         }
-        await broadcaster.setup(useFrontCamera: useFrontCamera)
+        // Connect chat in parallel with broadcaster setup — they're independent
+        async let broadcasterSetup: Void = broadcaster.setup(useFrontCamera: useFrontCamera)
+        chatManager.connect()
+        await broadcasterSetup
     }
 
     private func fetchIngestInfo() async -> DFStreamIngestInfo? {

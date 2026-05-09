@@ -249,6 +249,7 @@ struct StreamView: View {
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL, token: token,
             streamName: streamName, isOwner: initialStream?.isOwner ?? false,
+            ownerUsername: initialStream?.userUsername ?? "",
             title: initialStream?.title ?? "",
             description: initialStream?.description ?? ""
         ))
@@ -264,6 +265,9 @@ struct StreamView: View {
         }
         .onAppear { onAppear() }
         .onDisappear { onDisappear() }
+        .onChange(of: chatManager.streamIsLive) { _, live in
+            if let live { isLive = live }
+        }
         .sheet(isPresented: $showViewersList) { viewersSheet }
         .fullScreenCover(isPresented: $showBroadcast) {
             StreamBroadcastView(
@@ -271,6 +275,7 @@ struct StreamView: View {
                 streamName: streamName,
                 token: token,
                 streamTitle: chatManager.streamTitle,
+                ownerUsername: initialStream?.userUsername ?? "",
                 rtmpPort: rtmpPort
             )
         }
@@ -666,7 +671,7 @@ struct StreamView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         ForEach(chatManager.messages) { msg in
-                            ChatMessageRow(message: msg)
+                            ChatMessageRow(message: msg, ownerUsername: chatManager.ownerUsername)
                                 .id(msg.id)
                         }
                     }
@@ -1122,6 +1127,11 @@ struct StreamView: View {
 
 struct ChatMessageRow: View {
     let message: DisplayChatMessage
+    var ownerUsername: String = ""
+
+    private var isStreamOwner: Bool {
+        !ownerUsername.isEmpty && message.username == ownerUsername
+    }
 
     var body: some View {
         if message.isSystem {
@@ -1151,12 +1161,19 @@ struct ChatMessageRow: View {
                         )
                 }
 
-                (Text(message.displayName).bold()
-                    .foregroundStyle(nameColor(for: message.username))
-                 + Text("  ") + Text(message.message))
-                    .font(.subheadline)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    if isStreamOwner {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.yellow)
+                    }
+                    (Text(message.displayName).bold()
+                        .foregroundStyle(nameColor(for: message.username))
+                     + Text("  ") + Text(message.message))
+                        .font(.subheadline)
+                        .textSelection(.enabled)
+                        .lineLimit(nil)
+                }
             }
         }
     }

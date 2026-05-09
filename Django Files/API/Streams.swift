@@ -118,6 +118,7 @@ struct StreamChatEvent: Codable {
     let messages: [StreamChatMessage]?
     let title: String?
     let description: String?
+    let isLive: Bool?
 
     enum CodingKeys: String, CodingKey {
         case event, name, message, timestamp, username, viewer, viewers, messages
@@ -128,6 +129,7 @@ struct StreamChatEvent: Codable {
         case viewerId = "viewer_id"
         case liveChat = "live_chat"
         case anonymousChat = "anonymous_chat"
+        case isLive = "is_live"
     }
 }
 
@@ -186,11 +188,13 @@ class StreamChatManager: NSObject, ObservableObject {
     @Published var isManuallyDisconnected: Bool = false
     @Published var streamTitle: String
     @Published var streamDescription: String
+    @Published var streamIsLive: Bool? = nil
 
     let serverURL: URL
     let token: String
     let streamName: String
     let isOwner: Bool
+    let ownerUsername: String
 
     private(set) var myViewerId: String?
 
@@ -202,11 +206,12 @@ class StreamChatManager: NSObject, ObservableObject {
     private var isReconnecting = false
 
     init(serverURL: URL, token: String, streamName: String, isOwner: Bool,
-         title: String = "", description: String = "") {
+         ownerUsername: String = "", title: String = "", description: String = "") {
         self.serverURL = serverURL
         self.token = token
         self.streamName = streamName
         self.isOwner = isOwner
+        self.ownerUsername = ownerUsername
         self.streamTitle = title
         self.streamDescription = description
         super.init()
@@ -384,6 +389,12 @@ class StreamChatManager: NSObject, ObservableObject {
                     !$0.isSystem && ($0.username == uname ||
                     (event.userId != nil && $0.userId == event.userId))
                 }
+            }
+
+        case "stream-status":
+            if let live = event.isLive {
+                streamIsLive = live
+                messages.append(.system(live ? "Stream is now live." : "Stream has ended."))
             }
 
         case "chat-retry":

@@ -28,6 +28,15 @@ struct DFWebSocketMessage: Codable {
     let password: String?
     let old_name: String?
     let objects: [DFWebSocketObject]?
+    let isLive: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case event, message, delay, id, name, user, expr, password, objects
+        case bsClass = "bsClass"
+        case `private`
+        case old_name
+        case isLive = "is_live"
+    }
 }
 
 struct DFWebSocketObject: Codable {
@@ -236,6 +245,16 @@ class DFWebSocket: NSObject {
                     name: Notification.Name("DFWebSocketToastNotification"),
                     object: nil,
                     userInfo: ["message": "Album (\(message.name ?? "Untitled.file")) deleted."]
+                )
+            } else if message.event == "stream-status" {
+                let streamName = message.name ?? "Stream"
+                let toastText = (message.isLive == true)
+                    ? "\(streamName) is now live."
+                    : "\(streamName) has ended."
+                NotificationCenter.default.post(
+                    name: Notification.Name("DFWebSocketToastNotification"),
+                    object: nil,
+                    userInfo: ["message": toastText]
                 )
             } else {
                 // For debugging - post a notification for all message types

@@ -44,7 +44,7 @@ struct FileRowView: View {
     var body: some View {
         HStack(alignment: .center) {
             VStack(spacing: 0) {
-                if file.mime.hasPrefix("image/") {
+                if file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/") {
                     CachedAsyncImage(url: thumbnailURL) { image in
                         image
                             .resizable()
