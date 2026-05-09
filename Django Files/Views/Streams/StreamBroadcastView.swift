@@ -25,45 +25,9 @@ import RTMPHaishinKit
 
 private struct CameraPreviewView: UIViewRepresentable {
     let hkView: MTHKView
-    let deviceOrientation: UIDeviceOrientation
-    let useFrontCamera: Bool
 
     func makeUIView(context: Context) -> MTHKView { hkView }
-
-    func updateUIView(_ uiView: MTHKView, context: Context) {
-        // Defer until Auto Layout has set real bounds.
-        DispatchQueue.main.async { applyTransform(to: uiView) }
-    }
-
-    private func applyTransform(to view: MTHKView) {
-        let w = view.bounds.width
-        let h = view.bounds.height
-        guard w > 0, h > 0 else { return }
-
-        // Scale factor that fills the portrait bounds after a 90° rotation.
-        let fillScale = max(w, h) / min(w, h)
-
-        // Orientation correction first.
-        var t: CGAffineTransform
-        switch deviceOrientation {
-        case .landscapeLeft:
-            t = CGAffineTransform(rotationAngle: .pi / 2).scaledBy(x: fillScale, y: fillScale)
-        case .landscapeRight:
-            t = CGAffineTransform(rotationAngle: -.pi / 2).scaledBy(x: fillScale, y: fillScale)
-        case .portraitUpsideDown:
-            t = CGAffineTransform(rotationAngle: .pi)
-        default:
-            t = .identity
-        }
-
-        // Front camera preview is mirrored so it feels like looking in a mirror.
-        // Applied after orientation so the flip is always horizontal in screen space.
-        if useFrontCamera {
-            t = t.concatenating(CGAffineTransform(scaleX: -1, y: 1))
-        }
-
-        UIView.animate(withDuration: 0.25) { view.transform = t }
-    }
+    func updateUIView(_ uiView: MTHKView, context: Context) {}
 }
 
 // MARK: - Broadcaster ViewModel
@@ -112,7 +76,7 @@ final class RTMPBroadcaster: ObservableObject {
     /// Call once after camera/mic permissions are confirmed.
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
         try? await stream.setVideoSettings(VideoCodecSettings(
-            videoSize: videoSize(for: deviceOrientation),
+            videoSize: CGSize(width: 1280, height: 720),
             bitRate: 2_000_000
         ))
         try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
@@ -123,6 +87,7 @@ final class RTMPBroadcaster: ObservableObject {
 
         await attachCamera(useFrontCamera: useFrontCamera)
         await attachAudioDevice()
+        await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
     }
 
     // MARK: - Device Attachment
@@ -202,19 +167,24 @@ final class RTMPBroadcaster: ObservableObject {
         broadcastState = .idle
     }
 
-    func updateVideoSettings(deviceOrientation: UIDeviceOrientation) {
+    func updateOrientation(deviceOrientation: UIDeviceOrientation) {
         Task {
-            try? await stream.setVideoSettings(VideoCodecSettings(
-                videoSize: videoSize(for: deviceOrientation),
-                bitRate: 2_000_000
-            ))
+            await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
         }
     }
 
-    private func videoSize(for orientation: UIDeviceOrientation) -> CGSize {
-        orientation.isLandscape
-            ? CGSize(width: 1280, height: 720)
-            : CGSize(width: 720, height: 1280)
+    // AVCaptureVideoOrientation is deprecated in iOS 17 in favour of
+    // AVCaptureDeviceRotationCoordinator, but HaishinKit's setVideoOrientation
+    // still requires it. Isolate the deprecated usage here until HaishinKit
+    // exposes a replacement API.
+    @available(iOS, deprecated: 17.0)
+    private func avOrientation(from deviceOrientation: UIDeviceOrientation) -> AVCaptureVideoOrientation {
+        switch deviceOrientation {
+        case .landscapeLeft:      return .landscapeRight
+        case .landscapeRight:     return .landscapeLeft
+        case .portraitUpsideDown: return .portraitUpsideDown
+        default:                  return .portrait
+        }
     }
 }
 
@@ -280,7 +250,7 @@ struct StreamBroadcastView: View {
             Color.black.ignoresSafeArea()
 
             if !permissionDenied {
-                CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation, useFrontCamera: useFrontCamera)
+                CameraPreviewView(hkView: broadcaster.previewView)
                     .ignoresSafeArea()
             }
 
@@ -359,7 +329,7 @@ struct StreamBroadcastView: View {
             let o = UIDevice.current.orientation
             if o.isValidInterfaceOrientation {
                 deviceOrientation = o
-                broadcaster.updateVideoSettings(deviceOrientation: o)
+                broadcaster.updateOrientation(deviceOrientation: o)
             }
         }
         .confirmationDialog(
