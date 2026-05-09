@@ -25,9 +25,34 @@ import RTMPHaishinKit
 
 private struct CameraPreviewView: UIViewRepresentable {
     let hkView: MTHKView
+    let deviceOrientation: UIDeviceOrientation
 
     func makeUIView(context: Context) -> MTHKView { hkView }
-    func updateUIView(_ uiView: MTHKView, context: Context) {}
+
+    func updateUIView(_ uiView: MTHKView, context: Context) {
+        DispatchQueue.main.async { applyTransform(to: uiView) }
+    }
+
+    private func applyTransform(to view: MTHKView) {
+        let w = view.bounds.width
+        let h = view.bounds.height
+        guard w > 0, h > 0 else { return }
+
+        let fillScale = max(w, h) / min(w, h)
+
+        let t: CGAffineTransform
+        switch deviceOrientation {
+        case .landscapeLeft:
+            t = CGAffineTransform(rotationAngle: .pi / 2).scaledBy(x: fillScale, y: fillScale)
+        case .landscapeRight:
+            t = CGAffineTransform(rotationAngle: -.pi / 2).scaledBy(x: fillScale, y: fillScale)
+        case .portraitUpsideDown:
+            t = CGAffineTransform(rotationAngle: .pi)
+        default:
+            t = .identity
+        }
+        UIView.animate(withDuration: 0.25) { view.transform = t }
+    }
 }
 
 // MARK: - Broadcaster ViewModel
@@ -250,7 +275,7 @@ struct StreamBroadcastView: View {
             Color.black.ignoresSafeArea()
 
             if !permissionDenied {
-                CameraPreviewView(hkView: broadcaster.previewView)
+                CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation)
                     .ignoresSafeArea()
             }
 
