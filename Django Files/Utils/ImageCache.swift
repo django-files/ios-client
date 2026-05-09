@@ -14,11 +14,15 @@ class ImageCache {
     private let contentCache = NSCache<NSString, NSData>()
     
     private init() {
-        // Cache is unlimited
+        cache.countLimit = 500
+        cache.totalCostLimit = 50 * 1024 * 1024  // 50 MB
+        contentCache.countLimit = 100
+        contentCache.totalCostLimit = 100 * 1024 * 1024  // 100 MB
     }
-    
+
     func set(_ image: UIImage, for key: String) {
-        cache.setObject(image, forKey: key as NSString)
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        cache.setObject(image, forKey: key as NSString, cost: cost)
     }
     
     func get(for key: String) -> UIImage? {
@@ -26,7 +30,7 @@ class ImageCache {
     }
     
     func setContent(_ data: Data, for key: String) {
-        contentCache.setObject(data as NSData, forKey: key as NSString)
+        contentCache.setObject(data as NSData, forKey: key as NSString, cost: data.count)
     }
     
     func getContent(for key: String) -> Data? {

@@ -232,19 +232,21 @@ struct FileListView: View {
     }
     
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
+        let hostName = server.wrappedValue.flatMap { URL(string: $0.url)?.host } ?? "unknown"
         if server.wrappedValue != nil && albumName == nil {
-            return "Files (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
-        } else if server.wrappedValue != nil && albumName != nil {
-            return "\(String(describing: albumName!)) (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
+            return "Files (\(hostName))"
+        } else if let name = albumName, server.wrappedValue != nil {
+            return "\(name) (\(hostName))"
         } else {
             return "Files"
         }
     }
-    
-    private func thumbnailURL(file: DFFile) ->  URL {
-        var components = URLComponents(url: URL(string: server.wrappedValue!.url)!.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+
+    private func thumbnailURL(file: DFFile) -> URL? {
+        guard let serverURL = server.wrappedValue.flatMap({ URL(string: $0.url) }) else { return nil }
+        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
         components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? URL(string: server.wrappedValue!.url)!
+        return components?.url
     }
     
     private func checkForDeepLinkTarget() {
@@ -338,7 +340,7 @@ struct FileListView: View {
                     if files[index].mime.starts(with: "image/") {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            serverURL: URL(string: server.wrappedValue!.url)!
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
                         .contextMenu {
                             fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
@@ -356,7 +358,7 @@ struct FileListView: View {
                     } else {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            serverURL: URL(string: server.wrappedValue!.url)!
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
                         .contextMenu {
                             fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)

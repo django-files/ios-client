@@ -12,7 +12,7 @@ class DeepLinks {
     static let shared = DeepLinks()
     private init() {}
     
-    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, streamStateManager: StreamStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
+    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, streamStateManager: StreamStateManager, albumStateManager: AlbumStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
         print("Deep link received: \(url)")
         guard url.scheme == "djangofiles" else { return }
         
@@ -32,6 +32,8 @@ class DeepLinks {
             handlePreviewLink(components, context: context, sessionManager: sessionManager, previewStateManager: previewStateManager, selectedTab: selectedTab)
         case "stream":
             handleStreamLink(components, context: context, sessionManager: sessionManager, streamStateManager: streamStateManager, selectedTab: selectedTab)
+        case "album":
+            handleAlbumLink(components, context: context, sessionManager: sessionManager, albumStateManager: albumStateManager, selectedTab: selectedTab)
         default:
             ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
             print("Unsupported deep link type: \(components.host ?? "unknown")")
@@ -56,46 +58,38 @@ class DeepLinks {
 
         let descriptor = FetchDescriptor<DjangoFilesSession>()
 
-        Task {
+        Task { @MainActor in
             do {
                 let existingSessions = try context.fetch(descriptor)
                 if let session = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
                     print("✅ Preview link for known server: \(serverURL.absoluteString)")
-                    
+
                     if !session.auth {
                         print("❌ Session is not authenticated")
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Please log in to view this file")
-                            selectedTab.wrappedValue = .settings
-                        }
+                        ToastManager.shared.showToast(message: "Please log in to view this file")
+                        selectedTab.wrappedValue = .settings
                         return
                     }
-    
+
                     let api = DFAPI(url: serverURL, token: session.token)
-                    
+
                     if let fileDetails = await api.getFileDetails(fileID: fileID, password: filePassword) {
                         if fileDetails.user != session.userID {
                             print("❌ File does not belong to current user")
-                            await MainActor.run {
-                                selectedTab.wrappedValue = .files
-                                previewStateManager.deepLinkFile = fileDetails
-                                previewStateManager.showingDeepLinkPreview = true
-                                previewStateManager.deepLinkFilePassword = filePassword
-                            }
+                            selectedTab.wrappedValue = .files
+                            previewStateManager.deepLinkFile = fileDetails
+                            previewStateManager.showingDeepLinkPreview = true
+                            previewStateManager.deepLinkFilePassword = filePassword
                             return
                         }
-    
-                        await MainActor.run {
-                            sessionManager.selectedSession = session
-                            selectedTab.wrappedValue = .files
-                            previewStateManager.deepLinkTargetFileID = fileID
-                            previewStateManager.deepLinkFilePassword = filePassword
-                        }
+
+                        sessionManager.selectedSession = session
+                        selectedTab.wrappedValue = .files
+                        previewStateManager.deepLinkTargetFileID = fileID
+                        previewStateManager.deepLinkFilePassword = filePassword
                     } else {
                         print("❌ Failed to fetch file details")
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
-                        }
+                        ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
                     }
                 } else {
                     print("🔑 Preview link for unknown server: \(serverURL.absoluteString)")
@@ -106,26 +100,20 @@ class DeepLinks {
                     print("📥 Attempting to fetch file details for ID: \(fileID)")
                     if let fileDetails = await api.getFileDetails(fileID: fileID, password: filePassword) {
                         print("✅ Successfully fetched file details: \(fileDetails.name)")
-                        await MainActor.run {
-                            print("🎯 Setting up preview view")
-                            selectedTab.wrappedValue = .files
-                            previewStateManager.deepLinkFile = fileDetails
-                            previewStateManager.showingDeepLinkPreview = true
-                            previewStateManager.deepLinkFilePassword = filePassword
-                            print("🎯 Preview view setup complete")
-                        }
+                        print("🎯 Setting up preview view")
+                        selectedTab.wrappedValue = .files
+                        previewStateManager.deepLinkFile = fileDetails
+                        previewStateManager.showingDeepLinkPreview = true
+                        previewStateManager.deepLinkFilePassword = filePassword
+                        print("🎯 Preview view setup complete")
                     } else {
                         print("❌ Failed to fetch file details")
-                        await MainActor.run {
-                            ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
-                        }
+                        ToastManager.shared.showToast(message: "Unable to access file. It may be private or no longer available.")
                     }
                 }
             } catch {
                 print("❌ Error checking for existing sessions: \(error)")
-                await MainActor.run {
-                    ToastManager.shared.showToast(message: "Error accessing file: \(error.localizedDescription)")
-                }
+                ToastManager.shared.showToast(message: "Error accessing file: \(error.localizedDescription)")
             }
         }
     }
@@ -142,23 +130,19 @@ class DeepLinks {
         let password = components.queryItems?.first(where: { $0.name == "password" })?.value?.removingPercentEncoding
         let descriptor = FetchDescriptor<DjangoFilesSession>()
 
-        Task {
+        Task { @MainActor in
             do {
                 let existingSessions = try context.fetch(descriptor)
                 let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString && $0.auth })
                 let token = matchingSession?.token ?? ""
-                await MainActor.run {
-                    streamStateManager.deepLinkServerURL = serverURL
-                    streamStateManager.deepLinkStreamName = streamName
-                    streamStateManager.deepLinkToken = token
-                    streamStateManager.deepLinkPassword = password
-                    streamStateManager.showingDeepLinkStream = true
-                }
+                streamStateManager.deepLinkServerURL = serverURL
+                streamStateManager.deepLinkStreamName = streamName
+                streamStateManager.deepLinkToken = token
+                streamStateManager.deepLinkPassword = password
+                streamStateManager.showingDeepLinkStream = true
             } catch {
                 print("Error resolving stream deep link: \(error)")
-                await MainActor.run {
-                    ToastManager.shared.showToast(message: "Could not open stream")
-                }
+                ToastManager.shared.showToast(message: "Could not open stream")
             }
         }
     }
@@ -172,14 +156,12 @@ class DeepLinks {
 
         let descriptor = FetchDescriptor<DjangoFilesSession>()
 
-        Task {
+        Task { @MainActor in
             do {
                 let existingSessions = try context.fetch(descriptor)
                 if let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString }) {
-                    await MainActor.run {
-                        sessionManager.selectedSession = matchingSession
-                        selectedTab.wrappedValue = .files
-                    }
+                    sessionManager.selectedSession = matchingSession
+                    selectedTab.wrappedValue = .files
                 } else {
                     print("No session found for URL: \(serverURL.absoluteString)")
                 }
@@ -205,7 +187,7 @@ class DeepLinks {
 
         let descriptor = FetchDescriptor<DjangoFilesSession>()
 
-        Task {
+        Task { @MainActor in
             do {
                 let existingSessions = try context.fetch(descriptor)
                 // Only skip the auth flow if we already have a valid, authenticated session.
@@ -214,24 +196,49 @@ class DeepLinks {
                 if let existingSession = existingSessions.first(where: {
                     $0.url == serverURL.absoluteString && $0.auth
                 }) {
-                    await MainActor.run {
-                        sessionManager.selectedSession = existingSession
-                        hasExistingSessions.wrappedValue = true
-                        ToastManager.shared.showToast(message: "Already signed into \(existingSession.url)")
-                    }
+                    sessionManager.selectedSession = existingSession
+                    hasExistingSessions.wrappedValue = true
+                    ToastManager.shared.showToast(message: "Already signed into \(existingSession.url)")
                     return
                 }
 
-                await MainActor.run {
-                    pendingAuthURL.wrappedValue = serverURL
-                    pendingAuthSignature.wrappedValue = signature
-                    showingServerConfirmation.wrappedValue = true
-                }
+                pendingAuthURL.wrappedValue = serverURL
+                pendingAuthSignature.wrappedValue = signature
+                showingServerConfirmation.wrappedValue = true
             } catch {
                 print("Error checking for existing sessions: \(error)")
-                await MainActor.run {
-                    ToastManager.shared.showToast(message: "Error opening authorization link")
-                }
+                ToastManager.shared.showToast(message: "Error opening authorization link")
+            }
+        }
+    }
+
+    /// Deep link: `djangofiles://album/?url=<server_url>&album_id=<id>&album_name=<optional_name>`
+    /// Works for unauthenticated users — public albums are fetched with an empty token.
+    /// If the user is already authenticated with the server their token is used automatically.
+    @MainActor private func handleAlbumLink(_ components: URLComponents, context: ModelContext, sessionManager: SessionManager, albumStateManager: AlbumStateManager, selectedTab: Binding<TabViewWindow.Tab>) {
+        guard let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value?.removingPercentEncoding,
+              let serverURL = URL(string: urlString),
+              let albumIDString = components.queryItems?.first(where: { $0.name == "album_id" })?.value,
+              let albumID = Int(albumIDString) else {
+            print("Invalid album deep link parameters")
+            ToastManager.shared.showToast(message: "Invalid album link")
+            return
+        }
+        let albumName = components.queryItems?.first(where: { $0.name == "album_name" })?.value?.removingPercentEncoding
+        let descriptor = FetchDescriptor<DjangoFilesSession>()
+
+        Task { @MainActor in
+            do {
+                let existingSessions = try context.fetch(descriptor)
+                let matchingSession = existingSessions.first(where: { $0.url == serverURL.absoluteString && $0.auth })
+                let token = matchingSession?.token ?? ""
+                albumStateManager.deepLinkSession = DjangoFilesSession(url: serverURL.absoluteString, token: token)
+                albumStateManager.deepLinkAlbumID = albumID
+                albumStateManager.deepLinkAlbumName = albumName
+                albumStateManager.showingDeepLinkAlbum = true
+            } catch {
+                print("Error resolving album deep link: \(error)")
+                ToastManager.shared.showToast(message: "Could not open album")
             }
         }
     }
@@ -242,44 +249,37 @@ class DeepLinks {
             return
         }
 
-        if !confirmed {
-            pendingAuthURL.wrappedValue = nil
-            pendingAuthSignature.wrappedValue = nil
-            return
-        }
+        // Clear pending values immediately so a rapid second tap cannot double-trigger.
+        pendingAuthURL.wrappedValue = nil
+        pendingAuthSignature.wrappedValue = nil
 
-        await MainActor.run {
-            do {
-                let descriptor = FetchDescriptor<DjangoFilesSession>()
-                let existingSessions = try context.fetch(descriptor)
-                
-                Task {
-                    if let newSession = await sessionManager.createAndAuthenticateSession(
-                        url: serverURL,
-                        signature: signature,
-                        context: context
-                    ) {
-                        if setAsDefault {
-                            for session in existingSessions {
-                                session.defaultSession = false
-                            }
-                            newSession.defaultSession = true
-                        }
-                        sessionManager.selectedSession = newSession
-                        hasExistingSessions.wrappedValue = true
-                        selectedTab.wrappedValue = .files
-                        ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
-                    } else {
-                        ToastManager.shared.showToast(message: "Failed to sign in. The link may have expired.")
+        guard confirmed else { return }
+
+        do {
+            let descriptor = FetchDescriptor<DjangoFilesSession>()
+            let existingSessions = try context.fetch(descriptor)
+
+            if let newSession = await sessionManager.createAndAuthenticateSession(
+                url: serverURL,
+                signature: signature,
+                context: context
+            ) {
+                if setAsDefault {
+                    for session in existingSessions {
+                        session.defaultSession = false
                     }
+                    newSession.defaultSession = true
                 }
-            } catch {
-                ToastManager.shared.showToast(message: "Problem signing into server \(error)")
-                print("Error creating new session: \(error)")
+                sessionManager.selectedSession = newSession
+                hasExistingSessions.wrappedValue = true
+                selectedTab.wrappedValue = .files
+                ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
+            } else {
+                ToastManager.shared.showToast(message: "Failed to sign in. The link may have expired.")
             }
-
-            pendingAuthURL.wrappedValue = nil
-            pendingAuthSignature.wrappedValue = nil
+        } catch {
+            ToastManager.shared.showToast(message: "Problem signing into server \(error)")
+            print("Error creating new session: \(error)")
         }
     }
 }

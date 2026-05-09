@@ -160,6 +160,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
     func handleImageItem(item: NSSecureCoding?, error: Error?) {
         self.viewModel.showShortText = false
         self.viewModel.shareLabel = "Upload Image"
+        self.viewModel.isImageUpload = true
         
         if let error = error {
             self.showMessageAndDismiss(message: "Error loading image: \(error.localizedDescription)")
@@ -330,7 +331,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
         
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        let task = await api.uploadFileStreamed(url: shareURL!, taskDelegate: self)
+        let task = await api.uploadFileStreamed(url: shareURL!, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
         let response = await task?.waitForComplete()
         
         DispatchQueue.main.async {
@@ -379,7 +380,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
     @objc func clipboardChanged() { }
     
     func dismissAfterAlert(shouldComplete: Bool = false) {
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false, block: { _ in
+        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false, block: { _ in
             DispatchQueue.main.async {
                 if shouldComplete {
                     // For success messages, complete the request

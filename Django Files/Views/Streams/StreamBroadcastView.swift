@@ -51,7 +51,12 @@ private struct CameraPreviewView: UIViewRepresentable {
         default:
             t = .identity
         }
-        UIView.animate(withDuration: 0.25) { view.transform = t }
+        UIView.animate(withDuration: 0.15, animations: {
+            view.alpha = 0
+        }) { _ in
+            view.transform = t
+            UIView.animate(withDuration: 0.15) { view.alpha = 1 }
+        }
     }
 }
 
@@ -315,11 +320,19 @@ struct StreamBroadcastView: View {
                                 }
                             }
                         }
-                        .frame(height: min(geo.size.height * 0.55, 420))
+                        // Cap height so the rotated panel (visual width = layout height)
+                        // doesn't overflow the screen when the device is in landscape.
+                        .frame(height: min(geo.size.height * 0.55, geo.size.width * 0.9, 420))
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .rotationEffect(controlRotation)
+                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 44 + geo.safeAreaInsets.bottom)
+                        // geo.safeAreaInsets.bottom is 0 normally (container inset is ignored
+                        // via .ignoresSafeArea(.container) below) and equals keyboard height
+                        // when the software keyboard is shown — so this naturally avoids the
+                        // keyboard without firing for hardware keyboards or the simulator.
+                        .padding(.bottom, max(geo.safeAreaInsets.bottom + 8, 44))
                         .offset(y: chatDrawerOffset)
                         .gesture(
                             DragGesture()
@@ -333,7 +346,10 @@ struct StreamBroadcastView: View {
                         )
                     }
                 }
-                .ignoresSafeArea()
+                // .container ignores home-indicator/status-bar insets so the drawer
+                // fills edge-to-edge, but keeps the .keyboard inset active so
+                // geo.safeAreaInsets.bottom reflects the real software keyboard height.
+                .ignoresSafeArea(.container)
                 .transition(.move(edge: .bottom))
             }
         }

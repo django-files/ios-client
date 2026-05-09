@@ -26,6 +26,13 @@ class StreamStateManager: ObservableObject {
     @Published var deepLinkPassword: String? = nil
 }
 
+class AlbumStateManager: ObservableObject {
+    @Published var showingDeepLinkAlbum = false
+    @Published var deepLinkSession: DjangoFilesSession? = nil
+    @Published var deepLinkAlbumID: Int? = nil
+    @Published var deepLinkAlbumName: String? = nil
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
     /// Set to a non-nil mask to temporarily lock orientation (e.g. portrait-only for broadcast).
     static var orientationLock: UIInterfaceOrientationMask? = nil
@@ -60,6 +67,7 @@ struct Django_FilesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var previewStateManager = PreviewStateManager()
     @StateObject private var streamStateManager = StreamStateManager()
+    @StateObject private var albumStateManager = AlbumStateManager()
     @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -139,6 +147,7 @@ struct Django_FilesApp: App {
             }
             .environmentObject(previewStateManager)
             .environmentObject(streamStateManager)
+            .environmentObject(albumStateManager)
             .onOpenURL { url in
                 DeepLinks.shared.handleDeepLink(
                     url,
@@ -146,6 +155,7 @@ struct Django_FilesApp: App {
                     sessionManager: sessionManager,
                     previewStateManager: previewStateManager,
                     streamStateManager: streamStateManager,
+                    albumStateManager: albumStateManager,
                     selectedTab: $selectedTab,
                     hasExistingSessions: $hasExistingSessions,
                     showingServerConfirmation: $showingServerConfirmation,
@@ -226,6 +236,34 @@ struct Django_FilesApp: App {
                     .onDisappear {
                         streamStateManager.deepLinkServerURL = nil
                         streamStateManager.deepLinkStreamName = nil
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $albumStateManager.showingDeepLinkAlbum) {
+                if let albumID = albumStateManager.deepLinkAlbumID {
+                    NavigationStack {
+                        FileListView(
+                            server: Binding(
+                                get: { albumStateManager.deepLinkSession },
+                                set: { _ in }
+                            ),
+                            albumID: albumID,
+                            navigationPath: .constant(NavigationPath()),
+                            albumName: albumStateManager.deepLinkAlbumName
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    albumStateManager.showingDeepLinkAlbum = false
+                                }
+                            }
+                        }
+                    }
+                    .environmentObject(previewStateManager)
+                    .onDisappear {
+                        albumStateManager.deepLinkSession = nil
+                        albumStateManager.deepLinkAlbumID = nil
+                        albumStateManager.deepLinkAlbumName = nil
                     }
                 }
             }
