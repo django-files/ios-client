@@ -261,9 +261,14 @@ final class RTMPBroadcaster: ObservableObject {
     func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
         resolution = newResolution
         Task {
-            // Update the capture session preset so the camera provides frames at
-            // the new resolution — without this the codec gets the old (lower)
-            // resolution frames regardless of the codec settings.
+            // Update the capture session preset so the camera targets the new
+            // resolution. The camera transitions asynchronously, so initial frames
+            // arriving in the new VTCompressionSession may still be at the old
+            // size — scalingMode: .normal in videoCodecSettings handles this by
+            // upscaling them rather than cropping, keeping the encoded output
+            // valid throughout the transition. When the camera format actually
+            // changes, VideoCodec detects the inputFormat change and automatically
+            // recreates the session with correctly-sized frames.
             await mixer.setSessionPreset(newResolution.capturePreset)
             try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
         }
@@ -272,11 +277,17 @@ final class RTMPBroadcaster: ObservableObject {
     // High AutoLevel lets VideoToolbox pick the correct H.264 level for the
     // resolution (Baseline 3.1 caps out at 720p and breaks higher resolutions).
     // allowFrameReordering must be false — B-frames are incompatible with RTMP.
+    // scalingMode .normal is required: the default .trim only CROPS (no actual
+    // resize), so a 720p camera frame arriving in a 1080p VT session — which
+    // happens briefly during the camera format transition — produces a malformed
+    // bitstream. .normal tells VT to properly scale any size-mismatched buffer
+    // to the output dimensions, keeping the stream valid during the transition.
     private func videoCodecSettings(for res: StreamResolution, orientation: UIDeviceOrientation) -> VideoCodecSettings {
         VideoCodecSettings(
             videoSize: res.videoSize(for: orientation),
             bitRate: res.bitRate,
             profileLevel: kVTProfileLevel_H264_High_AutoLevel as String,
+            scalingMode: .normal,
             allowFrameReordering: false
         )
     }
@@ -308,12 +319,13 @@ struct StreamBroadcastView: View {
 
     @StateObject private var broadcaster = RTMPBroadcaster()
     @StateObject private var chatManager: StreamChatManager
-    @State private var useFrontCamera = true
+    @State private var useFrontCamera = false
     @State private var showEndConfirmation = false
     @State private var permissionDenied = false
     @State private var didSetup = false
     @State private var ingestInfo: DFStreamIngestInfo?
     @State private var showIngestInfo = false
+    @State private var showResolutionPicker = false
     @State private var showChatDrawer = false
     @State private var chatDrawerOffset: CGFloat = 0
     @State private var deviceOrientation: UIDeviceOrientation = {
@@ -430,6 +442,52 @@ struct StreamBroadcastView: View {
                 .ignoresSafeArea(.container)
                 .transition(.move(edge: .bottom))
             }
+
+            // Resolution picker — custom overlay so it counter-rotates with the
+            // other controls. A system Menu popup is always portrait-oriented and
+            // appears at the wrong position/angle when the device is in landscape.
+            if showResolutionPicker {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) { showResolutionPicker = false }
+                    }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(StreamResolution.allCases) { res in
+                        resolutionPickerRow(res)
+                    }
+                }
+                .frame(width: 130)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .shadow(color: .black.opacity(0.25), radius: 8)
+                .rotationEffect(controlRotation)
+                .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 64)
+                .padding(.trailing, 16)
+                .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .topTrailing)))
+            }
+
+            // Ingest info — custom card overlay so it counter-rotates correctly.
+            // A system .sheet() is always presented in the interface orientation
+            // (portrait-locked) and cannot be rotated, making it appear sideways
+            // in landscape. Pre-rotation the card is portrait-shaped (340×380);
+            // after the 90° counter-rotation it looks landscape-shaped (380×340).
+            if showIngestInfo {
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation { showIngestInfo = false } }
+
+                ingestInfoSheet
+                    .frame(width: 340, height: 380)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.4), radius: 20)
+                    .rotationEffect(controlRotation)
+                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -475,9 +533,6 @@ struct StreamBroadcastView: View {
         } message: {
             Text(broadcaster.broadcastState.errorMessage ?? "")
         }
-        .sheet(isPresented: $showIngestInfo) {
-            ingestInfoSheet
-        }
     }
 
     // MARK: - Top Bar
@@ -517,18 +572,8 @@ struct StreamBroadcastView: View {
                 }
                 .buttonStyle(.plain)
 
-                Menu {
-                    ForEach(StreamResolution.allCases) { res in
-                        Button {
-                            broadcaster.setResolution(res, orientation: deviceOrientation)
-                        } label: {
-                            if res == broadcaster.resolution {
-                                Label(res.rawValue, systemImage: "checkmark")
-                            } else {
-                                Text(res.rawValue)
-                            }
-                        }
-                    }
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) { showResolutionPicker = true }
                 } label: {
                     Text(broadcaster.resolution.rawValue)
                         .font(.system(size: 12, weight: .semibold))
@@ -731,6 +776,34 @@ struct StreamBroadcastView: View {
         chatManager.sendMessage(text)
     }
 
+    // MARK: - Resolution Picker Row
+
+    @ViewBuilder
+    private func resolutionPickerRow(_ res: StreamResolution) -> some View {
+        let isSelected = res == broadcaster.resolution
+        let isLast = res == StreamResolution.allCases.last
+        Button {
+            broadcaster.setResolution(res, orientation: deviceOrientation)
+            withAnimation(.easeOut(duration: 0.15)) { showResolutionPicker = false }
+        } label: {
+            HStack {
+                Text(res.rawValue)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+        }
+        .buttonStyle(.plain)
+        if !isLast {
+            Divider().padding(.leading, 16)
+        }
+    }
+
     // MARK: - Ingest Info Sheet
 
     private var ingestInfoSheet: some View {
@@ -774,11 +847,10 @@ struct StreamBroadcastView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { showIngestInfo = false }
+                    Button("Done") { withAnimation { showIngestInfo = false } }
                 }
             }
         }
-        .presentationDetents([.medium])
     }
 
     // MARK: - Permission Denied Overlay
@@ -813,12 +885,21 @@ struct StreamBroadcastView: View {
         guard !didSetup else { return }
         didSetup = true
 
+        // Capture physical orientation before we force the interface to portrait.
+        // UIDevice.current.orientation returns portrait after the setValue call
+        // below, so reading it afterwards gives the wrong value when the user
+        // opens this view while already holding the phone in landscape.
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        let physicalOrientation = UIDevice.current.orientation
+
         // Lock interface to portrait so the layout never rotates;
         // individual controls rotate themselves to stay upright.
         AppDelegate.orientationLock = .portrait
         UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
 
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        if physicalOrientation.isValidInterfaceOrientation {
+            deviceOrientation = physicalOrientation
+        }
 
         async let ingestFetch = fetchIngestInfo()
         async let permissionsOK = checkAndRequestPermissions()
