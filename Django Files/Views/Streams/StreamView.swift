@@ -466,6 +466,9 @@ struct StreamView: View {
                 .shadow(radius: 2)
             Spacer()
             liveBadge
+            Label("\(initialStream?.subscriberCount ?? 0)", systemImage: "bell")
+                .font(.caption)
+                .foregroundStyle(.white)
             Button { showViewersList = true } label: {
                 Label("\(viewerCount)", systemImage: "eye")
                     .font(.caption)
@@ -629,14 +632,19 @@ struct StreamView: View {
             Spacer()
             VStack(alignment: .center, spacing: 4) {
                 liveBadge
-                Button {
-                    showViewersList = true
-                } label: {
-                    Label("\(viewerCount)", systemImage: "eye")
+                HStack(spacing: 8) {
+                    Label("\(initialStream?.subscriberCount ?? 0)", systemImage: "bell")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Button {
+                        showViewersList = true
+                    } label: {
+                        Label("\(viewerCount)", systemImage: "eye")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }

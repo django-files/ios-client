@@ -24,6 +24,7 @@ struct DFStream: Codable, Identifiable {
     let userUsername: String
     let url: String
     let isOwner: Bool
+    let subscriberCount: Int
 
     var id: String { name }
 
@@ -40,6 +41,7 @@ struct DFStream: Codable, Identifiable {
         case userName = "user_name"
         case userUsername = "user_username"
         case isOwner = "is_owner"
+        case subscriberCount = "subscriber_count"
     }
 }
 
