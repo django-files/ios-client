@@ -16,7 +16,7 @@ struct DFStream: Codable, Identifiable {
     let endedAt: Date?
     let uniqueViews: Int
     let isPublic: Bool
-    let password: String
+    let password: String?
     let viewerLimit: Int
     let liveChat: Bool
     let anonymousChat: Bool
@@ -206,6 +206,10 @@ class StreamChatManager: NSObject, ObservableObject {
     private var httpPingTimer: Timer?
     private var reconnectTimer: Timer?
     private var isReconnecting = false
+    private var reconnectAttempts = 0
+
+    private let maxReconnectAttempts = 10
+    private let maxMessages = 500
 
     init(serverURL: URL, token: String, streamName: String, isOwner: Bool,
          ownerUsername: String = "", title: String = "", description: String = "") {
@@ -228,11 +232,12 @@ class StreamChatManager: NSObject, ObservableObject {
     // MARK: - Connection
 
     func connect() {
-        var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: true)!
+        guard var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: true) else { return }
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.path = "/ws/home/"
         guard let wsURL = components.url else { return }
 
+        urlSession?.invalidateAndCancel()
         let config = URLSessionConfiguration.default
         urlSession = URLSession(configuration: config, delegate: self, delegateQueue: .main)
 
@@ -254,16 +259,24 @@ class StreamChatManager: NSObject, ObservableObject {
         reconnectTimer?.invalidate(); reconnectTimer = nil
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
         isConnected = false
     }
 
     private func reconnect() {
         guard !isReconnecting, !isManuallyDisconnected else { return }
+        guard reconnectAttempts < maxReconnectAttempts else {
+            appendMessage(.system("Connection lost. Refresh to reconnect."))
+            return
+        }
         isReconnecting = true
+        reconnectAttempts += 1
+        let delay = min(pow(2.0, Double(reconnectAttempts - 1)) * 2.0, 32.0)
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         pingTimer?.invalidate(); pingTimer = nil
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
                 self.isReconnecting = false
@@ -295,11 +308,7 @@ class StreamChatManager: NSObject, ObservableObject {
     }
 
     private func httpPing() async {
-        let base = serverURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let pingURL = URL(string: "\(base)/api/stream/ping/\(streamName)/") else { return }
-        var request = URLRequest(url: pingURL)
-        if !token.isEmpty { request.setValue(token, forHTTPHeaderField: "Authorization") }
-        _ = try? await URLSession.shared.data(for: request)
+        await DFAPI(url: serverURL, token: token).pingStream(name: streamName)
     }
 
     // MARK: - Receive
@@ -324,37 +333,27 @@ class StreamChatManager: NSObject, ObservableObject {
     }
 
     private func handleText(_ text: String) {
-        print("StreamChat raw message: \(text)")
-        guard let data = text.data(using: .utf8) else {
-            print("StreamChat: failed to encode text as UTF-8")
-            return
-        }
-        guard let event = try? JSONDecoder().decode(StreamChatEvent.self, from: data) else {
-            print("StreamChat: JSON decode failed for: \(text)")
-            return
-        }
-        print("StreamChat decoded event=\(event.event) name=\(event.name ?? "nil") expecting=\(streamName)")
-        guard event.name == streamName else { return }
+        guard let data = text.data(using: .utf8),
+              let event = try? JSONDecoder().decode(StreamChatEvent.self, from: data),
+              event.name == streamName else { return }
 
         switch event.event {
         case "chat-history":
             if let vid = event.viewerId { myViewerId = vid }
-            messages = []
-            event.messages?.forEach { msg in
-                let resolved = StreamChatMessage(
+            messages = (event.messages ?? []).suffix(maxMessages).map { msg in
+                DisplayChatMessage(from: StreamChatMessage(
                     userId: msg.userId,
                     username: msg.username,
                     displayName: msg.displayName,
                     avatarUrl: resolveAvatarURL(msg.avatarUrl),
                     message: msg.message,
                     timestamp: msg.timestamp
-                )
-                messages.append(DisplayChatMessage(from: resolved))
+                ))
             }
             if let vs = event.viewers { viewers = vs.map(resolveViewer) }
 
         case "chat-message":
-            if let msg = buildMessage(from: event) { messages.append(msg) }
+            if let msg = buildMessage(from: event) { appendMessage(msg) }
 
         case "chat-viewers":
             if let vs = event.viewers { viewers = vs.map(resolveViewer) }
@@ -379,7 +378,7 @@ class StreamChatManager: NSObject, ObservableObject {
 
         case "chat-name-set":
             if let name = event.displayName {
-                messages.append(.system("Your name has been set to: \(name)"))
+                appendMessage(.system("Your name has been set to: \(name)"))
             }
 
         case "chat-banned":
@@ -396,7 +395,7 @@ class StreamChatManager: NSObject, ObservableObject {
         case "stream-status":
             if let live = event.isLive {
                 streamIsLive = live
-                messages.append(.system(live ? "Stream is now live." : "Stream has ended."))
+                appendMessage(.system(live ? "Stream is now live." : "Stream has ended."))
             }
 
         case "chat-retry":
@@ -459,7 +458,14 @@ class StreamChatManager: NSObject, ObservableObject {
     func leaveChat() {
         isManuallyDisconnected = true
         sendSocket(["method": "leave-stream-chat", "name": streamName])
-        messages.append(.system("You left the chat. Type /join to rejoin."))
+        appendMessage(.system("You left the chat. Type /join to rejoin."))
+    }
+
+    private func appendMessage(_ msg: DisplayChatMessage) {
+        messages.append(msg)
+        if messages.count > maxMessages {
+            messages.removeFirst(messages.count - maxMessages)
+        }
     }
 
     func rejoinChat() {
@@ -499,6 +505,7 @@ extension StreamChatManager: URLSessionWebSocketDelegate {
     nonisolated func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                                 didOpenWithProtocol protocol: String?) {
         Task { @MainActor in
+            self.reconnectAttempts = 0
             self.isConnected = true
             self.joinChat()
         }
@@ -574,5 +581,58 @@ extension DFAPI {
             print("getStreamViewerCount failed: \(error)")
             return nil
         }
+    }
+
+    public func getStreamCommands(name: String, selectedServer: DjangoFilesSession? = nil) async -> StreamCommandsResponse? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: "/api/stream/commands/\(name)/",
+                parameters: [:],
+                method: .get,
+                headerFields: [.accept: "application/json"],
+                selectedServer: selectedServer
+            )
+            return try JSONDecoder().decode(StreamCommandsResponse.self, from: responseBody)
+        } catch {
+            print("getStreamCommands failed: \(error)")
+            return nil
+        }
+    }
+}
+
+// MARK: - Slash Commands
+
+struct SlashCommand: Identifiable, Codable {
+    let command: String
+    let args: String
+    let description: String
+    let category: String
+
+    var id: String { command }
+    var hasArgs: Bool { !args.isEmpty }
+
+    static let localFallback: [SlashCommand] = [
+        SlashCommand(command: "/join",  args: "", description: "Join the stream chat",  category: "chat"),
+        SlashCommand(command: "/leave", args: "", description: "Leave the stream chat", category: "chat"),
+    ]
+}
+
+// MARK: - Stream Commands Response
+
+struct StreamCommandsResponse: Decodable {
+    let commands: [SlashCommand]
+    let liveChat: Bool
+    let anonymousChat: Bool
+    let title: String?
+    let description: String?
+    let isLive: Bool?
+    let isPublic: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case commands, title, description
+        case liveChat = "live_chat"
+        case anonymousChat = "anonymous_chat"
+        case isLive = "is_live"
+        case isPublic = "is_public"
     }
 }

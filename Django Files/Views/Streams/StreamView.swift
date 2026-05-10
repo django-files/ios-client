@@ -148,41 +148,6 @@ private struct AVPlayerLayerView: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Slash Command Definitions
-
-struct SlashCommand: Identifiable, Codable {
-    let command: String
-    let args: String
-    let description: String
-    let category: String
-
-    var id: String { command }
-    var hasArgs: Bool { !args.isEmpty }
-
-    // Always-available local commands (don't require server permission)
-    static let localFallback: [SlashCommand] = [
-        SlashCommand(command: "/join",  args: "", description: "Join the stream chat",  category: "chat"),
-        SlashCommand(command: "/leave", args: "", description: "Leave the stream chat", category: "chat"),
-    ]
-}
-
-private struct StreamCommandsResponse: Decodable {
-    let commands: [SlashCommand]
-    let liveChat: Bool
-    let anonymousChat: Bool
-    let title: String?
-    let description: String?
-    let isLive: Bool?
-    let isPublic: Bool?
-    enum CodingKeys: String, CodingKey {
-        case commands, title, description
-        case liveChat = "live_chat"
-        case anonymousChat = "anonymous_chat"
-        case isLive = "is_live"
-        case isPublic = "is_public"
-    }
-}
-
 // MARK: - StreamView
 
 struct StreamView: View {
@@ -986,15 +951,8 @@ struct StreamView: View {
     // MARK: - Command Fetching
 
     private func fetchCommands() async {
-        let base = serverURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: "\(base)/api/stream/commands/\(streamName)/") else { return }
-        var request = URLRequest(url: url)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if !token.isEmpty { request.setValue(token, forHTTPHeaderField: "Authorization") }
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let response = try? JSONDecoder().decode(StreamCommandsResponse.self, from: data) else {
-            return
-        }
+        let api = DFAPI(url: serverURL, token: token)
+        guard let response = await api.getStreamCommands(name: streamName) else { return }
         await MainActor.run {
             availableCommands = response.commands
             // Sync chat settings onto the manager (authoritative from server)

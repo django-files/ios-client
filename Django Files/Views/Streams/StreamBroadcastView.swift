@@ -495,7 +495,10 @@ struct StreamBroadcastView: View {
         .onDisappear {
             // Restore orientation support before leaving
             AppDelegate.orientationLock = nil
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?
+                .requestGeometryUpdate(.iOS(interfaceOrientations: .all))
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             Task { await broadcaster.teardown() }
             chatManager.disconnect()
@@ -885,17 +888,19 @@ struct StreamBroadcastView: View {
         guard !didSetup else { return }
         didSetup = true
 
-        // Capture physical orientation before we force the interface to portrait.
-        // UIDevice.current.orientation returns portrait after the setValue call
-        // below, so reading it afterwards gives the wrong value when the user
-        // opens this view while already holding the phone in landscape.
+        // Capture physical orientation before forcing portrait — requestGeometryUpdate
+        // causes UIDevice.current.orientation to settle on portrait, so reading it
+        // afterwards gives the wrong value when the device is already in landscape.
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         let physicalOrientation = UIDevice.current.orientation
 
         // Lock interface to portrait so the layout never rotates;
         // individual controls rotate themselves to stay upright.
         AppDelegate.orientationLock = .portrait
-        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?
+            .requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
 
         if physicalOrientation.isValidInterfaceOrientation {
             deviceOrientation = physicalOrientation

@@ -189,7 +189,7 @@ struct StreamRow: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    if !stream.password.isEmpty {
+                    if let pw = stream.password, !pw.isEmpty {
                         Label("Password", systemImage: "key.fill")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
