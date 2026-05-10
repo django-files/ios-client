@@ -28,7 +28,6 @@ struct SessionEditor: View {
     
     @State private var url: URL? = nil
     @State private var token: String = ""
-    @State private var rtmpPort: Int = 1935
     @State private var badURL: Bool = false
     @State private var insecureURL: Bool = false
     @State private var isCheckingServer: Bool = false
@@ -51,7 +50,6 @@ struct SessionEditor: View {
                     // For editing, update the URL and clear auth
                     session.url = url?.absoluteString ?? ""
                     session.token = token
-                    session.rtmpPort = rtmpPort
                     session.auth = false
                     showLoginSheet = true
                 } else {
@@ -63,7 +61,6 @@ struct SessionEditor: View {
                     tempSession = DjangoFilesSession()
                     tempSession!.url = url?.absoluteString ?? ""
                     tempSession!.token = token
-                    tempSession!.rtmpPort = rtmpPort
                     tempSession!.auth = false
                     showLoginSheet = true
                 }
@@ -78,34 +75,15 @@ struct SessionEditor: View {
         NavigationStack {
             Form {
                 if onBoarding {
-                    HStack {
-                        Spacer()
-                        Label("", systemImage: "hand.wave.fill")
-                            .font(.system(size: 50))
-                            .padding(.bottom)
-                            .shadow(color: .purple, radius: 20)
-                            .listRowSeparator(.hidden)
-                        Spacer()
-                    }
-                    Text("Welcome to Django Files!")
+                    Text("Welcome to Django Files iOS!")
                         .font(.system(size: 25))
                         .padding(.bottom)
                         .shadow(color: .purple, radius: 20)
                         .listRowSeparator(.hidden)
-                    Text("Thanks for using our iOS app! If you don’t have a server set up yet, check out our GitHub README to get started.")
+                    Text("If you don’t have a server set up yet, check out our GitHub README.md to get started.")
                         .listRowSeparator(.hidden)
-                    Text("https://github.com/django-files/django-files")
+                    Text("https://github.com/django-files/django-files#-getting-started")
                         .listRowSeparator(.hidden)
-                }
-                Section(header: Text("RTMP Port")) {
-                    Stepper(value: $rtmpPort, in: 1...65535, step: 1) {
-                        HStack {
-                            Text("Port")
-                            Spacer()
-                            Text("\(rtmpPort)")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
                 }
                 Section(header: Text("Server URL")) {
                     TextField("", text: Binding(
@@ -198,7 +176,6 @@ struct SessionEditor: View {
             .onAppear {
                 if let session {
                     url = URL(string: session.url)
-                    rtmpPort = session.rtmpPort
                 }
             }
             .alert(isPresented: $showDuplicateAlert) {

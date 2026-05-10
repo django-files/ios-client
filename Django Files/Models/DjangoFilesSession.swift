@@ -27,7 +27,6 @@ public final class DjangoFilesSession: Equatable {
     var defaultFileExpire: String?
     var defaultFileRemoveExif: Bool = false
     var defaultFileUploadNameFormat: String = "name"
-    var rtmpPort: Int = 1935
 
     @Transient var cookies: [HTTPCookie] = []
     

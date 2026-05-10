@@ -315,7 +315,6 @@ struct StreamBroadcastView: View {
     let token: String
     let streamTitle: String
     let ownerUsername: String
-    let rtmpPort: Int
 
     @StateObject private var broadcaster = RTMPBroadcaster()
     @StateObject private var chatManager: StreamChatManager
@@ -336,13 +335,12 @@ struct StreamBroadcastView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(serverURL: URL, streamName: String, token: String, streamTitle: String,
-         ownerUsername: String = "", rtmpPort: Int) {
+         ownerUsername: String = "") {
         self.serverURL = serverURL
         self.streamName = streamName
         self.token = token
         self.streamTitle = streamTitle
         self.ownerUsername = ownerUsername
-        self.rtmpPort = rtmpPort
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL,
             token: token,
@@ -957,7 +955,7 @@ struct StreamBroadcastView: View {
 
     private var currentRTMPURL: String {
         let host = ingestInfo?.rtmpHost ?? serverURL.host ?? serverURL.absoluteString
-        let port = ingestInfo?.rtmpPort ?? rtmpPort
+        let port = ingestInfo?.rtmpPort ?? 1935
         return "rtmp://\(host):\(port)/live?token=\(token)"
     }
 }

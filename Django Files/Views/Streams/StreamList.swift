@@ -47,8 +47,7 @@ struct StreamListView: View {
                                     serverURL: serverURL,
                                     streamName: stream.name,
                                     token: session.token,
-                                    initialStream: stream,
-                                    rtmpPort: session.rtmpPort
+                                    initialStream: stream
                                 )
                             } label: {
                                 StreamRow(stream: stream)

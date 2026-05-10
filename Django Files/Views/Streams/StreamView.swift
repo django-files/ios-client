@@ -156,7 +156,6 @@ struct StreamView: View {
     let token: String
     let initialStream: DFStream?
     var password: String? = nil
-    var rtmpPort: Int = 1935
 
     // HLS player
     @State private var player: AVPlayer?
@@ -204,13 +203,12 @@ struct StreamView: View {
     @State private var showBroadcast = false
 
     init(serverURL: URL, streamName: String, token: String,
-         initialStream: DFStream? = nil, password: String? = nil, rtmpPort: Int = 1935) {
+         initialStream: DFStream? = nil, password: String? = nil) {
         self.serverURL = serverURL
         self.streamName = streamName
         self.token = token
         self.initialStream = initialStream
         self.password = password
-        self.rtmpPort = rtmpPort
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL, token: token,
             streamName: streamName, isOwner: initialStream?.isOwner ?? false,
@@ -240,8 +238,7 @@ struct StreamView: View {
                 streamName: streamName,
                 token: token,
                 streamTitle: chatManager.streamTitle,
-                ownerUsername: initialStream?.userUsername ?? "",
-                rtmpPort: rtmpPort
+                ownerUsername: initialStream?.userUsername ?? ""
             )
         }
         .onChange(of: verticalSizeClass) { _, _ in
