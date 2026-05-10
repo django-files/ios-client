@@ -60,6 +60,43 @@ private struct CameraPreviewView: UIViewRepresentable {
     }
 }
 
+// MARK: - Stream Resolution
+
+enum StreamResolution: String, CaseIterable, Identifiable {
+    case p480  = "480p"
+    case p720  = "720p"
+    case p1080 = "1080p"
+    case uhd4k = "4K"
+
+    var id: String { rawValue }
+
+    var bitRate: Int {
+        switch self {
+        case .p480:  return 1_500_000
+        case .p720:  return 2_000_000
+        case .p1080: return 4_000_000
+        case .uhd4k: return 12_000_000
+        }
+    }
+
+    private var landscapeSize: CGSize {
+        switch self {
+        case .p480:  return CGSize(width: 854,  height: 480)
+        case .p720:  return CGSize(width: 1280, height: 720)
+        case .p1080: return CGSize(width: 1920, height: 1080)
+        case .uhd4k: return CGSize(width: 3840, height: 2160)
+        }
+    }
+
+    func videoSize(for orientation: UIDeviceOrientation) -> CGSize {
+        let ls = landscapeSize
+        switch orientation {
+        case .landscapeLeft, .landscapeRight: return ls
+        default: return CGSize(width: ls.height, height: ls.width)
+        }
+    }
+}
+
 // MARK: - Broadcaster ViewModel
 
 @MainActor
@@ -84,6 +121,7 @@ final class RTMPBroadcaster: ObservableObject {
 
     @Published var broadcastState: BroadcastState = .idle
     @Published var isMuted = false
+    @Published var resolution: StreamResolution = .p720
 
     // HaishinKit objects — both are actors
     private let mixer = MediaMixer()
@@ -103,11 +141,10 @@ final class RTMPBroadcaster: ObservableObject {
 
     // MARK: - Setup
 
-    /// Call once after camera/mic permissions are confirmed.
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
         try? await stream.setVideoSettings(VideoCodecSettings(
-            videoSize: CGSize(width: 1280, height: 720),
-            bitRate: 2_000_000
+            videoSize: resolution.videoSize(for: deviceOrientation),
+            bitRate: resolution.bitRate
         ))
         try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
 
@@ -150,11 +187,12 @@ final class RTMPBroadcaster: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         Task {
-            if isMuted {
-                try? await mixer.attachAudio(nil, track: 0)
-            } else {
-                await attachAudioDevice()
-            }
+            // isMuted on AudioMixerSettings silences the output without detaching
+            // the audio device, keeping the RTMP audio track alive and the
+            // stream intact. attachAudio(nil) would drop the track mid-stream.
+            var settings = await mixer.audioMixerSettings
+            settings.isMuted = isMuted
+            await mixer.setAudioMixerSettings(settings)
         }
     }
 
@@ -200,6 +238,20 @@ final class RTMPBroadcaster: ObservableObject {
     func updateOrientation(deviceOrientation: UIDeviceOrientation) {
         Task {
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
+            try? await stream.setVideoSettings(VideoCodecSettings(
+                videoSize: resolution.videoSize(for: deviceOrientation),
+                bitRate: resolution.bitRate
+            ))
+        }
+    }
+
+    func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
+        resolution = newResolution
+        Task {
+            try? await stream.setVideoSettings(VideoCodecSettings(
+                videoSize: newResolution.videoSize(for: orientation),
+                bitRate: newResolution.bitRate
+            ))
         }
     }
 
@@ -438,6 +490,29 @@ struct StreamBroadcastView: View {
                         .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
                 .buttonStyle(.plain)
+
+                Menu {
+                    ForEach(StreamResolution.allCases) { res in
+                        Button {
+                            broadcaster.setResolution(res, orientation: deviceOrientation)
+                        } label: {
+                            if res == broadcaster.resolution {
+                                Label(res.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(res.rawValue)
+                            }
+                        }
+                    }
+                } label: {
+                    Text(broadcaster.resolution.rawValue)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.45), in: Capsule())
+                        .rotationEffect(controlRotation)
+                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                }
 
                 Button { flipCamera() } label: {
                     Image(systemName: "camera.rotate")
