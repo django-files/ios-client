@@ -18,6 +18,7 @@
 
 import SwiftUI
 import AVFoundation
+import VideoToolbox
 import HaishinKit
 import RTMPHaishinKit
 
@@ -142,10 +143,7 @@ final class RTMPBroadcaster: ObservableObject {
     // MARK: - Setup
 
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
-        try? await stream.setVideoSettings(VideoCodecSettings(
-            videoSize: resolution.videoSize(for: deviceOrientation),
-            bitRate: resolution.bitRate
-        ))
+        try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
         try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
 
         await mixer.addOutput(previewView)
@@ -238,21 +236,27 @@ final class RTMPBroadcaster: ObservableObject {
     func updateOrientation(deviceOrientation: UIDeviceOrientation) {
         Task {
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
-            try? await stream.setVideoSettings(VideoCodecSettings(
-                videoSize: resolution.videoSize(for: deviceOrientation),
-                bitRate: resolution.bitRate
-            ))
+            try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
         }
     }
 
     func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
         resolution = newResolution
         Task {
-            try? await stream.setVideoSettings(VideoCodecSettings(
-                videoSize: newResolution.videoSize(for: orientation),
-                bitRate: newResolution.bitRate
-            ))
+            try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
         }
+    }
+
+    // High AutoLevel lets VideoToolbox pick the correct H.264 level for the
+    // resolution (Baseline 3.1 caps out at 720p and breaks higher resolutions).
+    // allowFrameReordering must be false — B-frames are incompatible with RTMP.
+    private func videoCodecSettings(for res: StreamResolution, orientation: UIDeviceOrientation) -> VideoCodecSettings {
+        VideoCodecSettings(
+            videoSize: res.videoSize(for: orientation),
+            bitRate: res.bitRate,
+            profileLevel: kVTProfileLevel_H264_High_AutoLevel as String,
+            allowFrameReordering: false
+        )
     }
 
     // AVCaptureVideoOrientation is deprecated in iOS 17 in favour of
