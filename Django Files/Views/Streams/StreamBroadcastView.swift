@@ -89,6 +89,18 @@ enum StreamResolution: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The AVCaptureSession preset required to capture frames at this resolution.
+    /// The session preset gates the camera's output size; if it stays at the default
+    /// .hd1280x720 the codec can't produce anything above 720p regardless of settings.
+    var capturePreset: AVCaptureSession.Preset {
+        switch self {
+        case .p480:  return .vga640x480
+        case .p720:  return .hd1280x720
+        case .p1080: return .hd1920x1080
+        case .uhd4k: return .hd4K3840x2160
+        }
+    }
+
     func videoSize(for orientation: UIDeviceOrientation) -> CGSize {
         let ls = landscapeSize
         switch orientation {
@@ -145,6 +157,12 @@ final class RTMPBroadcaster: ObservableObject {
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
         try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
         try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
+
+        // Set the capture session preset BEFORE starting the session so the
+        // camera actually provides frames at the target resolution. The default
+        // preset is .hd1280x720, which caps camera output at 720p regardless of
+        // what the video codec settings request.
+        await mixer.setSessionPreset(resolution.capturePreset)
 
         await mixer.addOutput(previewView)
         await mixer.addOutput(stream)
@@ -243,6 +261,10 @@ final class RTMPBroadcaster: ObservableObject {
     func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
         resolution = newResolution
         Task {
+            // Update the capture session preset so the camera provides frames at
+            // the new resolution — without this the codec gets the old (lower)
+            // resolution frames regardless of the codec settings.
+            await mixer.setSessionPreset(newResolution.capturePreset)
             try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
         }
     }
