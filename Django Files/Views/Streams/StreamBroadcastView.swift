@@ -19,6 +19,7 @@
 import SwiftUI
 import AVFoundation
 import VideoToolbox
+import ReplayKit
 import HaishinKit
 import RTMPHaishinKit
 
@@ -57,6 +58,22 @@ private struct CameraPreviewView: UIViewRepresentable {
         }) { _ in
             view.transform = t
             UIView.animate(withDuration: 0.15) { view.alpha = 1 }
+        }
+    }
+}
+
+// MARK: - Capture Mode
+
+enum CaptureMode: String, CaseIterable, Identifiable {
+    case camera = "Camera"
+    case screen = "Screen Share"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .camera: return "camera.fill"
+        case .screen: return "rectangle.on.rectangle"
         }
     }
 }
@@ -135,42 +152,59 @@ final class RTMPBroadcaster: ObservableObject {
     @Published var broadcastState: BroadcastState = .idle
     @Published var isMuted = false
     @Published var resolution: StreamResolution = .p720
+    // Set at init time so the view renders correctly before async setup runs.
+    @Published private(set) var captureMode: CaptureMode
+    @Published private(set) var isSwitchingMode = false
 
-    // HaishinKit objects — both are actors
-    private let mixer = MediaMixer()
+    private var isScreenCapturing = false
+
+    // Camera mode uses the default .single session (AVCaptureSession for camera/mic).
+    // Screen mode uses .manual (no AVCaptureSession — HaishinKit's ReplayKit mode):
+    // frames are fed directly via mixer.append() from RPScreenRecorder.
+    private var mixer: MediaMixer
     private let connection = RTMPConnection()
     private(set) var stream: RTMPStream
 
-    // Metal preview view — one instance, reused across layout rebuilds
+    // Metal preview view — camera mode only; irrelevant in screen mode.
     let previewView: MTHKView = {
         let v = MTHKView(frame: .zero)
         v.videoGravity = .resizeAspectFill
         return v
     }()
 
-    init() {
+    init(captureMode: CaptureMode = .camera) {
+        self.captureMode = captureMode
+        self.mixer = captureMode == .camera
+            ? MediaMixer()
+            : MediaMixer(captureSessionMode: .manual)
         stream = RTMPStream(connection: connection)
     }
 
     // MARK: - Setup
 
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
+        configureAudioSession()
         try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
         try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
-
-        // Set the capture session preset BEFORE starting the session so the
-        // camera actually provides frames at the target resolution. The default
-        // preset is .hd1280x720, which caps camera output at 720p regardless of
-        // what the video codec settings request.
-        await mixer.setSessionPreset(resolution.capturePreset)
-
-        await mixer.addOutput(previewView)
         await mixer.addOutput(stream)
-        await mixer.startRunning()
 
-        await attachCamera(useFrontCamera: useFrontCamera)
-        await attachAudioDevice()
-        await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
+        switch captureMode {
+        case .camera:
+            // Set the capture session preset BEFORE starting so the camera
+            // actually provides frames at the target resolution.
+            await mixer.setSessionPreset(resolution.capturePreset)
+            await mixer.addOutput(previewView)
+            await mixer.startRunning()
+            await attachCamera(useFrontCamera: useFrontCamera)
+            await attachAudioDevice()
+            await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
+
+        case .screen:
+            // .manual mode: no AVCaptureSession. RPScreenRecorder feeds both
+            // video and mic audio into the mixer via append().
+            await mixer.startRunning()
+            startScreenCapture()
+        }
     }
 
     // MARK: - Device Attachment
@@ -228,7 +262,7 @@ final class RTMPBroadcaster: ObservableObject {
         }
     }
 
-    /// Ends the RTMP stream but keeps the camera preview running.
+    /// Ends the RTMP stream; keeps preview/capture running so the user can go live again.
     func stopStream() {
         Task {
             _ = try? await stream.close()
@@ -237,12 +271,15 @@ final class RTMPBroadcaster: ObservableObject {
         }
     }
 
-    /// Full teardown — stops mixer and releases camera/mic. Call on view dismiss.
+    /// Full teardown — releases all hardware. Call on view dismiss.
     func teardown() async {
+        stopScreenCapture()
         _ = try? await stream.close()
         try? await connection.close()
-        try? await mixer.attachVideo(nil as AVCaptureDevice?, track: 0)
-        try? await mixer.attachAudio(nil as AVCaptureDevice?, track: 0)
+        if captureMode == .camera {
+            try? await mixer.attachVideo(nil as AVCaptureDevice?, track: 0)
+            try? await mixer.attachAudio(nil as AVCaptureDevice?, track: 0)
+        }
         await mixer.stopRunning()
         broadcastState = .idle
     }
@@ -251,25 +288,131 @@ final class RTMPBroadcaster: ObservableObject {
         broadcastState = .idle
     }
 
+    // MARK: - Audio Session
+
+    // Configures AVAudioSession for streaming and background audio continuation.
+    // UIBackgroundModes:audio in Info.plist keeps the process alive when minimised.
+    private func configureAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playAndRecord,
+                mode: .videoRecording,
+                options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker]
+            )
+            try session.setActive(true)
+        } catch {
+            print("RTMPBroadcaster: audio session error: \(error)")
+        }
+    }
+
+    // MARK: - Screen Capture
+
+    private func startScreenCapture() {
+        let recorder = RPScreenRecorder.shared()
+
+        // isAvailable is false on the iOS Simulator — must test on a real device.
+        guard recorder.isAvailable else {
+            broadcastState = .error("Screen recording unavailable. This feature requires a physical device.")
+            return
+        }
+
+        guard !recorder.isRecording else {
+            isScreenCapturing = true
+            return
+        }
+
+        // Mic audio is provided by RPScreenRecorder in .manual mode (no AVCaptureSession).
+        recorder.isMicrophoneEnabled = true
+
+        // Capture mixer reference on @MainActor before entering the non-isolated handler.
+        // Per-frame we hop back to the MediaMixer actor via Task { await }.
+        let mixerRef = mixer
+        recorder.startCapture(handler: { buffer, type, error in
+            guard error == nil else { return }
+            switch type {
+            case .video, .audioMic:
+                Task { await mixerRef.append(buffer, track: 0) }
+            default:
+                break
+            }
+        }, completionHandler: { [weak self] error in
+            DispatchQueue.main.async {
+                if let error {
+                    self?.broadcastState = .error("Screen capture failed: \(error.localizedDescription)")
+                } else {
+                    self?.isScreenCapturing = true
+                }
+            }
+        })
+    }
+
+    private func stopScreenCapture() {
+        guard isScreenCapturing else { return }
+        RPScreenRecorder.shared().stopCapture { _ in }
+        isScreenCapturing = false
+    }
+
     func updateOrientation(deviceOrientation: UIDeviceOrientation) {
+        guard captureMode == .camera else { return }
         Task {
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
             try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
         }
     }
 
+    func switchCaptureMode(to newMode: CaptureMode, useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
+        guard newMode != captureMode, !isSwitchingMode else { return }
+        isSwitchingMode = true
+        defer { isSwitchingMode = false }
+
+        // Tear down the current source cleanly.
+        stopScreenCapture()
+        if captureMode == .camera {
+            try? await mixer.attachVideo(nil as AVCaptureDevice?, track: 0)
+            try? await mixer.attachAudio(nil as AVCaptureDevice?, track: 0)
+            await mixer.removeOutput(previewView)
+        }
+        // Detach stream from old mixer so it doesn't receive stale frames.
+        await mixer.removeOutput(stream)
+        await mixer.stopRunning()
+
+        // Swap mixer — the RTMPStream and RTMPConnection are reused so any
+        // in-progress RTMP publish continues without a reconnect (viewers see
+        // a brief freeze during the source transition, then new frames arrive).
+        captureMode = newMode
+        mixer = newMode == .camera
+            ? MediaMixer()
+            : MediaMixer(captureSessionMode: .manual)
+
+        await mixer.addOutput(stream)
+
+        switch newMode {
+        case .camera:
+            await mixer.setSessionPreset(resolution.capturePreset)
+            await mixer.addOutput(previewView)
+            await mixer.startRunning()
+            await attachCamera(useFrontCamera: useFrontCamera)
+            await attachAudioDevice()
+            await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
+        case .screen:
+            await mixer.startRunning()
+            startScreenCapture()
+        }
+    }
+
     func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
         resolution = newResolution
         Task {
-            // Update the capture session preset so the camera targets the new
-            // resolution. The camera transitions asynchronously, so initial frames
-            // arriving in the new VTCompressionSession may still be at the old
-            // size — scalingMode: .normal in videoCodecSettings handles this by
-            // upscaling them rather than cropping, keeping the encoded output
-            // valid throughout the transition. When the camera format actually
-            // changes, VideoCodec detects the inputFormat change and automatically
-            // recreates the session with correctly-sized frames.
-            await mixer.setSessionPreset(newResolution.capturePreset)
+            if captureMode == .camera {
+                // Update the capture session preset so the camera targets the new
+                // resolution. The camera transitions asynchronously, so initial frames
+                // arriving in the new VTCompressionSession may still be at the old
+                // size — scalingMode: .normal in videoCodecSettings handles this by
+                // upscaling them rather than cropping, keeping the encoded output
+                // valid throughout the transition.
+                await mixer.setSessionPreset(newResolution.capturePreset)
+            }
             try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
         }
     }
@@ -315,8 +458,9 @@ struct StreamBroadcastView: View {
     let token: String
     let streamTitle: String
     let ownerUsername: String
+    let initialCaptureMode: CaptureMode
 
-    @StateObject private var broadcaster = RTMPBroadcaster()
+    @StateObject private var broadcaster: RTMPBroadcaster
     @StateObject private var chatManager: StreamChatManager
     @State private var useFrontCamera = false
     @State private var showEndConfirmation = false
@@ -335,12 +479,16 @@ struct StreamBroadcastView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(serverURL: URL, streamName: String, token: String, streamTitle: String,
-         ownerUsername: String = "") {
+         ownerUsername: String = "", initialCaptureMode: CaptureMode = .camera) {
         self.serverURL = serverURL
         self.streamName = streamName
         self.token = token
         self.streamTitle = streamTitle
         self.ownerUsername = ownerUsername
+        self.initialCaptureMode = initialCaptureMode
+        // Initialize broadcaster with the selected mode so captureMode is correct
+        // from the first render — before async setup() runs.
+        _broadcaster = StateObject(wrappedValue: RTMPBroadcaster(captureMode: initialCaptureMode))
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL,
             token: token,
@@ -368,8 +516,13 @@ struct StreamBroadcastView: View {
             Color.black.ignoresSafeArea()
 
             if !permissionDenied {
-                CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation)
-                    .ignoresSafeArea()
+                if broadcaster.captureMode == .camera {
+                    CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation)
+                        .ignoresSafeArea()
+                } else {
+                    screenShareBackground
+                        .ignoresSafeArea()
+                }
             }
 
             VStack(spacing: 0) {
@@ -586,8 +739,26 @@ struct StreamBroadcastView: View {
                         .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
 
-                Button { flipCamera() } label: {
-                    Image(systemName: "camera.rotate")
+                // Source switcher — tap to change between camera and screen share.
+                Menu {
+                    ForEach(CaptureMode.allCases) { mode in
+                        Button {
+                            Task {
+                                await broadcaster.switchCaptureMode(
+                                    to: mode,
+                                    useFrontCamera: useFrontCamera,
+                                    deviceOrientation: deviceOrientation
+                                )
+                            }
+                        } label: {
+                            Label(mode.rawValue, systemImage: mode.icon)
+                        }
+                        .disabled(mode == broadcaster.captureMode)
+                    }
+                } label: {
+                    Image(systemName: broadcaster.isSwitchingMode
+                          ? "arrow.triangle.2.circlepath"
+                          : broadcaster.captureMode.icon)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(10)
@@ -596,6 +767,20 @@ struct StreamBroadcastView: View {
                         .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
                 .buttonStyle(.plain)
+                .disabled(broadcaster.isSwitchingMode)
+
+                if broadcaster.captureMode == .camera {
+                    Button { flipCamera() } label: {
+                        Image(systemName: "camera.rotate")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(10)
+                            .background(.black.opacity(0.45), in: Circle())
+                            .rotationEffect(controlRotation)
+                            .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -805,6 +990,29 @@ struct StreamBroadcastView: View {
         }
     }
 
+    // MARK: - Screen Share Background
+
+    private var screenShareBackground: some View {
+        Color.black
+            .overlay {
+                VStack(spacing: 16) {
+                    Image(systemName: "rectangle.on.rectangle.fill")
+                        .font(.system(size: 52))
+                        .foregroundStyle(.white.opacity(0.6))
+                    Text("Screen Sharing")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text("Your screen is broadcast to viewers.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                .rotationEffect(controlRotation)
+                .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+            }
+    }
+
     // MARK: - Ingest Info Sheet
 
     private var ingestInfoSheet: some View {
@@ -857,14 +1065,17 @@ struct StreamBroadcastView: View {
     // MARK: - Permission Denied Overlay
 
     private var permissionDeniedOverlay: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "video.slash.fill")
+        let isScreenMode = initialCaptureMode == .screen
+        return VStack(spacing: 16) {
+            Image(systemName: isScreenMode ? "mic.slash.fill" : "video.slash.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("Camera Access Required")
+            Text(isScreenMode ? "Microphone Access Required" : "Camera Access Required")
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text("Please allow camera and microphone access in Settings to go live.")
+            Text(isScreenMode
+                 ? "Please allow microphone access in Settings to stream audio while sharing your screen."
+                 : "Please allow camera and microphone access in Settings to go live.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -914,7 +1125,10 @@ struct StreamBroadcastView: View {
             return
         }
         // Connect chat in parallel with broadcaster setup — they're independent
-        async let broadcasterSetup: Void = broadcaster.setup(useFrontCamera: useFrontCamera, deviceOrientation: deviceOrientation)
+        async let broadcasterSetup: Void = broadcaster.setup(
+            useFrontCamera: useFrontCamera,
+            deviceOrientation: deviceOrientation
+        )
         chatManager.connect()
         await broadcasterSetup
     }
@@ -925,18 +1139,22 @@ struct StreamBroadcastView: View {
     }
 
     private func checkAndRequestPermissions() async -> Bool {
-        let cameraGranted: Bool
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:   cameraGranted = true
-        case .notDetermined: cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
-        default:            cameraGranted = false
-        }
-
         let micGranted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:   micGranted = true
         case .notDetermined: micGranted = await AVCaptureDevice.requestAccess(for: .audio)
         default:            micGranted = false
+        }
+
+        // Screen share mode only needs the microphone; RPScreenRecorder handles
+        // its own screen-capture permission prompt inside startCapture().
+        guard initialCaptureMode == .camera else { return micGranted }
+
+        let cameraGranted: Bool
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:   cameraGranted = true
+        case .notDetermined: cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
+        default:            cameraGranted = false
         }
 
         return cameraGranted && micGranted

@@ -199,8 +199,9 @@ struct StreamView: View {
     // Auth check
     private var isAuthenticated: Bool { !token.isEmpty }
 
-    // Broadcast
-    @State private var showBroadcast = false
+    // Broadcast — optional CaptureMode drives the fullScreenCover;
+    // setting it non-nil presents the cover, clearing it dismisses it.
+    @State private var broadcastMode: CaptureMode? = nil
 
     init(serverURL: URL, streamName: String, token: String,
          initialStream: DFStream? = nil, password: String? = nil) {
@@ -232,13 +233,16 @@ struct StreamView: View {
             if let live { isLive = live }
         }
         .sheet(isPresented: $showViewersList) { viewersSheet }
-        .fullScreenCover(isPresented: $showBroadcast) {
+        // Use item: so the CaptureMode value is captured directly in the closure,
+        // avoiding the stale-state bug with isPresented + a separate state variable.
+        .fullScreenCover(item: $broadcastMode) { captureMode in
             StreamBroadcastView(
                 serverURL: serverURL,
                 streamName: streamName,
                 token: token,
                 streamTitle: chatManager.streamTitle,
-                ownerUsername: initialStream?.userUsername ?? ""
+                ownerUsername: initialStream?.userUsername ?? "",
+                initialCaptureMode: captureMode
             )
         }
         .onChange(of: verticalSizeClass) { _, _ in
@@ -318,8 +322,14 @@ struct StreamView: View {
         .toolbar {
             if initialStream?.isOwner == true {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showBroadcast = true
+                    Menu {
+                        ForEach(CaptureMode.allCases) { mode in
+                            Button {
+                                broadcastMode = mode
+                            } label: {
+                                Label(mode.rawValue, systemImage: mode.icon)
+                            }
+                        }
                     } label: {
                         Label("Go Live", systemImage: "video.badge.waveform.fill")
                             .labelStyle(.iconOnly)
