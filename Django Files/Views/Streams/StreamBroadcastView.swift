@@ -28,9 +28,13 @@ import RTMPHaishinKit
 
 private struct CameraPreviewView: UIViewRepresentable {
     let hkView: MTHKView
-    let pipPreviewView: MTHKView
+    let pipPreviewView: PiPHKView
     let pipCoordinator: CameraPiPCoordinator
     let deviceOrientation: UIDeviceOrientation
+    /// Only install PiP if the capture session can actually keep delivering
+    /// frames while the app is backgrounded — otherwise PiP just floats a
+    /// frozen frame, which is worse UX than letting iOS pause the stream.
+    let supportsBackgroundCamera: Bool
 
     // SwiftUI gets a fresh container UIView on every mount, but the broadcaster
     // owns the actual MTHKView so the mixer can keep delivering frames across
@@ -63,7 +67,9 @@ private struct CameraPreviewView: UIViewRepresentable {
             // AVPictureInPictureController must be initialized AFTER the source
             // view is in a window. updateUIView runs after layout, so by the
             // first call here the window association is established.
-            if hkView.window != nil, !context.coordinator.didInstallPiP {
+            if supportsBackgroundCamera,
+               hkView.window != nil,
+               !context.coordinator.didInstallPiP {
                 context.coordinator.didInstallPiP = true
                 pipCoordinator.install(sourceView: hkView, pipPreviewView: pipPreviewView)
             }
@@ -128,6 +134,49 @@ enum CaptureMode: String, CaseIterable, Identifiable {
         case .camera: return "camera.fill"
         case .screen: return "rectangle.on.rectangle"
         }
+    }
+}
+
+// MARK: - Broadcast Extension Availability
+
+/// Whether our Broadcast Upload Extension is actually embedded in the app
+/// bundle. Without this check, tapping "Go Live" in screen mode while the
+/// extension is missing — Simulator, or a build that pre-dates the Xcode
+/// target wiring — falls through to iOS's own screen-recorder, which saves
+/// to Photos instead of streaming.
+enum BroadcastExtensionAvailability {
+    /// Bundle identifier of the broadcast upload extension (must mirror
+    /// RTMPBroadcaster.broadcastExtensionBundleID).
+    static let bundleID = "com.djangofiles.app.BroadcastUploadExtension"
+
+    static let isAvailable: Bool = {
+        #if targetEnvironment(simulator)
+        // Broadcast Upload Extensions don't load in the iOS Simulator. Even
+        // if the .appex is embedded, RPSystemBroadcastPickerView falls back
+        // to the system screen-recorder.
+        return false
+        #else
+        guard let pluginsURL = Bundle.main.builtInPlugInsURL,
+              let contents = try? FileManager.default.contentsOfDirectory(
+                at: pluginsURL,
+                includingPropertiesForKeys: nil
+              )
+        else { return false }
+        return contents.contains { url in
+            guard let info = Bundle(url: url)?.infoDictionary,
+                  let id = info["CFBundleIdentifier"] as? String
+            else { return false }
+            return id == bundleID
+        }
+        #endif
+    }()
+
+    static var unavailableReason: String {
+        #if targetEnvironment(simulator)
+        return "Screen sharing requires a physical device — the iOS Simulator can't run broadcast upload extensions."
+        #else
+        return "The screen-sharing extension isn't installed in this build. Add the Broadcast Upload Extension target in Xcode and rebuild — see BroadcastUploadExtension/SETUP.md."
+        #endif
     }
 }
 
@@ -390,6 +439,11 @@ final class RTMPBroadcaster: ObservableObject {
     // Set at init time so the view renders correctly before async setup runs.
     @Published private(set) var captureMode: CaptureMode
     @Published private(set) var isSwitchingMode = false
+    /// True when the AVCaptureSession can keep delivering frames while the app
+    /// is in PiP / multitasking. iPad-with-Apple-silicon only; always false on
+    /// iPhone. Used by the SwiftUI layer to decide whether installing PiP would
+    /// just produce a frozen-frame floating window.
+    @Published private(set) var supportsBackgroundCamera = false
 
     // Camera-mode plumbing. Screen mode delegates capture+RTMP to the
     // Broadcast Upload Extension (separate process) so it survives
@@ -416,8 +470,13 @@ final class RTMPBroadcaster: ObservableObject {
     // Second preview attached to the PiP video-call view controller. Must be a
     // separate UIView from `previewView` because AVKit mounts it into the PiP
     // window's hierarchy — a single view can't live in two windows at once.
-    let pipPreviewView: MTHKView = {
-        let v = MTHKView(frame: .zero)
+    //
+    // Uses PiPHKView (AVSampleBufferDisplayLayer-backed) instead of MTHKView.
+    // AVKit's PiP overlay window renders AVSampleBufferDisplayLayer correctly,
+    // but a CAMetalLayer-backed view (MTHKView) stops updating once moved
+    // into the floating window — that's the "frozen frame in PiP" symptom.
+    let pipPreviewView: PiPHKView = {
+        let v = PiPHKView(frame: .zero)
         v.videoGravity = .resizeAspect
         return v
     }()
@@ -461,11 +520,14 @@ final class RTMPBroadcaster: ObservableObject {
             // explicitly checks `session.isMultitaskingCameraAccessEnabled`
             // before deciding whether to pause video on background.
             if #available(iOS 16.0, *) {
+                var supported = false
                 await mixer.configuration { session in
                     if session.isMultitaskingCameraAccessSupported {
                         session.isMultitaskingCameraAccessEnabled = true
+                        supported = true
                     }
                 }
+                supportsBackgroundCamera = supported
             }
             await mixer.addOutput(previewView)
             // Second tap for the PiP floating-window preview. The mixer fans
@@ -597,6 +659,13 @@ final class RTMPBroadcaster: ObservableObject {
         broadcastState = .idle
     }
 
+    /// Surface a one-shot error from the SwiftUI layer (e.g. when the screen
+    /// share record button is tapped but our broadcast extension isn't
+    /// embedded in this build). Drops into the existing error alert path.
+    func reportExtensionUnavailable(_ message: String) {
+        broadcastState = .error(message)
+    }
+
     func clearError() {
         broadcastState = .idle
     }
@@ -723,11 +792,14 @@ final class RTMPBroadcaster: ObservableObject {
             // the view in screen mode (where setup() skips this) and only now
             // arrived at the camera path. Idempotent — safe to run again.
             if #available(iOS 16.0, *) {
+                var supported = false
                 await mixer.configuration { session in
                     if session.isMultitaskingCameraAccessSupported {
                         session.isMultitaskingCameraAccessEnabled = true
+                        supported = true
                     }
                 }
+                supportsBackgroundCamera = supported
             }
             // addOutput is idempotent (HaishinKit dedupes by identity), so
             // re-adding the preview views on every camera entry is harmless
@@ -879,7 +951,8 @@ struct StreamBroadcastView: View {
                         hkView: broadcaster.previewView,
                         pipPreviewView: broadcaster.pipPreviewView,
                         pipCoordinator: pipCoordinator,
-                        deviceOrientation: deviceOrientation
+                        deviceOrientation: deviceOrientation,
+                        supportsBackgroundCamera: broadcaster.supportsBackgroundCamera
                     )
                     .ignoresSafeArea()
                 } else {
@@ -1126,6 +1199,14 @@ struct StreamBroadcastView: View {
                 Menu {
                     ForEach(CaptureMode.allCases) { mode in
                         Button {
+                            // Refuse to enter screen mode when our broadcast
+                            // extension isn't embedded — otherwise the user
+                            // would land in a UI whose only "Go Live" path
+                            // leads to Apple's built-in screen recorder.
+                            if mode == .screen, !BroadcastExtensionAvailability.isAvailable {
+                                broadcaster.reportExtensionUnavailable(BroadcastExtensionAvailability.unavailableReason)
+                                return
+                            }
                             Task {
                                 await broadcaster.switchCaptureMode(
                                     to: mode,
@@ -1134,7 +1215,12 @@ struct StreamBroadcastView: View {
                                 )
                             }
                         } label: {
-                            Label(mode.rawValue, systemImage: mode.icon)
+                            // Hint the user when screen share won't work in
+                            // this build (extension missing / simulator).
+                            let label = (mode == .screen && !BroadcastExtensionAvailability.isAvailable)
+                                ? "\(mode.rawValue) (unavailable)"
+                                : mode.rawValue
+                            Label(label, systemImage: mode.icon)
                         }
                         .disabled(mode == broadcaster.captureMode)
                     }
@@ -1570,6 +1656,15 @@ struct StreamBroadcastView: View {
     }
 
     private func goLive() {
+        // In screen mode, refuse to trigger the system picker if our extension
+        // isn't actually installed in the app bundle — RPSystemBroadcastPickerView
+        // would otherwise fall back to Apple's built-in screen recorder, which
+        // saves a clip to Photos rather than streaming. Surface a clear error
+        // instead so the user knows they need a real device + the Xcode target.
+        if broadcaster.captureMode == .screen, !BroadcastExtensionAvailability.isAvailable {
+            broadcaster.reportExtensionUnavailable(BroadcastExtensionAvailability.unavailableReason)
+            return
+        }
         // Both paths share startStream; in screen mode that just persists the
         // creds to App Group. The actual broadcast is launched by the system
         // when we tap the hidden RPSystemBroadcastPickerView's inner button.
