@@ -18,6 +18,7 @@
 
 import SwiftUI
 import AVFoundation
+import AVKit
 import VideoToolbox
 import ReplayKit
 import HaishinKit
@@ -27,21 +28,73 @@ import RTMPHaishinKit
 
 private struct CameraPreviewView: UIViewRepresentable {
     let hkView: MTHKView
+    let pipPreviewView: MTHKView
+    let pipCoordinator: CameraPiPCoordinator
     let deviceOrientation: UIDeviceOrientation
 
-    func makeUIView(context: Context) -> MTHKView { hkView }
+    // SwiftUI gets a fresh container UIView on every mount, but the broadcaster
+    // owns the actual MTHKView so the mixer can keep delivering frames across
+    // mode swaps. Returning the singleton MTHKView directly made SwiftUI's
+    // hosting machinery fail to reattach it on the second camera-mode entry
+    // (the view stayed orphaned in the old hosting hierarchy), which is what
+    // made repeated swapping appear broken.
 
-    func updateUIView(_ uiView: MTHKView, context: Context) {
-        DispatchQueue.main.async { applyTransform(to: uiView) }
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .black
+        hkView.removeFromSuperview()
+        hkView.frame = container.bounds
+        hkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        container.addSubview(hkView)
+        return container
     }
 
-    private func applyTransform(to view: MTHKView) {
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // Re-host the MTHKView if it somehow lost its superview (e.g. SwiftUI
+        // re-issued makeUIView elsewhere first).
+        if hkView.superview !== uiView {
+            hkView.removeFromSuperview()
+            hkView.frame = uiView.bounds
+            hkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            uiView.addSubview(hkView)
+        }
+        DispatchQueue.main.async {
+            applyTransformIfNeeded(to: hkView, coordinator: context.coordinator)
+            // AVPictureInPictureController must be initialized AFTER the source
+            // view is in a window. updateUIView runs after layout, so by the
+            // first call here the window association is established.
+            if hkView.window != nil, !context.coordinator.didInstallPiP {
+                context.coordinator.didInstallPiP = true
+                pipCoordinator.install(sourceView: hkView, pipPreviewView: pipPreviewView)
+            }
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: PreviewCoordinator) {
+        // Don't tear down PiP here — StreamBroadcastView owns the lifecycle and
+        // calls coordinator.uninstall() in onDisappear. SwiftUI may call
+        // dismantleUIView on transient re-renders that we shouldn't react to.
+    }
+
+    func makeCoordinator() -> PreviewCoordinator { PreviewCoordinator() }
+    final class PreviewCoordinator {
+        var didInstallPiP = false
+        var lastOrientation: UIDeviceOrientation = .unknown
+    }
+
+    private func applyTransformIfNeeded(to view: MTHKView, coordinator: PreviewCoordinator) {
+        // updateUIView fires on every state change (mode switch, isSwitchingMode
+        // flicker, etc.). Re-running the alpha-fade animation each time stacks
+        // animations on top of each other and can leave the view stuck at
+        // alpha 0. Only animate when the orientation has actually changed.
+        guard coordinator.lastOrientation != deviceOrientation else { return }
+        coordinator.lastOrientation = deviceOrientation
+
         let w = view.bounds.width
         let h = view.bounds.height
         guard w > 0, h > 0 else { return }
 
         let fillScale = max(w, h) / min(w, h)
-
         let t: CGAffineTransform
         switch deviceOrientation {
         case .landscapeLeft:
@@ -78,6 +131,139 @@ enum CaptureMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - System Broadcast Picker (screen-share, background-capable)
+//
+// RPSystemBroadcastPickerView is a system UIView that brings up the
+// "Start Broadcast" sheet for the user to pick our Broadcast Upload Extension.
+// We host an invisible instance and "tap" its internal button programmatically
+// when the user hits our record button, so the look-and-feel matches the rest
+// of the broadcast UI instead of Apple's default purple AirPlay-style picker.
+
+private struct BroadcastPickerView: UIViewRepresentable {
+    let preferredExtension: String
+    @Binding var trigger: Int
+
+    func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
+        let picker = RPSystemBroadcastPickerView(frame: .zero)
+        picker.preferredExtension = preferredExtension
+        // Mic comes from RPSampleBufferType.audioMic inside the extension; the
+        // separate mic toggle on the system picker is redundant for us.
+        picker.showsMicrophoneButton = false
+        // Seed the coordinator with the current trigger value so we don't fire
+        // a spurious picker tap when re-entering screen mode (the view is
+        // recreated each entry, but `trigger` is parent state that persists).
+        context.coordinator.lastTrigger = trigger
+        return picker
+    }
+
+    func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
+        if context.coordinator.lastTrigger != trigger {
+            context.coordinator.lastTrigger = trigger
+            // updateUIView may run inside a layout pass — defer the tap so the
+            // sheet doesn't fight with the current view-tree update cycle.
+            DispatchQueue.main.async { tapInnerButton(in: uiView) }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var lastTrigger = 0 }
+
+    private func tapInnerButton(in view: UIView) {
+        if let button = view as? UIButton {
+            button.sendActions(for: .touchUpInside)
+            return
+        }
+        for sub in view.subviews { tapInnerButton(in: sub) }
+    }
+}
+
+// MARK: - Camera Picture-in-Picture
+//
+// AVPictureInPictureController in "video call" mode (iOS 15+) lets us keep the
+// AVCaptureSession alive when the app is backgrounded — the OS treats PiP as
+// foreground for capture purposes. Without PiP, the session would be suspended
+// the moment the user switches apps, killing the RTMP video track.
+//
+// Two MTHKViews are required: one stays inline in the app, the other lives
+// inside the floating PiP window. The MediaMixer fans the same camera frames
+// to both, so this doesn't double the encode cost.
+
+@MainActor
+final class CameraPiPCoordinator: NSObject, ObservableObject, AVPictureInPictureControllerDelegate {
+
+    private var pipController: AVPictureInPictureController?
+    private let videoCallVC: AVPictureInPictureVideoCallViewController = {
+        let vc = AVPictureInPictureVideoCallViewController()
+        // Default to portrait 9:16; AVKit honors aspect, not exact size.
+        vc.preferredContentSize = CGSize(width: 270, height: 480)
+        vc.view.backgroundColor = .black
+        return vc
+    }()
+
+    @Published private(set) var isPictureInPictureActive = false
+    @Published private(set) var isPossible = false
+
+    /// `sourceView` is the inline preview (must already be in a window).
+    /// `pipPreviewView` is mounted into the PiP floating window.
+    func install(sourceView: UIView, pipPreviewView: UIView) {
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        guard pipController == nil else { return }
+
+        // Attach the second preview to the video-call VC. fillSuperview-style
+        // constraints so the camera fills the floating window regardless of size.
+        pipPreviewView.removeFromSuperview()
+        pipPreviewView.translatesAutoresizingMaskIntoConstraints = false
+        videoCallVC.view.addSubview(pipPreviewView)
+        NSLayoutConstraint.activate([
+            pipPreviewView.leadingAnchor.constraint(equalTo: videoCallVC.view.leadingAnchor),
+            pipPreviewView.trailingAnchor.constraint(equalTo: videoCallVC.view.trailingAnchor),
+            pipPreviewView.topAnchor.constraint(equalTo: videoCallVC.view.topAnchor),
+            pipPreviewView.bottomAnchor.constraint(equalTo: videoCallVC.view.bottomAnchor),
+        ])
+
+        let contentSource = AVPictureInPictureController.ContentSource(
+            activeVideoCallSourceView: sourceView,
+            contentViewController: videoCallVC
+        )
+        let controller = AVPictureInPictureController(contentSource: contentSource)
+        controller.delegate = self
+        // Auto-start PiP when the app moves to the background. Without this,
+        // the AVCaptureSession would be suspended on background and the
+        // streamer would freeze.
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        self.pipController = controller
+        self.isPossible = controller.isPictureInPicturePossible
+    }
+
+    func uninstall() {
+        if let controller = pipController, controller.isPictureInPictureActive {
+            controller.stopPictureInPicture()
+        }
+        pipController = nil
+        isPictureInPictureActive = false
+        isPossible = false
+    }
+
+    func stop() {
+        pipController?.stopPictureInPicture()
+    }
+
+    // MARK: AVPictureInPictureControllerDelegate
+
+    nonisolated func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        Task { @MainActor in self.isPictureInPictureActive = true }
+    }
+
+    nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        Task { @MainActor in self.isPictureInPictureActive = false }
+    }
+
+    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                                failedToStartPictureInPictureWithError error: any Error) {
+        print("CameraPiPCoordinator: failed to start PiP: \(error)")
+    }
+}
+
 // MARK: - Stream Resolution
 
 enum StreamResolution: String, CaseIterable, Identifiable {
@@ -94,6 +280,17 @@ enum StreamResolution: String, CaseIterable, Identifiable {
         case .p720:  return 2_000_000
         case .p1080: return 4_000_000
         case .uhd4k: return 12_000_000
+        }
+    }
+
+    /// Long-edge pixel target. Camera frames are 16:9 so the short edge is derived
+    /// from that; screen frames keep the device's native aspect, scaled to this.
+    var longEdgePixels: CGFloat {
+        switch self {
+        case .p480:  return 854
+        case .p720:  return 1280
+        case .p1080: return 1920
+        case .uhd4k: return 3840
         }
     }
 
@@ -123,6 +320,44 @@ enum StreamResolution: String, CaseIterable, Identifiable {
         switch orientation {
         case .landscapeLeft, .landscapeRight: return ls
         default: return CGSize(width: ls.height, height: ls.width)
+        }
+    }
+
+    /// Output size for screen capture: matches the device's native screen aspect
+    /// ratio rather than a fixed 16:9, otherwise VideoToolbox stretches the buffer
+    /// (scalingMode is .normal — fill, not preserve-aspect) and the receiver sees
+    /// a squashed picture. Long edge is capped at the resolution target.
+    /// `frameSize` is the actual buffer pixel size if known (per-frame in the
+    /// broadcast extension); pass `.zero` to fall back to UIScreen.nativeBounds.
+    func screenVideoSize(orientation: UIDeviceOrientation, frameSize: CGSize = .zero) -> CGSize {
+        let sourceSize: CGSize
+        if frameSize.width > 0, frameSize.height > 0 {
+            sourceSize = frameSize
+        } else {
+            // nativeBounds is always reported in portrait pixels (w < h).
+            let native = UIScreen.main.nativeBounds.size
+            if orientation.isLandscape {
+                sourceSize = CGSize(width: native.height, height: native.width)
+            } else {
+                sourceSize = native
+            }
+        }
+
+        let long  = max(sourceSize.width, sourceSize.height)
+        let short = min(sourceSize.width, sourceSize.height)
+        guard long > 0, short > 0 else { return videoSize(for: orientation) }
+
+        let aspect = short / long
+        let targetLong  = longEdgePixels
+        let targetShort = (targetLong * aspect).rounded()
+        // H.264 prefers even dimensions — round down to the nearest even number.
+        let evenShort = max(2, CGFloat(Int(targetShort) & ~1))
+        let evenLong  = max(2, CGFloat(Int(targetLong)  & ~1))
+
+        if sourceSize.width >= sourceSize.height {
+            return CGSize(width: evenLong, height: evenShort)
+        } else {
+            return CGSize(width: evenShort, height: evenLong)
         }
     }
 }
@@ -156,13 +391,19 @@ final class RTMPBroadcaster: ObservableObject {
     @Published private(set) var captureMode: CaptureMode
     @Published private(set) var isSwitchingMode = false
 
-    private var isScreenCapturing = false
-
-    // Camera mode uses the default .single session (AVCaptureSession for camera/mic).
-    // Screen mode uses .manual (no AVCaptureSession — HaishinKit's ReplayKit mode):
-    // frames are fed directly via mixer.append() from RPScreenRecorder.
-    private var mixer: MediaMixer
-    private let connection = RTMPConnection()
+    // Camera-mode plumbing. Screen mode delegates capture+RTMP to the
+    // Broadcast Upload Extension (separate process) so it survives
+    // backgrounding — these objects are dormant while in screen mode.
+    //
+    // The mixer is created once and reused across mode switches: recreating it
+    // means the previous AVCaptureSession lingers in memory long enough that the
+    // new session can fail to acquire the camera, which was the original
+    // "switch more than once" bug. We just stop/start it instead.
+    //
+    // connection and stream ARE recreated per camera entry — reusing them after
+    // close() leaves residual handshake/chunk state that breaks the next publish.
+    private let mixer: MediaMixer
+    private var connection = RTMPConnection()
     private(set) var stream: RTMPStream
 
     // Metal preview view — camera mode only; irrelevant in screen mode.
@@ -172,11 +413,32 @@ final class RTMPBroadcaster: ObservableObject {
         return v
     }()
 
+    // Second preview attached to the PiP video-call view controller. Must be a
+    // separate UIView from `previewView` because AVKit mounts it into the PiP
+    // window's hierarchy — a single view can't live in two windows at once.
+    let pipPreviewView: MTHKView = {
+        let v = MTHKView(frame: .zero)
+        v.videoGravity = .resizeAspect
+        return v
+    }()
+
+    // Screen-mode extension config (mirrors BroadcastUploadExtension/SampleHandler.swift).
+    static let appGroupID = "group.djangofiles.app"
+    static let broadcastExtensionBundleID = "com.djangofiles.app.BroadcastUploadExtension"
+    private static let configKey  = "stream.broadcast.config"
+    private static let statusKey  = "stream.broadcast.status"
+    private static let requestKey = "stream.broadcast.request"
+
+    private var statusTimer: Timer?
+    private var pendingRTMPURL: String?
+    private var pendingStreamName: String?
+
     init(captureMode: CaptureMode = .camera) {
         self.captureMode = captureMode
-        self.mixer = captureMode == .camera
-            ? MediaMixer()
-            : MediaMixer(captureSessionMode: .manual)
+        // Single mixer for the broadcaster's lifetime. Screen mode doesn't feed
+        // the mixer (the extension owns capture+encode), so it stays idle
+        // there — startRunning is only called from the camera-mode setup path.
+        self.mixer = MediaMixer()
         stream = RTMPStream(connection: connection)
     }
 
@@ -184,26 +446,41 @@ final class RTMPBroadcaster: ObservableObject {
 
     func setup(useFrontCamera: Bool, deviceOrientation: UIDeviceOrientation) async {
         configureAudioSession()
-        try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
-        try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
-        await mixer.addOutput(stream)
 
         switch captureMode {
         case .camera:
+            try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
+            try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
+            await mixer.addOutput(stream)
             // Set the capture session preset BEFORE starting so the camera
             // actually provides frames at the target resolution.
             await mixer.setSessionPreset(resolution.capturePreset)
+            // Lets the AVCaptureSession keep delivering frames while the app is
+            // in Picture-in-Picture / multitasking. Without this flag iOS would
+            // suspend the camera the moment we go background, and HaishinKit
+            // explicitly checks `session.isMultitaskingCameraAccessEnabled`
+            // before deciding whether to pause video on background.
+            if #available(iOS 16.0, *) {
+                await mixer.configuration { session in
+                    if session.isMultitaskingCameraAccessSupported {
+                        session.isMultitaskingCameraAccessEnabled = true
+                    }
+                }
+            }
             await mixer.addOutput(previewView)
+            // Second tap for the PiP floating-window preview. The mixer fans
+            // frames out to every attached view, so we don't double-encode.
+            await mixer.addOutput(pipPreviewView)
             await mixer.startRunning()
             await attachCamera(useFrontCamera: useFrontCamera)
             await attachAudioDevice()
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
 
         case .screen:
-            // .manual mode: no AVCaptureSession. RPScreenRecorder feeds both
-            // video and mic audio into the mixer via append().
-            await mixer.startRunning()
-            startScreenCapture()
+            // No in-process capture: the Broadcast Upload Extension handles
+            // everything. We just observe the status it writes to App Group.
+            clearExtensionStatus()
+            startObservingExtensionStatus()
         }
     }
 
@@ -249,38 +526,74 @@ final class RTMPBroadcaster: ObservableObject {
     // MARK: - Go Live / Stop
 
     func startStream(rtmpURL: String, streamName: String) {
-        guard case .idle = broadcastState else { return }
-        broadcastState = .connecting
-        Task {
-            do {
-                _ = try await connection.connect(rtmpURL)
-                _ = try await stream.publish(streamName)
-                broadcastState = .live
-            } catch {
-                broadcastState = .error(error.localizedDescription)
+        switch captureMode {
+        case .camera:
+            guard case .idle = broadcastState else { return }
+            broadcastState = .connecting
+            Task {
+                do {
+                    _ = try await connection.connect(rtmpURL)
+                    _ = try await stream.publish(streamName)
+                    broadcastState = .live
+                } catch {
+                    broadcastState = .error(error.localizedDescription)
+                }
             }
+        case .screen:
+            // For screen mode, "start" persists credentials so the system
+            // broadcast extension can pick them up; the user actually starts
+            // the broadcast via RPSystemBroadcastPickerView (system UI).
+            pendingRTMPURL = rtmpURL
+            pendingStreamName = streamName
+            writeBroadcastConfig(rtmpURL: rtmpURL, streamName: streamName)
         }
+    }
+
+    /// Re-writes the App Group config that the broadcast extension reads on launch.
+    /// Call before showing RPSystemBroadcastPickerView so the extension has fresh
+    /// credentials even if the user changed resolution / opened a different stream.
+    func writeBroadcastConfig(rtmpURL: String, streamName: String) {
+        guard let defaults = UserDefaults(suiteName: Self.appGroupID) else { return }
+        defaults.set([
+            "rtmpURL": rtmpURL,
+            "streamKey": streamName,
+            "bitRate": resolution.bitRate,
+            "longEdgePixels": Double(resolution.longEdgePixels),
+        ], forKey: Self.configKey)
     }
 
     /// Ends the RTMP stream; keeps preview/capture running so the user can go live again.
     func stopStream() {
-        Task {
-            _ = try? await stream.close()
-            try? await connection.close()
+        switch captureMode {
+        case .camera:
+            Task {
+                _ = try? await stream.close()
+                try? await connection.close()
+                broadcastState = .idle
+            }
+        case .screen:
+            // Ask the extension to finish gracefully via App Group flag.
+            // The extension polls this on its per-frame path (~1Hz) and calls
+            // finishBroadcastWithError to end. We optimistically reset our
+            // state; the observer will overwrite if the extension still reports
+            // a different state.
+            if let defaults = UserDefaults(suiteName: Self.appGroupID) {
+                defaults.set("stop", forKey: Self.requestKey)
+            }
             broadcastState = .idle
         }
     }
 
     /// Full teardown — releases all hardware. Call on view dismiss.
     func teardown() async {
-        stopScreenCapture()
+        stopObservingExtensionStatus()
         _ = try? await stream.close()
         try? await connection.close()
         if captureMode == .camera {
             try? await mixer.attachVideo(nil as AVCaptureDevice?, track: 0)
             try? await mixer.attachAudio(nil as AVCaptureDevice?, track: 0)
+            await mixer.stopRunning()
         }
-        await mixer.stopRunning()
         broadcastState = .idle
     }
 
@@ -298,7 +611,7 @@ final class RTMPBroadcaster: ObservableObject {
             try session.setCategory(
                 .playAndRecord,
                 mode: .videoRecording,
-                options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker]
+                options: [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker]
             )
             try session.setActive(true)
         } catch {
@@ -306,51 +619,58 @@ final class RTMPBroadcaster: ObservableObject {
         }
     }
 
-    // MARK: - Screen Capture
+    // MARK: - Broadcast Extension Status (screen mode only)
 
-    private func startScreenCapture() {
-        let recorder = RPScreenRecorder.shared()
-
-        // isAvailable is false on the iOS Simulator — must test on a real device.
-        guard recorder.isAvailable else {
-            broadcastState = .error("Screen recording unavailable. This feature requires a physical device.")
-            return
+    /// Polls the status the Broadcast Upload Extension writes to App Group
+    /// UserDefaults so we can show Connecting / Live / Error in our UI.
+    /// Darwin notifications would be cleaner but UserDefaults polling at 1Hz
+    /// is plenty for status state and avoids the extra plumbing.
+    private func startObservingExtensionStatus() {
+        stopObservingExtensionStatus()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollExtensionStatus() }
         }
-
-        guard !recorder.isRecording else {
-            isScreenCapturing = true
-            return
-        }
-
-        // Mic audio is provided by RPScreenRecorder in .manual mode (no AVCaptureSession).
-        recorder.isMicrophoneEnabled = true
-
-        // Capture mixer reference on @MainActor before entering the non-isolated handler.
-        // Per-frame we hop back to the MediaMixer actor via Task { await }.
-        let mixerRef = mixer
-        recorder.startCapture(handler: { buffer, type, error in
-            guard error == nil else { return }
-            switch type {
-            case .video, .audioMic:
-                Task { await mixerRef.append(buffer, track: 0) }
-            default:
-                break
-            }
-        }, completionHandler: { [weak self] error in
-            DispatchQueue.main.async {
-                if let error {
-                    self?.broadcastState = .error("Screen capture failed: \(error.localizedDescription)")
-                } else {
-                    self?.isScreenCapturing = true
-                }
-            }
-        })
+        statusTimer = timer
     }
 
-    private func stopScreenCapture() {
-        guard isScreenCapturing else { return }
-        RPScreenRecorder.shared().stopCapture { _ in }
-        isScreenCapturing = false
+    private func stopObservingExtensionStatus() {
+        statusTimer?.invalidate()
+        statusTimer = nil
+    }
+
+    private func pollExtensionStatus() {
+        guard let defaults = UserDefaults(suiteName: Self.appGroupID),
+              let dict = defaults.dictionary(forKey: Self.statusKey),
+              let state = dict["state"] as? String
+        else { return }
+
+        switch state {
+        case "connecting":
+            if !broadcastState.isConnecting { broadcastState = .connecting }
+        case "live":
+            if !broadcastState.isLive { broadcastState = .live }
+        case "paused":
+            if !broadcastState.isLive { broadcastState = .live }
+        case "ended":
+            if broadcastState.isLive || broadcastState.isConnecting {
+                broadcastState = .idle
+            }
+        case "error":
+            let message = (dict["message"] as? String) ?? "Broadcast extension failed."
+            if broadcastState.errorMessage != message {
+                broadcastState = .error(message)
+            }
+        default:
+            break
+        }
+    }
+
+    private func clearExtensionStatus() {
+        guard let defaults = UserDefaults(suiteName: Self.appGroupID) else { return }
+        defaults.removeObject(forKey: Self.statusKey)
+        // Stale "stop" requests would immediately kill a freshly launched
+        // broadcast — wipe them on every setup/mode-switch.
+        defaults.removeObject(forKey: Self.requestKey)
     }
 
     func updateOrientation(deviceOrientation: UIDeviceOrientation) {
@@ -367,44 +687,68 @@ final class RTMPBroadcaster: ObservableObject {
         defer { isSwitchingMode = false }
 
         // Tear down the current source cleanly.
-        stopScreenCapture()
         if captureMode == .camera {
+            // Closing the RTMP stream/connection on every mode swap so we don't
+            // try to fan a screen-extension publish through the in-process stream
+            // (the extension publishes independently).
+            _ = try? await stream.close()
+            try? await connection.close()
             try? await mixer.attachVideo(nil as AVCaptureDevice?, track: 0)
             try? await mixer.attachAudio(nil as AVCaptureDevice?, track: 0)
-            await mixer.removeOutput(previewView)
+            // Drop the soon-to-be-replaced RTMPStream so the mixer doesn't
+            // retain it. previewView / pipPreviewView stay attached — they're
+            // singletons that are reused across switches and re-adding them
+            // each time would just churn HaishinKit's outputs array.
+            await mixer.removeOutput(stream)
+            await mixer.stopRunning()
+        } else {
+            stopObservingExtensionStatus()
         }
-        // Detach stream from old mixer so it doesn't receive stale frames.
-        await mixer.removeOutput(stream)
-        await mixer.stopRunning()
 
-        // Swap mixer — the RTMPStream and RTMPConnection are reused so any
-        // in-progress RTMP publish continues without a reconnect (viewers see
-        // a brief freeze during the source transition, then new frames arrive).
+        broadcastState = .idle
         captureMode = newMode
-        mixer = newMode == .camera
-            ? MediaMixer()
-            : MediaMixer(captureSessionMode: .manual)
-
-        await mixer.addOutput(stream)
 
         switch newMode {
         case .camera:
+            // Reuse the single mixer; reset only the RTMP plumbing. Reusing
+            // RTMPConnection/RTMPStream after close() leaves residual state
+            // that breaks the next publish — recreating them is cheap.
+            connection = RTMPConnection()
+            stream = RTMPStream(connection: connection)
+            try? await stream.setVideoSettings(videoCodecSettings(for: resolution, orientation: deviceOrientation))
+            try? await stream.setAudioSettings(AudioCodecSettings(bitRate: 128_000))
+            await mixer.addOutput(stream)
             await mixer.setSessionPreset(resolution.capturePreset)
+            // Re-run the multitasking-camera enable in case the user started
+            // the view in screen mode (where setup() skips this) and only now
+            // arrived at the camera path. Idempotent — safe to run again.
+            if #available(iOS 16.0, *) {
+                await mixer.configuration { session in
+                    if session.isMultitaskingCameraAccessSupported {
+                        session.isMultitaskingCameraAccessEnabled = true
+                    }
+                }
+            }
+            // addOutput is idempotent (HaishinKit dedupes by identity), so
+            // re-adding the preview views on every camera entry is harmless
+            // and guards against a hypothetical out-of-band removal.
             await mixer.addOutput(previewView)
+            await mixer.addOutput(pipPreviewView)
             await mixer.startRunning()
             await attachCamera(useFrontCamera: useFrontCamera)
             await attachAudioDevice()
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
         case .screen:
-            await mixer.startRunning()
-            startScreenCapture()
+            clearExtensionStatus()
+            startObservingExtensionStatus()
         }
     }
 
     func setResolution(_ newResolution: StreamResolution, orientation: UIDeviceOrientation) {
         resolution = newResolution
         Task {
-            if captureMode == .camera {
+            switch captureMode {
+            case .camera:
                 // Update the capture session preset so the camera targets the new
                 // resolution. The camera transitions asynchronously, so initial frames
                 // arriving in the new VTCompressionSession may still be at the old
@@ -412,8 +756,15 @@ final class RTMPBroadcaster: ObservableObject {
                 // upscaling them rather than cropping, keeping the encoded output
                 // valid throughout the transition.
                 await mixer.setSessionPreset(newResolution.capturePreset)
+                try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
+            case .screen:
+                // Re-write App Group config so the next broadcast picks up the
+                // new bitrate / long-edge. Doesn't affect an already-running
+                // broadcast — that would require the user to stop and restart.
+                if let rtmp = pendingRTMPURL, let key = pendingStreamName {
+                    writeBroadcastConfig(rtmpURL: rtmp, streamName: key)
+                }
             }
-            try? await stream.setVideoSettings(videoCodecSettings(for: newResolution, orientation: orientation))
         }
     }
 
@@ -426,8 +777,13 @@ final class RTMPBroadcaster: ObservableObject {
     // bitstream. .normal tells VT to properly scale any size-mismatched buffer
     // to the output dimensions, keeping the stream valid during the transition.
     private func videoCodecSettings(for res: StreamResolution, orientation: UIDeviceOrientation) -> VideoCodecSettings {
-        VideoCodecSettings(
-            videoSize: res.videoSize(for: orientation),
+        // Screen capture frames carry the device's native aspect (~9:19.5); the
+        // 16:9 default used for camera would force a stretch under scalingMode .normal.
+        let size = captureMode == .screen
+            ? res.screenVideoSize(orientation: orientation)
+            : res.videoSize(for: orientation)
+        return VideoCodecSettings(
+            videoSize: size,
             bitRate: res.bitRate,
             profileLevel: kVTProfileLevel_H264_High_AutoLevel as String,
             scalingMode: .normal,
@@ -462,6 +818,7 @@ struct StreamBroadcastView: View {
 
     @StateObject private var broadcaster: RTMPBroadcaster
     @StateObject private var chatManager: StreamChatManager
+    @StateObject private var pipCoordinator = CameraPiPCoordinator()
     @State private var useFrontCamera = false
     @State private var showEndConfirmation = false
     @State private var permissionDenied = false
@@ -471,6 +828,7 @@ struct StreamBroadcastView: View {
     @State private var showResolutionPicker = false
     @State private var showChatDrawer = false
     @State private var chatDrawerOffset: CGFloat = 0
+    @State private var broadcastPickerTrigger = 0
     @State private var deviceOrientation: UIDeviceOrientation = {
         let o = UIDevice.current.orientation
         return o.isValidInterfaceOrientation ? o : .portrait
@@ -517,8 +875,13 @@ struct StreamBroadcastView: View {
 
             if !permissionDenied {
                 if broadcaster.captureMode == .camera {
-                    CameraPreviewView(hkView: broadcaster.previewView, deviceOrientation: deviceOrientation)
-                        .ignoresSafeArea()
+                    CameraPreviewView(
+                        hkView: broadcaster.previewView,
+                        pipPreviewView: broadcaster.pipPreviewView,
+                        pipCoordinator: pipCoordinator,
+                        deviceOrientation: deviceOrientation
+                    )
+                    .ignoresSafeArea()
                 } else {
                     screenShareBackground
                         .ignoresSafeArea()
@@ -531,6 +894,19 @@ struct StreamBroadcastView: View {
                 bottomBar
             }
             .ignoresSafeArea(edges: .bottom)
+
+            // Invisible host for the system broadcast picker. We tap its inner
+            // button programmatically from the record button in screen mode so
+            // the visible UI stays consistent with the rest of the broadcast view.
+            if broadcaster.captureMode == .screen {
+                BroadcastPickerView(
+                    preferredExtension: RTMPBroadcaster.broadcastExtensionBundleID,
+                    trigger: $broadcastPickerTrigger
+                )
+                .frame(width: 0, height: 0)
+                .opacity(0.001)
+                .allowsHitTesting(false)
+            }
 
             if permissionDenied {
                 permissionDeniedOverlay
@@ -651,6 +1027,7 @@ struct StreamBroadcastView: View {
                 .first?
                 .requestGeometryUpdate(.iOS(interfaceOrientations: .all))
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            pipCoordinator.uninstall()
             Task { await broadcaster.teardown() }
             chatManager.disconnect()
         }
@@ -732,6 +1109,12 @@ struct StreamBroadcastView: View {
                     Text(broadcaster.resolution.rawValue)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        // fixedSize stops SwiftUI from horizontally compressing
+                        // this capsule when the row gets crowded (4 buttons in
+                        // camera mode + the centre title badge competing for
+                        // space). Without it, "1080p" gets squashed to "10…".
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                         .background(.black.opacity(0.45), in: Capsule())
@@ -782,6 +1165,10 @@ struct StreamBroadcastView: View {
                     .buttonStyle(.plain)
                 }
             }
+            // Right-cluster wins the layout when the centre title is long —
+            // otherwise the title eats horizontal space and the resolution
+            // capsule (rightmost text element) gets clipped first.
+            .layoutPriority(1)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -844,17 +1231,24 @@ struct StreamBroadcastView: View {
 
             Spacer()
 
-            // Mute — always in the same spot
-            Button { broadcaster.toggleMute() } label: {
-                Image(systemName: broadcaster.isMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(broadcaster.isMuted ? .red : .white)
-                    .frame(width: 52, height: 52)
-                    .background(.black.opacity(0.45), in: Circle())
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+            // Mute — camera mode only. In screen mode the Broadcast Upload
+            // Extension owns the mic, and the user toggles it from the system
+            // "Start Broadcast" sheet rather than from our UI.
+            if broadcaster.captureMode == .camera {
+                Button { broadcaster.toggleMute() } label: {
+                    Image(systemName: broadcaster.isMuted ? "mic.slash.fill" : "mic.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(broadcaster.isMuted ? .red : .white)
+                        .frame(width: 52, height: 52)
+                        .background(.black.opacity(0.45), in: Circle())
+                        .rotationEffect(controlRotation)
+                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Keep the layout balanced when the mute button is absent.
+                Color.clear.frame(width: 52, height: 52)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 44)
@@ -996,15 +1390,21 @@ struct StreamBroadcastView: View {
         Color.black
             .overlay {
                 VStack(spacing: 16) {
-                    Image(systemName: "rectangle.on.rectangle.fill")
+                    Image(systemName: broadcaster.broadcastState.isLive
+                          ? "dot.radiowaves.left.and.right"
+                          : "rectangle.on.rectangle.fill")
                         .font(.system(size: 52))
                         .foregroundStyle(.white.opacity(0.6))
-                    Text("Screen Sharing")
+                    Text(broadcaster.broadcastState.isLive
+                         ? "Screen is being shared"
+                         : "Screen Share")
                         .font(.title3.bold())
-                        .foregroundStyle(.white.opacity(0.8))
-                    Text("Your screen is broadcast to viewers.")
+                        .foregroundStyle(.white.opacity(0.85))
+                    Text(broadcaster.broadcastState.isLive
+                         ? "iOS will keep recording even when you switch to another app. Tap the stop button to end."
+                         : "Tap the record button below — iOS will ask you to confirm before broadcasting your screen.")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.55))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                 }
@@ -1139,16 +1539,18 @@ struct StreamBroadcastView: View {
     }
 
     private func checkAndRequestPermissions() async -> Bool {
+        // Screen-share mode owns no in-process capture: the Broadcast Upload
+        // Extension is the one capturing audio/video, and iOS prompts the user
+        // for screen + mic permission inside the system "Start Broadcast" sheet.
+        // Returning true skips redundant prompts in the host app.
+        guard initialCaptureMode == .camera else { return true }
+
         let micGranted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:   micGranted = true
         case .notDetermined: micGranted = await AVCaptureDevice.requestAccess(for: .audio)
         default:            micGranted = false
         }
-
-        // Screen share mode only needs the microphone; RPScreenRecorder handles
-        // its own screen-capture permission prompt inside startCapture().
-        guard initialCaptureMode == .camera else { return micGranted }
 
         let cameraGranted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -1168,7 +1570,13 @@ struct StreamBroadcastView: View {
     }
 
     private func goLive() {
+        // Both paths share startStream; in screen mode that just persists the
+        // creds to App Group. The actual broadcast is launched by the system
+        // when we tap the hidden RPSystemBroadcastPickerView's inner button.
         broadcaster.startStream(rtmpURL: currentRTMPURL, streamName: streamName)
+        if broadcaster.captureMode == .screen {
+            broadcastPickerTrigger &+= 1
+        }
     }
 
     private var currentRTMPURL: String {
