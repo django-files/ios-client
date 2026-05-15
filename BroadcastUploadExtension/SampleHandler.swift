@@ -28,10 +28,11 @@ final class SampleHandler: RPBroadcastSampleHandler {
 
     // MARK: - Constants (must mirror the host app)
 
-    private static let appGroupID = "group.djangofiles.app"
-    private static let configKey  = "stream.broadcast.config"
-    private static let statusKey  = "stream.broadcast.status"
-    private static let requestKey = "stream.broadcast.request"
+    private static let appGroupID  = "group.djangofiles.app"
+    private static let configKey   = "stream.broadcast.config"
+    private static let statusKey   = "stream.broadcast.status"
+    private static let requestKey  = "stream.broadcast.request"
+    private static let micMutedKey = "stream.broadcast.micMuted"
 
     // MARK: - RTMP plumbing
 
@@ -52,6 +53,10 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var lastBufferSize: CGSize = .zero
     private var didConfigureSettings = false
     private var lastStopCheck: Date = .distantPast
+
+    private var isMicMuted: Bool {
+        UserDefaults(suiteName: Self.appGroupID)?.bool(forKey: Self.micMutedKey) ?? false
+    }
 
     // MARK: - RPBroadcastSampleHandler
 
@@ -75,6 +80,10 @@ final class SampleHandler: RPBroadcastSampleHandler {
         streamKey = key
         if let br = config["bitRate"] as? Int { bitRate = br }
         if let le = config["longEdgePixels"] as? Double { longEdgePixels = CGFloat(le) }
+
+        // Reset mic mute on each new broadcast so stale host-app state
+        // doesn't carry over into a fresh session.
+        UserDefaults(suiteName: Self.appGroupID)?.removeObject(forKey: Self.micMutedKey)
 
         updateStatus(state: "connecting")
 
@@ -124,7 +133,12 @@ final class SampleHandler: RPBroadcastSampleHandler {
             reconfigureCodecIfNeeded(for: sampleBuffer)
             let buf = sampleBuffer
             Task { [mixer] in await mixer.append(buf, track: 0) }
-        case .audioApp, .audioMic:
+        case .audioApp:
+            let buf = sampleBuffer
+            Task { [mixer] in await mixer.append(buf, track: 0) }
+        case .audioMic:
+            // Drop mic buffers when the host app has muted the mic.
+            guard !isMicMuted else { break }
             let buf = sampleBuffer
             Task { [mixer] in await mixer.append(buf, track: 0) }
         @unknown default:
@@ -175,12 +189,26 @@ final class SampleHandler: RPBroadcastSampleHandler {
 
     /// Set the video codec's output size to match the actual sample buffer's
     /// aspect ratio. scalingMode is .normal (fill, not preserve-aspect), so an
-    /// incorrect output size stretches the picture on the receiver — exactly
-    /// the bug that triggered this rewrite.
+    /// incorrect output size stretches the picture on the receiver.
+    ///
+    /// ReplayKit sometimes delivers portrait-dimensioned pixel buffers even when
+    /// the device is in landscape, using RPVideoSampleOrientationKey to indicate
+    /// the display rotation rather than swapping the buffer W/H. We read that
+    /// attachment so the codec output size reflects what the viewer should see,
+    /// not just the raw pixel buffer geometry.
     private func reconfigureCodecIfNeeded(for buffer: CMSampleBuffer) {
         guard let pb = CMSampleBufferGetImageBuffer(buffer) else { return }
-        let w = CGFloat(CVPixelBufferGetWidth(pb))
-        let h = CGFloat(CVPixelBufferGetHeight(pb))
+
+        // Read the display orientation from the buffer attachment.
+        let orientation = bufferOrientation(buffer)
+        // For landscape orientations, swap the pixel dimensions so the codec
+        // output size matches the displayed (rotated) frame.
+        let rawW = CGFloat(CVPixelBufferGetWidth(pb))
+        let rawH = CGFloat(CVPixelBufferGetHeight(pb))
+        let (w, h): (CGFloat, CGFloat) = orientation.isLandscape
+            ? (max(rawW, rawH), min(rawW, rawH))   // landscape: wide > tall
+            : (min(rawW, rawH), max(rawW, rawH))   // portrait: tall > wide
+
         let size = CGSize(width: w, height: h)
         if didConfigureSettings && size == lastBufferSize { return }
         lastBufferSize = size
@@ -211,6 +239,21 @@ final class SampleHandler: RPBroadcastSampleHandler {
         )
     }
 
+    /// Reads the display orientation that ReplayKit attaches to every video
+    /// sample buffer. When the attachment is absent, `.up` (portrait) is assumed.
+    private func bufferOrientation(_ buffer: CMSampleBuffer) -> CGImagePropertyOrientation {
+        guard
+            let attachments = CMCopyDictionaryOfAttachments(
+                allocator: nil,
+                target: buffer,
+                attachmentMode: kCMAttachmentMode_ShouldPropagate
+            ) as? [String: Any],
+            let raw = attachments[RPVideoSampleOrientationKey] as? NSNumber,
+            let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value)
+        else { return .up }
+        return orientation
+    }
+
     private func videoSizePreservingAspect(source: CGSize, longEdge: CGFloat) -> CGSize {
         let long  = max(source.width, source.height)
         let short = min(source.width, source.height)
@@ -237,5 +280,16 @@ final class SampleHandler: RPBroadcastSampleHandler {
         ]
         if let msg = message { dict["message"] = msg }
         defaults.set(dict, forKey: Self.statusKey)
+    }
+}
+
+// CGImagePropertyOrientation.left/right = 90°/270° rotations = device is landscape.
+// Used to decide whether to swap buffer W/H when computing codec output dimensions.
+private extension CGImagePropertyOrientation {
+    var isLandscape: Bool {
+        switch self {
+        case .left, .leftMirrored, .right, .rightMirrored: return true
+        default: return false
+        }
     }
 }

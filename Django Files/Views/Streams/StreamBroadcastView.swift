@@ -486,9 +486,10 @@ final class RTMPBroadcaster: ObservableObject {
     // Screen-mode extension config (mirrors BroadcastUploadExtension/SampleHandler.swift).
     static let appGroupID = "group.djangofiles.app"
     static let broadcastExtensionBundleID = "com.djangofiles.app.BroadcastUploadExtension"
-    private static let configKey  = "stream.broadcast.config"
-    private static let statusKey  = "stream.broadcast.status"
-    private static let requestKey = "stream.broadcast.request"
+    private static let configKey   = "stream.broadcast.config"
+    private static let statusKey   = "stream.broadcast.status"
+    private static let requestKey  = "stream.broadcast.request"
+    static let micMutedKey         = "stream.broadcast.micMuted"
 
     private var statusTimer: Timer?
     private var pendingRTMPURL: String?
@@ -577,13 +578,26 @@ final class RTMPBroadcaster: ObservableObject {
 
     func toggleMute() {
         isMuted.toggle()
-        Task {
-            // isMuted on AudioMixerSettings silences the output without detaching
-            // the audio device, keeping the RTMP audio track alive and the
-            // stream intact. attachAudio(nil) would drop the track mid-stream.
-            var settings = await mixer.audioMixerSettings
-            settings.isMuted = isMuted
-            await mixer.setAudioMixerSettings(settings)
+        switch captureMode {
+        case .camera:
+            Task {
+                // Mute track 0 (the mic AVCaptureDevice) specifically rather than
+                // the entire mixer output. Both have the same effect when there's
+                // only one audio source, but track-level muting is the right
+                // primitive — it leaves the RTMP audio track structure intact.
+                var settings = await mixer.audioMixerSettings
+                var trackSettings = settings.tracks[0] ?? AudioMixerTrackSettings()
+                trackSettings.isMuted = isMuted
+                settings.tracks[0] = trackSettings
+                await mixer.setAudioMixerSettings(settings)
+            }
+        case .screen:
+            // Signal mic mute to the Broadcast Upload Extension via App Group.
+            // The extension polls this on every audioMic buffer and skips
+            // forwarding to the mixer when muted.
+            if let defaults = UserDefaults(suiteName: Self.appGroupID) {
+                defaults.set(isMuted, forKey: Self.micMutedKey)
+            }
         }
     }
 
@@ -1325,24 +1339,20 @@ struct StreamBroadcastView: View {
 
             Spacer()
 
-            // Mute — camera mode only. In screen mode the Broadcast Upload
-            // Extension owns the mic, and the user toggles it from the system
-            // "Start Broadcast" sheet rather than from our UI.
-            if broadcaster.captureMode == .camera {
-                Button { broadcaster.toggleMute() } label: {
-                    Image(systemName: broadcaster.isMuted ? "mic.slash.fill" : "mic.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(broadcaster.isMuted ? .red : .white)
-                        .frame(width: 52, height: 52)
-                        .background(.black.opacity(0.45), in: Circle())
-                        .rotationEffect(controlRotation)
-                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
-                }
-                .buttonStyle(.plain)
-            } else {
-                // Keep the layout balanced when the mute button is absent.
-                Color.clear.frame(width: 52, height: 52)
+            // Mic mute — visible in both camera and screen-share mode.
+            // In camera mode, mutes track 0 (the AVCaptureDevice mic) directly.
+            // In screen mode, writes a flag to App Group; the Broadcast Upload
+            // Extension reads it per-buffer and drops audioMic frames when set.
+            Button { broadcaster.toggleMute() } label: {
+                Image(systemName: broadcaster.isMuted ? "mic.slash.fill" : "mic.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(broadcaster.isMuted ? .red : .white)
+                    .frame(width: 52, height: 52)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .rotationEffect(controlRotation)
+                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 44)
