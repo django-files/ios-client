@@ -206,6 +206,7 @@ struct FileListView: View {
     @State private var showingUserFilter: Bool = false
     @State private var users: [DFUser] = []
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
+    @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
@@ -278,10 +279,9 @@ struct FileListView: View {
         }
     }
     
-    private let gridColumns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
-    ]
+    private var gridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumnCount)
+    }
 
     private var gridContent: some View {
         ScrollView {
@@ -508,12 +508,29 @@ struct FileListView: View {
             }
 
             ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isGridView.toggle()
+                Menu {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
+                    } label: {
+                        Label(isGridView ? "List View" : "Grid View",
+                              systemImage: isGridView ? "list.bullet" : "square.grid.2x2")
+                    }
+                    if isGridView {
+                        Divider()
+                        Button { gridColumnCount = 1 } label: {
+                            Label("1 Column", systemImage: gridColumnCount == 1 ? "checkmark" : "square")
+                        }
+                        Button { gridColumnCount = 2 } label: {
+                            Label("2 Columns", systemImage: gridColumnCount == 2 ? "checkmark" : "square.grid.2x2")
+                        }
+                        Button { gridColumnCount = 3 } label: {
+                            Label("3 Columns", systemImage: gridColumnCount == 3 ? "checkmark" : "square.grid.3x3")
+                        }
                     }
                 } label: {
                     Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                } primaryAction: {
+                    withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
                 }
             }
 

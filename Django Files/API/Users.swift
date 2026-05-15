@@ -184,11 +184,15 @@ extension DFAPI {
         session.userID = user.id
         session.username = user.username
         session.firstName = user.firstName
-        // Handle avatar URL more robustly
-        if let avatarURL = URL(string: user.avatarUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            session.avatarUrl = avatarURL
+        // Resolve avatar URL — absolute (S3, OAuth, https) used as-is; relative paths resolved against server base URL
+        let trimmedAvatar = user.avatarUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedAvatar.isEmpty {
+            session.avatarUrl = nil
+        } else if let absolute = URL(string: trimmedAvatar), absolute.scheme != nil {
+            session.avatarUrl = absolute
+        } else if let base = URL(string: session.url) {
+            session.avatarUrl = URL(string: trimmedAvatar, relativeTo: base)?.absoluteURL
         } else {
-            print("Warning: Invalid avatar URL received from server: \(user.avatarUrl)")
             session.avatarUrl = nil
         }
         session.superUser = user.isSuperuser

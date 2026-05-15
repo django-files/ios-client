@@ -47,6 +47,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     
     @State private var cachedImage: UIImage?
     @State private var isLoading = false
+    @State private var loadFailed = false
     
     init(
         url: URL?,
@@ -66,15 +67,13 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         Group {
             if let cachedImage = cachedImage {
                 content(Image(uiImage: cachedImage))
+            } else if isLoading || loadFailed {
+                placeholder()
             } else {
-                if isLoading {
-                    placeholder()
-                } else {
-                    placeholder()
-                        .onAppear {
-                            loadImage()
-                        }
-                }
+                placeholder()
+                    .onAppear {
+                        loadImage()
+                    }
             }
         }
     }
@@ -106,6 +105,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                 print("Error loading image: \(error)")
                 await MainActor.run {
                     self.isLoading = false
+                    self.loadFailed = true
                 }
             }
         }
