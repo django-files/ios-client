@@ -100,13 +100,15 @@ private struct CameraPreviewView: UIViewRepresentable {
         let h = view.bounds.height
         guard w > 0, h > 0 else { return }
 
-        let fillScale = max(w, h) / min(w, h)
+        // mixer.setVideoOrientation() already tells HaishinKit which way to rotate
+        // the encoded frames, so the MTHKView content arrives correctly oriented —
+        // we do NOT apply a matching rotation here. The only exception is
+        // portraitUpsideDown, which AVCaptureVideoOrientation doesn't model and
+        // HaishinKit therefore can't correct through setVideoOrientation.
+        // Previously landscapeLeft/Right also applied fillScale (≈2.16×), which
+        // caused the "too zoomed in" appearance while the actual stream was fine.
         let t: CGAffineTransform
         switch deviceOrientation {
-        case .landscapeLeft:
-            t = CGAffineTransform(rotationAngle: .pi / 2).scaledBy(x: fillScale, y: fillScale)
-        case .landscapeRight:
-            t = CGAffineTransform(rotationAngle: -.pi / 2).scaledBy(x: fillScale, y: fillScale)
         case .portraitUpsideDown:
             t = CGAffineTransform(rotationAngle: .pi)
         default:
@@ -677,12 +679,18 @@ final class RTMPBroadcaster: ObservableObject {
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
+            // mode: .default is intentional — HaishinKit's own example notes that
+            // setting a specific mode (e.g. .videoRecording) disables stereo capture
+            // and suppresses output routing, producing silence on device and no audio
+            // in the RTMP stream. .default leaves capture/routing intact.
             try session.setCategory(
                 .playAndRecord,
-                mode: .videoRecording,
-                options: [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker]
+                mode: .default,
+                options: [.allowBluetoothHFP, .defaultToSpeaker]
             )
             try session.setActive(true)
+            // Required for stereo mic capture on iOS 18+.
+            try? session.setPreferredInputNumberOfChannels(2)
         } catch {
             print("RTMPBroadcaster: audio session error: \(error)")
         }
