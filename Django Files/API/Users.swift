@@ -134,6 +134,20 @@ extension DFAPI {
         return nil
     }
     
+    public func getVersion() async -> String? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.version),
+                parameters: [:],
+                method: .get
+            )
+            struct VersionResponse: Decodable { let version: String }
+            return try JSONDecoder().decode(VersionResponse.self, from: responseBody).version
+        } catch {
+            return nil
+        }
+    }
+
     public func getAllUsers(selectedServer: DjangoFilesSession? = nil) async -> [DFUser] {
         var allUsers: [DFUser] = []
         var lastUserId: Int? = nil

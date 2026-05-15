@@ -205,15 +205,8 @@ struct FileListView: View {
     @State private var showFileInfo: Bool = false
     @State private var showingUserFilter: Bool = false
     @State private var users: [DFUser] = []
+    @AppStorage("fileListIsGridView") private var isGridView: Bool = false
 
-    // Add computed property for selected username
-    private var selectedUsername: String? {
-        if let userID = filterUserID {
-            return users.first(where: { $0.id == userID })?.username
-        }
-        return nil
-    }
-    
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
         self.albumID = albumID
@@ -285,8 +278,59 @@ struct FileListView: View {
         }
     }
     
+    private let gridColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+
+    private var gridContent: some View {
+        ScrollView {
+            LazyVGrid(columns: gridColumns, spacing: 2) {
+                ForEach(files.indices, id: \.self) { index in
+                    Button {
+                        selectedFile = files[index]
+                        showingPreview = true
+                    } label: {
+                        FileGridItemView(
+                            file: $fileListManager.files[index],
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                    }
+                    .onAppear {
+                        if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
+                            loadNextPage()
+                        }
+                    }
+                }
+            }
+
+            if isLoading && hasNextPage {
+                HStack {
+                    Spacer()
+                    LoadingView()
+                        .frame(width: 60, height: 60)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .refreshable {
+            Task {
+                await refreshFiles()
+            }
+        }
+    }
+
     var body: some View {
-        List {
+        Group {
+            if isGridView {
+                gridContent
+            } else {
+                List {
             if files.count == 0 && !isLoading {
                 HStack {
                     Spacer()
@@ -397,6 +441,14 @@ struct FileListView: View {
                     Spacer()
                 }
             }
+                }
+                .listStyle(.plain)
+                .refreshable {
+                    Task {
+                        await refreshFiles()
+                    }
+                }
+            }
         }
         .fullScreenCover(isPresented: $showingPreview) {
             if let index = fileListManager.files.firstIndex(where: { $0.id == selectedFile?.id }) {
@@ -424,55 +476,47 @@ struct FileListView: View {
                 )
             }
         }
-
-        .listStyle(.plain)
-        .refreshable {
-            Task {
-                await refreshFiles()
-            }
-        }
         .navigationTitle(getTitle(server: server, albumName: albumName))
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack {
-                    Menu {
-                        if server.wrappedValue?.superUser ?? false {
-                            Button(action: {
-                                showingUserFilter = true
-                                Task {
-                                    if let serverInstance = server.wrappedValue,
-                                       let url = URL(string: serverInstance.url) {
-                                        let api = DFAPI(url: url, token: serverInstance.token)
-                                        users = await api.getAllUsers(selectedServer: serverInstance)
-                                    }
+                Menu {
+                    if server.wrappedValue?.superUser ?? false {
+                        Button(action: {
+                            showingUserFilter = true
+                            Task {
+                                if let serverInstance = server.wrappedValue,
+                                   let url = URL(string: serverInstance.url) {
+                                    let api = DFAPI(url: url, token: serverInstance.token)
+                                    users = await api.getAllUsers(selectedServer: serverInstance)
                                 }
-                            }) {
-                                Label("User Filter", systemImage: "person.2.circle")
+                            }
+                        }) {
+                            Label("User Filter", systemImage: "person.2.circle")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .overlay(alignment: .topTrailing) {
+                            if filterUserID != server.wrappedValue?.userID {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 5, y: -4)
                             }
                         }
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                    }
-                    if selectedUsername != server.wrappedValue?.username {
-                        if let username = selectedUsername {
-                            Text("User: \(username)")
-                                .font(.caption)
-                                .padding(4)
-                                .background(Color.secondary.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                        if filterUserID == 0 {
-                            Text("User: *")
-                                .font(.caption)
-                                .padding(4)
-                                .background(Color.secondary.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                    }
-
                 }
             }
-            
+
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isGridView.toggle()
+                    }
+                } label: {
+                    Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: {
@@ -861,6 +905,82 @@ struct FileListView: View {
         let _ = await fileListManager.renameFile(fileID: file.id, newName: name, onSuccess: nil)
     }
     
+}
+
+struct FileGridItemView: View {
+    @Binding var file: DFFile
+    let serverURL: URL
+
+    private var isMedia: Bool {
+        file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/")
+    }
+
+    private var thumbnailURL: URL {
+        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? serverURL
+    }
+
+    private func getIcon() -> String {
+        if file.mime.hasPrefix("video/") { return "video.fill" }
+        if file.mime.hasPrefix("audio/") { return "waveform" }
+        if file.mime.hasPrefix("text/") || file.mime == "application/json" { return "doc.text.fill" }
+        if file.mime == "application/pdf" { return "doc.richtext.fill" }
+        if file.mime.contains("zip") || file.mime.contains("archive") { return "archivebox.fill" }
+        return "doc.fill"
+    }
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                ZStack(alignment: .bottom) {
+                    if isMedia {
+                        CachedAsyncImage(url: thumbnailURL) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Color(.systemGray5)
+                        }
+                        .clipped()
+                    } else {
+                        Color(.systemGray5)
+                            .overlay {
+                                Image(systemName: getIcon())
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.secondary)
+                            }
+                    }
+
+                    if !isMedia {
+                        Text(file.name)
+                            .font(.caption2)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .background(.black.opacity(0.5))
+                    }
+
+                    if file.private || file.password != "" || file.expr != "" {
+                        HStack(spacing: 2) {
+                            if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+                            if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+                            if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.55))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .padding(4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 }
 
 struct UserFilterView: View {

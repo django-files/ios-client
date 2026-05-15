@@ -952,18 +952,6 @@ struct StreamBroadcastView: View {
         ))
     }
 
-    // MARK: - Rotation helpers
-
-    /// Each control counter-rotates to stay upright while the layout stays fixed.
-    private var controlRotation: Angle {
-        switch deviceOrientation {
-        case .landscapeLeft:      return .degrees(90)
-        case .landscapeRight:     return .degrees(-90)
-        case .portraitUpsideDown: return .degrees(180)
-        default:                  return .degrees(0)
-        }
-    }
-
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -1032,11 +1020,9 @@ struct StreamBroadcastView: View {
                             }
                         }
                     }
-                    .frame(height: 420)
+                    .frame(height: deviceOrientation.isLandscape ? 200 : 380)
                     .background(.ultraThinMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                     .padding(.horizontal, 16)
                     .padding(.bottom, keyboardHeight > 0 ? keyboardHeight + 8 : 44)
                     .offset(y: chatDrawerOffset)
@@ -1054,9 +1040,6 @@ struct StreamBroadcastView: View {
                 .transition(.move(edge: .bottom))
             }
 
-            // Resolution picker — custom overlay so it counter-rotates with the
-            // other controls. A system Menu popup is always portrait-oriented and
-            // appears at the wrong position/angle when the device is in landscape.
             if showResolutionPicker {
                 Color.clear
                     .contentShape(Rectangle())
@@ -1073,19 +1056,12 @@ struct StreamBroadcastView: View {
                 .frame(width: 130)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .shadow(color: .black.opacity(0.25), radius: 8)
-                .rotationEffect(controlRotation)
-                .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(.top, 64)
                 .padding(.trailing, 16)
                 .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .topTrailing)))
             }
 
-            // Ingest info — custom card overlay so it counter-rotates correctly.
-            // A system .sheet() is always presented in the interface orientation
-            // (portrait-locked) and cannot be rotated, making it appear sideways
-            // in landscape. Pre-rotation the card is portrait-shaped (340×380);
-            // after the 90° counter-rotation it looks landscape-shaped (380×340).
             if showIngestInfo {
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
@@ -1095,8 +1071,6 @@ struct StreamBroadcastView: View {
                     .frame(width: 340, height: 380)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(color: .black.opacity(0.4), radius: 20)
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
@@ -1105,12 +1079,6 @@ struct StreamBroadcastView: View {
         .persistentSystemOverlays(.hidden)
         .task { await onAppear() }
         .onDisappear {
-            // Restore orientation support before leaving
-            AppDelegate.orientationLock = nil
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?
-                .requestGeometryUpdate(.iOS(interfaceOrientations: .all))
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             pipCoordinator.uninstall()
             Task { await broadcaster.teardown() }
@@ -1179,8 +1147,6 @@ struct StreamBroadcastView: View {
                     .foregroundStyle(.white)
                     .padding(10)
                     .background(.black.opacity(0.45), in: Circle())
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
             .buttonStyle(.plain)
 
@@ -1195,8 +1161,6 @@ struct StreamBroadcastView: View {
                         .foregroundStyle(.white)
                         .padding(10)
                         .background(.black.opacity(0.45), in: Circle())
-                        .rotationEffect(controlRotation)
-                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
                 .buttonStyle(.plain)
 
@@ -1215,8 +1179,6 @@ struct StreamBroadcastView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                         .background(.black.opacity(0.45), in: Capsule())
-                        .rotationEffect(controlRotation)
-                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
 
                 // Source switcher — tap to change between camera and screen share.
@@ -1256,8 +1218,6 @@ struct StreamBroadcastView: View {
                         .foregroundStyle(.white)
                         .padding(10)
                         .background(.black.opacity(0.45), in: Circle())
-                        .rotationEffect(controlRotation)
-                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                 }
                 .buttonStyle(.plain)
                 .disabled(broadcaster.isSwitchingMode)
@@ -1269,8 +1229,6 @@ struct StreamBroadcastView: View {
                             .foregroundStyle(.white)
                             .padding(10)
                             .background(.black.opacity(0.45), in: Circle())
-                            .rotationEffect(controlRotation)
-                            .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1310,8 +1268,6 @@ struct StreamBroadcastView: View {
                     .background(.black.opacity(0.45), in: Capsule())
             }
         }
-        .rotationEffect(controlRotation)
-        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
     }
 
     // MARK: - Bottom Bar
@@ -1330,8 +1286,6 @@ struct StreamBroadcastView: View {
                     .foregroundStyle(.white)
                     .frame(width: 52, height: 52)
                     .background(.black.opacity(0.45), in: Circle())
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
             .buttonStyle(.plain)
 
@@ -1351,8 +1305,6 @@ struct StreamBroadcastView: View {
                     .foregroundStyle(broadcaster.isMuted ? .red : .white)
                     .frame(width: 52, height: 52)
                     .background(.black.opacity(0.45), in: Circle())
-                    .rotationEffect(controlRotation)
-                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
             .buttonStyle(.plain)
         }
@@ -1367,8 +1319,6 @@ struct StreamBroadcastView: View {
         )
     }
 
-    /// Standard record button: fixed white ring with a state-driven inner shape.
-    /// The ring stays in place; only the inner icon counter-rotates to stay upright.
     private var recordButton: some View {
         Button {
             switch broadcaster.broadcastState {
@@ -1378,12 +1328,10 @@ struct StreamBroadcastView: View {
             }
         } label: {
             ZStack {
-                // Outer ring — never rotates
                 Circle()
                     .strokeBorder(.white, lineWidth: 3)
                     .frame(width: 72, height: 72)
 
-                // Inner indicator — rotates to stay upright
                 Group {
                     switch broadcaster.broadcastState {
                     case .idle, .error:
@@ -1398,8 +1346,6 @@ struct StreamBroadcastView: View {
                         ProgressView().tint(.white)
                     }
                 }
-                .rotationEffect(controlRotation)
-                .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
             .animation(.easeInOut(duration: 0.2), value: broadcaster.broadcastState.isLive)
         }
@@ -1514,8 +1460,6 @@ struct StreamBroadcastView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                 }
-                .rotationEffect(controlRotation)
-                .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
             }
     }
 
@@ -1603,23 +1547,9 @@ struct StreamBroadcastView: View {
         guard !didSetup else { return }
         didSetup = true
 
-        // Capture physical orientation before forcing portrait — requestGeometryUpdate
-        // causes UIDevice.current.orientation to settle on portrait, so reading it
-        // afterwards gives the wrong value when the device is already in landscape.
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        let physicalOrientation = UIDevice.current.orientation
-
-        // Lock interface to portrait so the layout never rotates;
-        // individual controls rotate themselves to stay upright.
-        AppDelegate.orientationLock = .portrait
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?
-            .requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-
-        if physicalOrientation.isValidInterfaceOrientation {
-            deviceOrientation = physicalOrientation
-        }
+        let o = UIDevice.current.orientation
+        if o.isValidInterfaceOrientation { deviceOrientation = o }
 
         async let ingestFetch = fetchIngestInfo()
         async let permissionsOK = checkAndRequestPermissions()

@@ -54,6 +54,14 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var didConfigureSettings = false
     private var lastStopCheck: Date = .distantPast
 
+    // Rotation — ReplayKit always delivers portrait-dimensioned pixel buffers
+    // and uses RPVideoSampleOrientationKey to signal the display rotation.
+    // We rotate the buffer to match the display orientation so the codec
+    // receives correctly-oriented pixels and the viewer sees the right picture.
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    private var rotatedBufferPool: CVPixelBufferPool?
+    private var rotatedBufferPoolConfig = CGSize.zero
+
     private var isMicMuted: Bool {
         UserDefaults(suiteName: Self.appGroupID)?.bool(forKey: Self.micMutedKey) ?? false
     }
@@ -130,8 +138,13 @@ final class SampleHandler: RPBroadcastSampleHandler {
         switch sampleBufferType {
         case .video:
             checkStopRequestIfNeeded()
-            reconfigureCodecIfNeeded(for: sampleBuffer)
-            let buf = sampleBuffer
+            let orientation = bufferOrientation(sampleBuffer)
+            // Rotate portrait-dimensioned buffer to match the display orientation
+            // so the encoder receives correctly-oriented pixels.
+            let buf = orientation.needsRotation
+                ? (rotate(sampleBuffer, for: orientation) ?? sampleBuffer)
+                : sampleBuffer
+            reconfigureCodecIfNeeded(for: buf)
             Task { [mixer] in await mixer.append(buf, track: 0) }
         case .audioApp:
             let buf = sampleBuffer
@@ -185,30 +198,80 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
     }
 
+    // MARK: - Buffer rotation
+
+    /// Rotates a CMSampleBuffer to the correct display orientation using CIImage.
+    /// The output buffer has swapped W/H for landscape orientations.
+    /// Returns nil on failure — caller falls back to the original buffer.
+    private func rotate(_ sampleBuffer: CMSampleBuffer,
+                        for orientation: CGImagePropertyOrientation) -> CMSampleBuffer? {
+        guard let src = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+
+        // CIImage.oriented() applies the correct rotation/flip for the given
+        // CGImagePropertyOrientation so the resulting image is display-upright.
+        let image = CIImage(cvPixelBuffer: src).oriented(orientation)
+        let dstW = Int(image.extent.width)
+        let dstH = Int(image.extent.height)
+
+        // Recreate the pool only when the output dimensions change (orientation switch).
+        if rotatedBufferPoolConfig != CGSize(width: dstW, height: dstH) {
+            let attrs: [CFString: Any] = [
+                kCVPixelBufferPixelFormatTypeKey: CVPixelBufferGetPixelFormatType(src),
+                kCVPixelBufferWidthKey: dstW,
+                kCVPixelBufferHeightKey: dstH,
+                kCVPixelBufferIOSurfacePropertiesKey: [:],
+            ]
+            var pool: CVPixelBufferPool?
+            CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool)
+            rotatedBufferPool = pool
+            rotatedBufferPoolConfig = CGSize(width: dstW, height: dstH)
+        }
+
+        var dst: CVPixelBuffer?
+        guard let pool = rotatedBufferPool,
+              CVPixelBufferPoolCreatePixelBuffer(nil, pool, &dst) == kCVReturnSuccess,
+              let dst else { return nil }
+
+        // CIImage.oriented() may leave a non-zero extent origin — translate to (0,0).
+        let translated = image.transformed(by: CGAffineTransform(
+            translationX: -image.extent.origin.x,
+            y: -image.extent.origin.y
+        ))
+        ciContext.render(translated, to: dst)
+
+        // Re-wrap in a CMSampleBuffer preserving the original timing.
+        var timing = CMSampleTimingInfo()
+        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+        var fmtDesc: CMFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: dst,
+            formatDescriptionOut: &fmtDesc
+        )
+        guard let fmtDesc else { return nil }
+        var out: CMSampleBuffer?
+        CMSampleBufferCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: dst,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: fmtDesc,
+            sampleTiming: &timing,
+            sampleBufferOut: &out
+        )
+        return out
+    }
+
     // MARK: - Codec sizing
 
-    /// Set the video codec's output size to match the actual sample buffer's
-    /// aspect ratio. scalingMode is .normal (fill, not preserve-aspect), so an
-    /// incorrect output size stretches the picture on the receiver.
-    ///
-    /// ReplayKit sometimes delivers portrait-dimensioned pixel buffers even when
-    /// the device is in landscape, using RPVideoSampleOrientationKey to indicate
-    /// the display rotation rather than swapping the buffer W/H. We read that
-    /// attachment so the codec output size reflects what the viewer should see,
-    /// not just the raw pixel buffer geometry.
+    /// Reconfigures the codec output size when the buffer geometry changes.
+    /// Rotation is applied before this call, so buffer dimensions directly
+    /// reflect the displayed orientation — no orientation-based swapping needed.
     private func reconfigureCodecIfNeeded(for buffer: CMSampleBuffer) {
         guard let pb = CMSampleBufferGetImageBuffer(buffer) else { return }
-
-        // Read the display orientation from the buffer attachment.
-        let orientation = bufferOrientation(buffer)
-        // For landscape orientations, swap the pixel dimensions so the codec
-        // output size matches the displayed (rotated) frame.
-        let rawW = CGFloat(CVPixelBufferGetWidth(pb))
-        let rawH = CGFloat(CVPixelBufferGetHeight(pb))
-        let (w, h): (CGFloat, CGFloat) = orientation.isLandscape
-            ? (max(rawW, rawH), min(rawW, rawH))   // landscape: wide > tall
-            : (min(rawW, rawH), max(rawW, rawH))   // portrait: tall > wide
-
+        let w = CGFloat(CVPixelBufferGetWidth(pb))
+        let h = CGFloat(CVPixelBufferGetHeight(pb))
         let size = CGSize(width: w, height: h)
         if didConfigureSettings && size == lastBufferSize { return }
         lastBufferSize = size
@@ -283,13 +346,9 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 }
 
-// CGImagePropertyOrientation.left/right = 90°/270° rotations = device is landscape.
-// Used to decide whether to swap buffer W/H when computing codec output dimensions.
 private extension CGImagePropertyOrientation {
-    var isLandscape: Bool {
-        switch self {
-        case .left, .leftMirrored, .right, .rightMirrored: return true
-        default: return false
-        }
+    // `.up` and `.upMirrored` are already display-correct — no rotation needed.
+    var needsRotation: Bool {
+        self != .up && self != .upMirrored
     }
 }

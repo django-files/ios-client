@@ -43,6 +43,7 @@ struct DFAPI {
         case auth_application = "auth/application/"
         case user = "user/"
         case users = "users/"
+        case version = "version/"
     }
     
     let url: URL

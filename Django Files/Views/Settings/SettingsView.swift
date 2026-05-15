@@ -4,63 +4,80 @@ struct SettingsView: View {
     @ObservedObject var sessionManager: SessionManager
     @Binding var showLoginSheet: Bool
     @State private var needsRefresh = true
-    
+    @State private var serverVersion: String? = nil
+
+    private func hostWithVersion(_ server: DjangoFilesSession) -> String {
+        let host = URL(string: server.url)?.host ?? server.url
+        if let version = serverVersion {
+            return "\(host) (\(version))"
+        }
+        return host
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 if let server = sessionManager.selectedSession {
                     if server.auth {
                         Section {
-                            HStack {
-                                if let avatarUrl = server.avatarUrl {
-                                    CachedAsyncImage(url: avatarUrl) { image in
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 50, height: 50)
-                                            .clipShape(Circle())
-                                    } placeholder: {
+                            NavigationLink {
+                                AuthViewContainer(
+                                    selectedServer: server,
+                                    customURL: server.url + "/settings/user/",
+                                    needsRefresh: $needsRefresh
+                                )
+                            } label: {
+                                HStack {
+                                    if let avatarUrl = server.avatarUrl {
+                                        CachedAsyncImage(url: avatarUrl) { image in
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 50, height: 50)
+                                                .clipShape(Circle())
+                                        } placeholder: {
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .frame(width: 50, height: 50)
+                                                .foregroundColor(.gray)
+                                        }
+                                    } else {
                                         Image(systemName: "person.circle.fill")
                                             .resizable()
                                             .frame(width: 50, height: 50)
                                             .foregroundColor(.gray)
                                     }
-                                } else {
-                                    Image(systemName: "person.circle.fill")
-                                        .resizable()
-                                        .frame(width: 50, height: 50)
-                                        .foregroundColor(.gray)
-                                }
-                                
-                                VStack(alignment: .leading) {
-                                    if let firstName = server.firstName, let username = server.username {
-                                        Text(firstName)
-                                            .font(.headline)
-                                        Text(username)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        if let username = server.username {
+                                            Text(username)
+                                                .font(.headline)
+                                        }
+                                        if let firstName = server.firstName, !firstName.isEmpty {
+                                            Text(firstName)
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Text(hostWithVersion(server))
                                             .font(.subheadline)
                                             .foregroundColor(.secondary)
-                                    } else if let username = server.username {
-                                        Text(username)
-                                            .font(.headline)
-                                    }
-                                    HStack{
-                                        Text(server.url)
-                                            .font(.subheadline)
                                     }
                                 }
-
+                                .padding(.vertical, 8)
                             }
-                            .padding(.vertical, 8)
                         }
                         .onAppear {
-                            print("Avatar URL: \(String(describing: server.avatarUrl))")
-
+                            Task {
+                                if let url = URL(string: server.url) {
+                                    serverVersion = await DFAPI(url: url, token: server.token).getVersion()
+                                }
+                            }
                         }
                     } else {
                         Text("Please sign into the selected server from the server list to use the application.")
                     }
                 }
-                
+
                 Section {
                     NavigationLink {
                         ServerSelector(selectedSession: $sessionManager.selectedSession)
@@ -71,19 +88,9 @@ struct SettingsView: View {
                 } header: {
                     Text("Select Active Server")
                 }
-                
+
                 if let server = sessionManager.selectedSession, server.auth {
                     Section {
-                        NavigationLink {
-                            AuthViewContainer(
-                                selectedServer: server,
-                                customURL: server.url + "/settings/user/",
-                                needsRefresh: $needsRefresh
-                            )
-                        } label: {
-                            Label("User Settings", systemImage: "person")
-                        }
-                        
                         NavigationLink {
                             AuthViewContainer(
                                 selectedServer: server,
@@ -97,7 +104,7 @@ struct SettingsView: View {
                         Text("Selected Server Settings")
                     }
                 }
-                
+
                 Section {
                     NavigationLink {
                         AppSettings()
