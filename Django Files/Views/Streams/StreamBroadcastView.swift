@@ -923,6 +923,7 @@ struct StreamBroadcastView: View {
     @State private var showChatDrawer = false
     @State private var chatDrawerOffset: CGFloat = 0
     @State private var broadcastPickerTrigger = 0
+    @State private var keyboardHeight: CGFloat = 0
     @State private var deviceOrientation: UIDeviceOrientation = {
         let o = UIDevice.current.orientation
         return o.isValidInterfaceOrientation ? o : .portrait
@@ -1009,59 +1010,47 @@ struct StreamBroadcastView: View {
 
             // Chat drawer — slides up from the bottom
             if showChatDrawer {
-                GeometryReader { geo in
+                VStack(spacing: 0) {
+                    Spacer()
                     VStack(spacing: 0) {
-                        Spacer()
-                        VStack(spacing: 0) {
-                            Capsule()
-                                .fill(Color(white: 0.6, opacity: 0.8))
-                                .frame(width: 36, height: 4)
-                                .padding(.vertical, 8)
+                        Capsule()
+                            .fill(Color(white: 0.6, opacity: 0.8))
+                            .frame(width: 36, height: 4)
+                            .padding(.vertical, 8)
 
-                            if chatManager.liveChat {
-                                chatPanel
-                            } else {
-                                VStack(spacing: 8) {
-                                    Spacer()
-                                    Image(systemName: "bubble.left.and.bubble.right")
-                                        .font(.system(size: 36))
-                                        .foregroundStyle(.secondary)
-                                    Text("Live chat is disabled")
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                }
+                        if chatManager.liveChat {
+                            chatPanel
+                        } else {
+                            VStack(spacing: 8) {
+                                Spacer()
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                    .font(.system(size: 36))
+                                    .foregroundStyle(.secondary)
+                                Text("Live chat is disabled")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
                             }
                         }
-                        // Cap height so the rotated panel (visual width = layout height)
-                        // doesn't overflow the screen when the device is in landscape.
-                        .frame(height: min(geo.size.height * 0.55, geo.size.width * 0.9, 420))
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .rotationEffect(controlRotation)
-                        .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
-                        .padding(.horizontal, 16)
-                        // geo.safeAreaInsets.bottom is 0 normally (container inset is ignored
-                        // via .ignoresSafeArea(.container) below) and equals keyboard height
-                        // when the software keyboard is shown — so this naturally avoids the
-                        // keyboard without firing for hardware keyboards or the simulator.
-                        .padding(.bottom, max(geo.safeAreaInsets.bottom + 8, 44))
-                        .offset(y: chatDrawerOffset)
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in chatDrawerOffset = max(0, value.translation.height) }
-                                .onEnded { value in
-                                    if value.translation.height > 100 {
-                                        withAnimation(.easeOut(duration: 0.25)) { showChatDrawer = false }
-                                    }
-                                    withAnimation(.spring()) { chatDrawerOffset = 0 }
-                                }
-                        )
                     }
+                    .frame(height: 420)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .rotationEffect(controlRotation)
+                    .animation(.easeInOut(duration: 0.25), value: deviceOrientation)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight + 8 : 44)
+                    .offset(y: chatDrawerOffset)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in chatDrawerOffset = max(0, value.translation.height) }
+                            .onEnded { value in
+                                if value.translation.height > 100 {
+                                    withAnimation(.easeOut(duration: 0.25)) { showChatDrawer = false }
+                                }
+                                withAnimation(.spring()) { chatDrawerOffset = 0 }
+                            }
+                    )
                 }
-                // .container ignores home-indicator/status-bar insets so the drawer
-                // fills edge-to-edge, but keeps the .keyboard inset active so
-                // geo.safeAreaInsets.bottom reflects the real software keyboard height.
-                .ignoresSafeArea(.container)
                 .transition(.move(edge: .bottom))
             }
 
@@ -1111,6 +1100,7 @@ struct StreamBroadcastView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .ignoresSafeArea(.keyboard)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .task { await onAppear() }
@@ -1134,6 +1124,18 @@ struct StreamBroadcastView: View {
                 deviceOrientation = o
                 broadcaster.updateOrientation(deviceOrientation: o)
             }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
+        ) { notification in
+            if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                withAnimation(.easeOut(duration: 0.25)) { keyboardHeight = frame.height }
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
+        ) { _ in
+            withAnimation(.easeOut(duration: 0.25)) { keyboardHeight = 0 }
         }
         .confirmationDialog(
             "End Stream?",
