@@ -52,6 +52,7 @@ struct SettingsView: View {
                                                 .frame(width: 44, height: 44)
                                                 .foregroundColor(.gray)
                                         }
+                                        .id(avatarUrl)
                                     } else {
                                         Image(systemName: "person.circle.fill")
                                             .resizable()
