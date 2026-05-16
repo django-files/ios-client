@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct DFFile: Codable, Hashable, Equatable {
+public struct DFFile: Codable, Hashable, Equatable, Identifiable {
     public var id: Int
     public var user: Int
     public var size: Int

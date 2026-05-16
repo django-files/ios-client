@@ -286,22 +286,23 @@ struct FileListView: View {
     private var gridContent: some View {
         ScrollView {
             LazyVGrid(columns: gridColumns, spacing: 2) {
-                ForEach(files.indices, id: \.self) { index in
+                ForEach(files) { file in
                     Button {
-                        selectedFile = files[index]
+                        selectedFile = file
                         showingPreview = true
                     } label: {
                         FileGridItemView(
-                            file: $fileListManager.files[index],
+                            file: file,
                             serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
-                        fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                     }
                     .onAppear {
-                        if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
+                        if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
                             loadNextPage()
                         }
                     }
@@ -323,6 +324,7 @@ struct FileListView: View {
                 await refreshFiles()
             }
         }
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     var body: some View {
@@ -925,7 +927,7 @@ struct FileListView: View {
 }
 
 struct FileGridItemView: View {
-    @Binding var file: DFFile
+    let file: DFFile
     let serverURL: URL
 
     private var isMedia: Bool {
@@ -958,7 +960,6 @@ struct FileGridItemView: View {
                         } placeholder: {
                             Color(.systemGray5)
                         }
-                        .clipped()
                     } else {
                         Color(.systemGray5)
                             .overlay {
@@ -995,6 +996,7 @@ struct FileGridItemView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     }
                 }
+                .clipped()
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
