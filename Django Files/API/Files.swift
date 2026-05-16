@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreLocation
 
 public struct DFFile: Codable, Hashable, Equatable, Identifiable {
     public var id: Int
@@ -233,6 +234,45 @@ public struct DFFilesResponse: Codable {
     public let count: Int
 }
 
+extension DFFile {
+    public var gpsCoordinate: CLLocationCoordinate2D? {
+        guard let gpsInfo = exif?["GPSInfo"]?.value as? [String: Any],
+              let latRaw = gpsInfo["2"] as? [Any], latRaw.count >= 3,
+              let lonRaw = gpsInfo["4"] as? [Any], lonRaw.count >= 3 else { return nil }
+
+        func toDouble(_ v: Any) -> Double? {
+            switch v {
+            case let d as Double: return d
+            case let i as Int: return Double(i)
+            default: return nil
+            }
+        }
+
+        guard let latD = toDouble(latRaw[0]), let latM = toDouble(latRaw[1]), let latS = toDouble(latRaw[2]),
+              let lonD = toDouble(lonRaw[0]), let lonM = toDouble(lonRaw[1]), let lonS = toDouble(lonRaw[2]) else {
+            return nil
+        }
+
+        var lat = latD + latM / 60.0 + latS / 3600.0
+        var lon = lonD + lonM / 60.0 + lonS / 3600.0
+
+        if (gpsInfo["1"] as? String ?? "N").uppercased() == "S" { lat = -lat }
+        if (gpsInfo["3"] as? String ?? "E").uppercased() == "W" { lon = -lon }
+
+        guard lat != 0 || lon != 0 else { return nil }
+        let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        guard CLLocationCoordinate2DIsValid(coord) else { return nil }
+        return coord
+    }
+
+    public var gpsArea: String? { meta?["GPSArea"]?.value as? String }
+
+    public var gpsAltitude: Double? {
+        guard let info = exif?["GPSInfo"]?.value as? [String: Any] else { return nil }
+        return info["6"] as? Double
+    }
+}
+
 extension DFAPI {
     public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil) async -> DFFilesResponse? {
         do {
@@ -340,5 +380,19 @@ extension DFAPI {
             print("File Edit Failed \(error)")
             return false
         }
+    }
+
+    public func getFilesWithGPS(selectedServer: DjangoFilesSession? = nil, onPage: (([DFFile]) -> Void)? = nil) async -> [DFFile] {
+        var result: [DFFile] = []
+        var page = 1
+        while true {
+            guard let response = await getFiles(page: page, selectedServer: selectedServer) else { break }
+            let geo = response.files.filter { $0.gpsCoordinate != nil }
+            result.append(contentsOf: geo)
+            onPage?(geo)
+            guard response.next != nil else { break }
+            page += 1
+        }
+        return result
     }
 }

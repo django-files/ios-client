@@ -205,6 +205,7 @@ struct FileListView: View {
     @State private var showFileInfo: Bool = false
     @State private var showingUserFilter: Bool = false
     @State private var users: [DFUser] = []
+    @State private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
@@ -536,6 +537,14 @@ struct FileListView: View {
                 }
             }
 
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showingMap = true
+                } label: {
+                    Image(systemName: "map")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: {
@@ -597,6 +606,9 @@ struct FileListView: View {
                         }
                     }
             }
+        }
+        .fullScreenCover(isPresented: $showingMap) {
+            FileMapView(server: server)
         }
         .background(
             FileDialogs(
