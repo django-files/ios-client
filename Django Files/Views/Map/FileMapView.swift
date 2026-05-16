@@ -9,8 +9,12 @@ import CoreLocation
 
 // MARK: - Private models
 
-// @unchecked Sendable: immutable value structs, only ever touched on main actor
-// or inside the single cluster Task.detached — never shared between concurrent tasks.
+private struct PinSummary: Sendable {
+    let id: Int
+    let lat: Double
+    let lon: Double
+}
+
 private struct GeoFile: Identifiable, @unchecked Sendable {
     let file: DFFile
     let coordinate: CLLocationCoordinate2D
@@ -18,17 +22,13 @@ private struct GeoFile: Identifiable, @unchecked Sendable {
 }
 
 private struct MapCluster: Identifiable, @unchecked Sendable {
-    let id: String          // stable grid-cell key — no UUID churn
+    let id: String                  // stable grid-cell key — no UUID churn
     let coordinate: CLLocationCoordinate2D
     let files: [GeoFile]
     var isCluster: Bool { files.count > 1 }
     var representative: GeoFile? {
         files.first(where: { $0.file.mime.hasPrefix("image/") }) ?? files.first
     }
-}
-
-private struct PinSummary: Sendable {
-    let id: Int; let lat: Double; let lon: Double
 }
 
 // MARK: - FileMapView
@@ -38,19 +38,25 @@ struct FileMapView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var geoFiles:       [DFFile]           = []
-    @State private var coordCache:     [Int: PinSummary]  = [:]
-    @State private var clusters:       [MapCluster]        = []
+    // geoFiles drives the preview sheet; coordCache is the fast-lookup for clustering.
+    @State private var geoFiles:       [DFFile]          = []
+    @State private var coordCache:     [Int: PinSummary] = [:]
+    @State private var clusters:       [MapCluster]       = []
     @State private var mapSpan         = MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
-    @State private var cameraPosition: MapCameraPosition   = .automatic
-    @State private var isLoading                           = false
-    @State private var showingPreview                      = false
-    @State private var showFileInfo                        = false
-    @State private var previewIndex                        = 0
-    @State private var loadTask:    Task<Void, Never>?     = nil
-    @State private var clusterTask: Task<Void, Never>?     = nil
+    @State private var cameraPosition: MapCameraPosition  = .automatic
+    @State private var isLoading                          = false
+    @State private var showingPreview                     = false
+    @State private var showFileInfo                       = false
+    @State private var previewIndex                       = 0
+    @State private var loadTask:    Task<Void, Never>?    = nil
+    @State private var clusterTask: Task<Void, Never>?    = nil
+
 
     // MARK: Helpers
+
+    private var serverKey: String? {
+        server.wrappedValue.flatMap { URL(string: $0.url) }?.absoluteString
+    }
 
     private var serverURL: URL? {
         server.wrappedValue.flatMap { URL(string: $0.url) }
@@ -65,9 +71,7 @@ struct FileMapView: View {
     }
 
     // MARK: Clustering
-    // Called only from two places: after loading finishes, and on camera-change-end.
-    // Pure Task.detached — no nested awaits, no main-actor involvement until the
-    // final single-line clusters assignment.
+
     private func updateClusters() {
         let pins    = Array(coordCache.values)
         let ids     = geoFiles.map { $0.id }
@@ -84,7 +88,6 @@ struct FileMapView: View {
             for p in pins  { pinByID[p.id]  = p }
             for f in files { idToFile[f.id] = f }
 
-            // Adaptive: double cell size until annotation count ≤ 50.
             let maxAnnotations = 50
             var cellSize = max(spanLat / 8.0, spanLon / 8.0, 0.001)
             var cells: [String: [Int]] = [:]
@@ -98,7 +101,6 @@ struct FileMapView: View {
                 if cells.count <= maxAnnotations { break }
                 cellSize *= 2.0
             } while cellSize < 360.0
-
             guard !Task.isCancelled else { return }
 
             let newClusters: [MapCluster] = cells.compactMap { key, memberIDs in
@@ -121,6 +123,12 @@ struct FileMapView: View {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard !Task.isCancelled else { return }
+                // Only update when clusters actually differ — prevents an infinite
+                // cycle where MapKit sees a new cluster array, adjusts .automatic
+                // camera, fires onMapCameraChange, calls updateClusters, ad infinitum.
+                guard self.clusters.count != newClusters.count
+                        || zip(self.clusters, newClusters).contains(where: { $0.id != $1.id })
+                else { return }
                 self.clusters = newClusters
             }
         }
@@ -131,8 +139,9 @@ struct FileMapView: View {
         let lons = cluster.files.map { $0.coordinate.longitude }
         guard let minLat = lats.min(), let maxLat = lats.max(),
               let minLon = lons.min(), let maxLon = lons.max() else { return }
-        let span = MKCoordinateSpan(latitudeDelta:  max((maxLat - minLat) * 2.5, 0.002),
-                                    longitudeDelta: max((maxLon - minLon) * 2.5, 0.002))
+        let span = MKCoordinateSpan(
+            latitudeDelta:  max((maxLat - minLat) * 2.5, 0.002),
+            longitudeDelta: max((maxLon - minLon) * 2.5, 0.002))
         withAnimation {
             cameraPosition = .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude:  (minLat + maxLat) / 2,
@@ -179,12 +188,7 @@ struct FileMapView: View {
     var body: some View {
         Map(position: $cameraPosition, content: mapContent)
             .mapStyle(.standard)
-            .onMapCameraChange(frequency: .onEnd) { ctx in
-                mapSpan = ctx.region.span
-                updateClusters()
-            }
             .ignoresSafeArea()
-            // Floating toolbar — no NavigationStack needed in a fullScreenCover.
             .safeAreaInset(edge: .top) {
                 HStack {
                     Button { dismiss() } label: {
@@ -195,19 +199,28 @@ struct FileMapView: View {
                     }
                     Spacer()
                     if !geoFiles.isEmpty {
-                        Text("\(geoFiles.count) files")
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: Capsule())
+                        HStack(spacing: 6) {
+                            Text("\(geoFiles.count) files")
+                            if isLoading {
+                                ProgressView().scaleEffect(0.7)
+                            }
+                        }
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-                .background(.clear)
             }
             .overlay {
-                if !isLoading && geoFiles.isEmpty {
+                if isLoading && geoFiles.isEmpty {
+                    ProgressView()
+                        .controlSize(.large)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.ultraThinMaterial)
+                } else if !isLoading && geoFiles.isEmpty {
                     ContentUnavailableView(
                         "No GPS Files",
                         systemImage: "location.slash.fill",
@@ -216,14 +229,14 @@ struct FileMapView: View {
                 }
             }
             .fullScreenCover(isPresented: $showingPreview, content: previewContent)
-        .onAppear(perform: loadGPSFiles)
-        .onDisappear {
-            loadTask?.cancel()
-            clusterTask?.cancel()
-        }
-        .onChange(of: server.wrappedValue?.url) { _, _ in
-            loadGPSFiles()
-        }
+            .onAppear(perform: loadGPSFiles)
+            .onDisappear {
+                loadTask?.cancel()
+                clusterTask?.cancel()
+            }
+            .onChange(of: server.wrappedValue?.url) { _, _ in
+                loadGPSFiles()
+            }
     }
 
     // MARK: Preview
@@ -248,59 +261,75 @@ struct FileMapView: View {
     }
 
     // MARK: Loading
-    // Clusters are updated only after all pages finish loading, and on camera change.
-    // No mid-load cluster updates — the file counter shows progress instead.
+    //
+    // Strategy:
+    //  1. Show cached entries immediately (no flash on re-open).
+    //  2. Fetch page 1; if ALL file IDs on the page are already in the seen-set,
+    //     we're up to date and stop early. Otherwise add new geo files and continue.
     private func loadGPSFiles() {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else { return }
-
+        let key   = url.absoluteString
         let token = serverInstance.token
 
         loadTask?.cancel()
         clusterTask?.cancel()
 
-        isLoading  = true
-        geoFiles   = []
-        clusters   = []
-        coordCache = [:]
+        loadTask = Task { @MainActor in
+            isLoading = true
+            defer { isLoading = false }
 
-        loadTask = Task {
+            let store  = MapGeoCacheStore.shared
+            let cached = store.entries(for: key)
+            if !cached.isEmpty {
+                applyEntries(cached)
+                updateClusters()
+            }
+
             let api  = DFAPI(url: url, token: token)
             var page = 1
-            var firstBatch = true
 
             while !Task.isCancelled {
                 guard let response = await api.getFiles(page: page) else { break }
                 guard !Task.isCancelled else { break }
 
-                var newCoords: [Int: PinSummary] = [:]
-                for file in response.files {
-                    if let coord = file.gpsCoordinate {
-                        newCoords[file.id] = PinSummary(id: file.id,
-                                                        lat: coord.latitude,
-                                                        lon: coord.longitude)
-                    }
-                }
-                let newFiles = response.files.filter { newCoords[$0.id] != nil }
+                let pageIDs   = Set(response.files.map { $0.id })
+                let fullyKnown = store.isPageFullyKnown(pageIDs, for: key)
 
-                if !newFiles.isEmpty {
-                    coordCache.merge(newCoords) { _, new in new }
-                    geoFiles.append(contentsOf: newFiles)
-                    if firstBatch {
-                        firstBatch = false
-                        cameraPosition = .automatic
-                    }
+                let newEntries: [MapGeoCacheStore.Entry] = response.files.compactMap { file in
+                    guard let coord = file.gpsCoordinate else { return nil }
+                    return MapGeoCacheStore.Entry(file: file,
+                                                  lat: coord.latitude,
+                                                  lon: coord.longitude)
                 }
 
+                guard !Task.isCancelled else { break }
+
+                store.mark(seen: pageIDs, entries: newEntries, for: key)
+
+                if !newEntries.isEmpty {
+                    applyEntries(newEntries)
+                }
+
+                if fullyKnown { break }
                 guard response.next != nil else { break }
                 page += 1
             }
 
-            isLoading = false
-            if !Task.isCancelled {
-                updateClusters()
-            }
+            guard !Task.isCancelled else { return }
+            updateClusters()
         }
+    }
+
+    /// Merge a batch of cache entries into the live state, avoiding duplicates.
+    private func applyEntries(_ entries: [MapGeoCacheStore.Entry]) {
+        for e in entries {
+            coordCache[e.file.id] = PinSummary(id: e.file.id, lat: e.lat, lon: e.lon)
+        }
+        let newIDs   = Set(entries.map { $0.file.id })
+        let newFiles = entries.map { $0.file }
+        geoFiles.removeAll { newIDs.contains($0.id) }
+        geoFiles.append(contentsOf: newFiles)
     }
 }
 

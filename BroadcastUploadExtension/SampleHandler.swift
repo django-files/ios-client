@@ -289,9 +289,11 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func initialVideoSettings() -> VideoCodecSettings {
-        // UIScreen.nativeBounds is always portrait pixels; close enough as a
-        // bootstrap value before the first real frame arrives.
-        let native = UIScreen.main.nativeBounds.size
+        // Bootstrap before the first real frame arrives.
+        // Both UIScreen.main (iOS 26) and UIScreen.screens (iOS 16) are
+        // deprecated, and UIApplication.shared is unavailable in extensions,
+        // so use a representative modern display resolution.
+        let native = CGSize(width: 1179, height: 2556)
         let target = videoSizePreservingAspect(source: native, longEdge: longEdgePixels)
         return VideoCodecSettings(
             videoSize: target,
