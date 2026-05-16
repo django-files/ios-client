@@ -88,7 +88,9 @@ struct FileMapView: View {
             for p in pins  { pinByID[p.id]  = p }
             for f in files { idToFile[f.id] = f }
 
-            let maxAnnotations = 50
+            // At close zoom levels show more pins so clusters resolve into
+            // individual annotations when drilling in.
+            let maxAnnotations = (spanLat < 0.1 && spanLon < 0.1) ? 500 : 50
             var cellSize = max(spanLat / 8.0, spanLon / 8.0, 0.001)
             var cells: [String: [Int]] = [:]
             repeat {
@@ -139,9 +141,21 @@ struct FileMapView: View {
         let lons = cluster.files.map { $0.coordinate.longitude }
         guard let minLat = lats.min(), let maxLat = lats.max(),
               let minLon = lons.min(), let maxLon = lons.max() else { return }
+
+        // All files at essentially the same coordinate — can't
+        // resolve via zoom; open the preview directly instead.
+        if (maxLat - minLat) < 0.0001 && (maxLon - minLon) < 0.0001 {
+            if let first = cluster.files.first,
+               let idx = geoFiles.firstIndex(of: first.file) {
+                previewIndex = idx
+                showingPreview = true
+            }
+            return
+        }
+
         let span = MKCoordinateSpan(
-            latitudeDelta:  max((maxLat - minLat) * 2.5, 0.002),
-            longitudeDelta: max((maxLon - minLon) * 2.5, 0.002))
+            latitudeDelta:  max((maxLat - minLat) * 1.5, 0.002),
+            longitudeDelta: max((maxLon - minLon) * 1.5, 0.002))
         withAnimation {
             cameraPosition = .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude:  (minLat + maxLat) / 2,
@@ -188,6 +202,16 @@ struct FileMapView: View {
     var body: some View {
         Map(position: $cameraPosition, content: mapContent)
             .mapStyle(.standard)
+            .onMapCameraChange(frequency: .onEnd) { ctx in
+                // Convert .automatic → .region on first camera change so that
+                // subsequent self.clusters updates don't trigger camera adjustments
+                // (which would fire onMapCameraChange → updateClusters → … ad infinitum).
+                if case .automatic = cameraPosition {
+                    cameraPosition = .region(ctx.region)
+                }
+                mapSpan = ctx.region.span
+                updateClusters()
+            }
             .ignoresSafeArea()
             .safeAreaInset(edge: .top) {
                 HStack {
@@ -317,6 +341,7 @@ struct FileMapView: View {
             }
 
             guard !Task.isCancelled else { return }
+            store.markFullySynced(key)
             updateClusters()
         }
     }

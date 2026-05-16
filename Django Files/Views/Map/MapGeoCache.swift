@@ -23,14 +23,19 @@ final class MapGeoCacheStore {
     private var entriesByServer: [String: [Int: Entry]] = [:]
     // All file IDs seen from the API (geo or not) — used to detect "fully caught up" pages
     private var seenIDsByServer: [String: Set<Int>] = [:]
+    // Servers whose last load finished all pages; only then is the
+    // "fullyKnown" shortcut safe to use.
+    private var fullySyncedServers: Set<String> = []
 
     func entries(for server: String) -> [Entry] {
         Array((entriesByServer[server] ?? [:]).values)
     }
 
-    /// Returns true if every ID in `ids` was already recorded for this server.
+    /// Returns true if every ID in `ids` was already recorded for this server
+    /// AND the server completed a full prior sync.
     func isPageFullyKnown(_ ids: Set<Int>, for server: String) -> Bool {
-        guard let seen = seenIDsByServer[server], !seen.isEmpty else { return false }
+        guard fullySyncedServers.contains(server),
+              let seen = seenIDsByServer[server], !seen.isEmpty else { return false }
         return ids.isSubset(of: seen)
     }
 
@@ -39,6 +44,10 @@ final class MapGeoCacheStore {
         for e in newEntries {
             entriesByServer[server, default: [:]][e.file.id] = e
         }
+    }
+
+    func markFullySynced(_ server: String) {
+        fullySyncedServers.insert(server)
     }
 
     func invalidate(for server: String) {
