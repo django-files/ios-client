@@ -523,7 +523,7 @@ final class RTMPBroadcaster: ObservableObject {
             // explicitly checks `session.isMultitaskingCameraAccessEnabled`
             // before deciding whether to pause video on background.
             if #available(iOS 16.0, *) {
-                var supported = false
+                nonisolated(unsafe) var supported = false
                 await mixer.configuration { session in
                     if session.isMultitaskingCameraAccessSupported {
                         session.isMultitaskingCameraAccessEnabled = true
@@ -814,7 +814,7 @@ final class RTMPBroadcaster: ObservableObject {
             // the view in screen mode (where setup() skips this) and only now
             // arrived at the camera path. Idempotent — safe to run again.
             if #available(iOS 16.0, *) {
-                var supported = false
+                nonisolated(unsafe) var supported = false
                 await mixer.configuration { session in
                     if session.isMultitaskingCameraAccessSupported {
                         session.isMultitaskingCameraAccessEnabled = true

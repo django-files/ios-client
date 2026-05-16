@@ -80,34 +80,33 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     
     private func loadImage() {
         guard let url = url else { return }
-        
+
         let urlString = url.absoluteString
-        
-        // Check cache first
+
         if let cached = ImageCache.shared.get(for: urlString) {
             self.cachedImage = cached
             return
         }
-        
+
         isLoading = true
-        
+
         Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        ImageCache.shared.set(uiImage, for: urlString)
-                        self.cachedImage = uiImage
-                        self.isLoading = false
-                    }
-                }
-            } catch {
-                print("Error loading image: \(error)")
-                await MainActor.run {
-                    self.isLoading = false
-                    self.loadFailed = true
-                }
+            // Download and decode entirely off the main thread.
+            // Task{} alone inherits the main actor, making UIImage(data:) block the UI.
+            // Task.detached runs on the cooperative pool; we await its result, then
+            // update SwiftUI state once we're back on the main actor.
+            let decoded: UIImage? = await Task.detached(priority: .utility) {
+                guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+                return UIImage(data: data)
+            }.value
+
+            if let uiImage = decoded {
+                ImageCache.shared.set(uiImage, for: urlString)
+                self.cachedImage = uiImage
+            } else {
+                self.loadFailed = true
             }
+            self.isLoading = false
         }
     }
 }

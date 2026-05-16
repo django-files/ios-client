@@ -7,24 +7,28 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
-// MARK: - Internal data models
+// MARK: - Private models
 
-private struct GeoFile: Identifiable {
+// @unchecked Sendable: immutable value structs, only ever touched on main actor
+// or inside the single cluster Task.detached — never shared between concurrent tasks.
+private struct GeoFile: Identifiable, @unchecked Sendable {
     let file: DFFile
     let coordinate: CLLocationCoordinate2D
     var id: Int { file.id }
 }
 
-private struct MapCluster: Identifiable {
-    let id: String                      // stable grid-cell key — no UUID churn
+private struct MapCluster: Identifiable, @unchecked Sendable {
+    let id: String          // stable grid-cell key — no UUID churn
     let coordinate: CLLocationCoordinate2D
     let files: [GeoFile]
     var isCluster: Bool { files.count > 1 }
-
-    /// First image file in the cluster, or the first file of any type.
     var representative: GeoFile? {
         files.first(where: { $0.file.mime.hasPrefix("image/") }) ?? files.first
     }
+}
+
+private struct PinSummary: Sendable {
+    let id: Int; let lat: Double; let lon: Double
 }
 
 // MARK: - FileMapView
@@ -34,14 +38,17 @@ struct FileMapView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var geoFiles:  [DFFile]     = []
-    @State private var clusters:  [MapCluster] = []
-    @State private var mapSpan    = MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
-    @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var isLoading      = false
-    @State private var showingPreview = false
-    @State private var showFileInfo   = false
-    @State private var previewIndex   = 0
+    @State private var geoFiles:       [DFFile]           = []
+    @State private var coordCache:     [Int: PinSummary]  = [:]
+    @State private var clusters:       [MapCluster]        = []
+    @State private var mapSpan         = MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
+    @State private var cameraPosition: MapCameraPosition   = .automatic
+    @State private var isLoading                           = false
+    @State private var showingPreview                      = false
+    @State private var showFileInfo                        = false
+    @State private var previewIndex                        = 0
+    @State private var loadTask:    Task<Void, Never>?     = nil
+    @State private var clusterTask: Task<Void, Never>?     = nil
 
     // MARK: Helpers
 
@@ -51,41 +58,71 @@ struct FileMapView: View {
 
     private func thumbURL(for file: DFFile) -> URL? {
         guard let base = serverURL else { return nil }
-        var c = URLComponents(
-            url: base.appendingPathComponent("/raw/\(file.name)"),
-            resolvingAgainstBaseURL: true
-        )
+        var c = URLComponents(url: base.appendingPathComponent("/raw/\(file.name)"),
+                              resolvingAgainstBaseURL: true)
         c?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
         return c?.url
     }
 
     // MARK: Clustering
-
-    /// Rebuilds `clusters` from the current `geoFiles` and `mapSpan`.
-    /// Uses stable string IDs so SwiftUI diffs existing annotation views
-    /// rather than destroying and recreating them on every render.
+    // Called only from two places: after loading finishes, and on camera-change-end.
+    // Pure Task.detached — no nested awaits, no main-actor involvement until the
+    // final single-line clusters assignment.
     private func updateClusters() {
-        let cellSize = max(mapSpan.latitudeDelta / 8.0,
-                          mapSpan.longitudeDelta / 8.0,
-                          0.0005)
+        let pins    = Array(coordCache.values)
+        let ids     = geoFiles.map { $0.id }
+        let files   = geoFiles
+        let spanLat = mapSpan.latitudeDelta
+        let spanLon = mapSpan.longitudeDelta
 
-        var cells: [String: [GeoFile]] = [:]
-        for file in geoFiles {
-            guard let coord = file.gpsCoordinate else { continue }
-            let geo = GeoFile(file: file, coordinate: coord)
-            let key = "\(Int(floor(coord.latitude  / cellSize)))_" +
-                      "\(Int(floor(coord.longitude / cellSize)))"
-            cells[key, default: []].append(geo)
-        }
+        clusterTask?.cancel()
+        clusterTask = Task.detached(priority: .userInitiated) {
+            guard !Task.isCancelled else { return }
 
-        clusters = cells.map { key, group in
-            let lat = group.reduce(0.0) { $0 + $1.coordinate.latitude  } / Double(group.count)
-            let lon = group.reduce(0.0) { $0 + $1.coordinate.longitude } / Double(group.count)
-            return MapCluster(
-                id: key,
-                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                files: group
-            )
+            var pinByID:  [Int: PinSummary] = [:]
+            var idToFile: [Int: DFFile]     = [:]
+            for p in pins  { pinByID[p.id]  = p }
+            for f in files { idToFile[f.id] = f }
+
+            // Adaptive: double cell size until annotation count ≤ 50.
+            let maxAnnotations = 50
+            var cellSize = max(spanLat / 8.0, spanLon / 8.0, 0.001)
+            var cells: [String: [Int]] = [:]
+            repeat {
+                cells.removeAll(keepingCapacity: true)
+                for id in ids {
+                    guard let p = pinByID[id] else { continue }
+                    let key = "\(Int(floor(p.lat / cellSize)))_\(Int(floor(p.lon / cellSize)))"
+                    cells[key, default: []].append(id)
+                }
+                if cells.count <= maxAnnotations { break }
+                cellSize *= 2.0
+            } while cellSize < 360.0
+
+            guard !Task.isCancelled else { return }
+
+            let newClusters: [MapCluster] = cells.compactMap { key, memberIDs in
+                var sumLat = 0.0, sumLon = 0.0
+                let geos: [GeoFile] = memberIDs.compactMap { id in
+                    guard let file = idToFile[id], let p = pinByID[id] else { return nil }
+                    sumLat += p.lat; sumLon += p.lon
+                    return GeoFile(file: file,
+                                   coordinate: CLLocationCoordinate2D(latitude: p.lat,
+                                                                      longitude: p.lon))
+                }
+                guard !geos.isEmpty else { return nil }
+                let n = Double(geos.count)
+                return MapCluster(id: key,
+                                  coordinate: CLLocationCoordinate2D(latitude:  sumLat / n,
+                                                                     longitude: sumLon / n),
+                                  files: geos)
+            }
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                self.clusters = newClusters
+            }
         }
     }
 
@@ -94,21 +131,17 @@ struct FileMapView: View {
         let lons = cluster.files.map { $0.coordinate.longitude }
         guard let minLat = lats.min(), let maxLat = lats.max(),
               let minLon = lons.min(), let maxLon = lons.max() else { return }
-
-        let span = MKCoordinateSpan(
-            latitudeDelta:  max((maxLat - minLat) * 2.5, 0.002),
-            longitudeDelta: max((maxLon - minLon) * 2.5, 0.002)
-        )
-        let center = CLLocationCoordinate2D(
-            latitude:  (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
+        let span = MKCoordinateSpan(latitudeDelta:  max((maxLat - minLat) * 2.5, 0.002),
+                                    longitudeDelta: max((maxLon - minLon) * 2.5, 0.002))
         withAnimation {
-            cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+            cameraPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude:  (minLat + maxLat) / 2,
+                                              longitude: (minLon + maxLon) / 2),
+                span: span))
         }
     }
 
-    // MARK: Map annotation content (separate @ViewBuilder avoids type-checker overload)
+    // MARK: Map content
 
     @ViewBuilder
     private func pinView(for cluster: MapCluster) -> some View {
@@ -132,7 +165,6 @@ struct FileMapView: View {
         }
     }
 
-    // Extracted so Map{} body stays trivially simple for the Swift type-checker
     @MapContentBuilder
     private func mapContent() -> some MapContent {
         ForEach(clusters) { cluster in
@@ -145,27 +177,36 @@ struct FileMapView: View {
     // MARK: Body
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Map(position: $cameraPosition, content: mapContent)
-                    .mapStyle(.standard(elevation: .realistic))
-                    .onMapCameraChange { ctx in
-                        mapSpan = ctx.region.span
-                        updateClusters()
+        Map(position: $cameraPosition, content: mapContent)
+            .mapStyle(.standard)
+            .onMapCameraChange(frequency: .onEnd) { ctx in
+                mapSpan = ctx.region.span
+                updateClusters()
+            }
+            .ignoresSafeArea()
+            // Floating toolbar — no NavigationStack needed in a fullScreenCover.
+            .safeAreaInset(edge: .top) {
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .frame(width: 32, height: 32)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
-                    .ignoresSafeArea(edges: .bottom)
-                    .fullScreenCover(isPresented: $showingPreview, content: previewContent)
-
-                if isLoading && geoFiles.isEmpty {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading GPS files…").font(.subheadline)
+                    Spacer()
+                    if !geoFiles.isEmpty {
+                        Text("\(geoFiles.count) files")
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.ultraThinMaterial, in: Capsule())
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
-
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.clear)
+            }
+            .overlay {
                 if !isLoading && geoFiles.isEmpty {
                     ContentUnavailableView(
                         "No GPS Files",
@@ -174,44 +215,25 @@ struct FileMapView: View {
                     )
                 }
             }
-            .navigationTitle("Map")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .fontWeight(.semibold)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if !geoFiles.isEmpty {
-                        Text("\(geoFiles.count) files")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
+            .fullScreenCover(isPresented: $showingPreview, content: previewContent)
         .onAppear(perform: loadGPSFiles)
+        .onDisappear {
+            loadTask?.cancel()
+            clusterTask?.cancel()
+        }
         .onChange(of: server.wrappedValue?.url) { _, _ in
-            geoFiles = []
-            clusters = []
             loadGPSFiles()
         }
     }
 
-    // MARK: Preview content
+    // MARK: Preview
 
     @ViewBuilder
     private func previewContent() -> some View {
         if !geoFiles.isEmpty, previewIndex < geoFiles.count {
             FilePreviewView(
-                file: Binding(
-                    get: { geoFiles[previewIndex] },
-                    set: { geoFiles[previewIndex] = $0 }
-                ),
+                file: Binding(get: { geoFiles[previewIndex] },
+                              set: { geoFiles[previewIndex] = $0 }),
                 server: server,
                 showingPreview: $showingPreview,
                 showFileInfo: $showFileInfo,
@@ -225,33 +247,64 @@ struct FileMapView: View {
         }
     }
 
-    // MARK: Data loading
-
+    // MARK: Loading
+    // Clusters are updated only after all pages finish loading, and on camera change.
+    // No mid-load cluster updates — the file counter shows progress instead.
     private func loadGPSFiles() {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else { return }
-        isLoading = true
-        geoFiles  = []
-        clusters  = []
 
-        Task {
-            let api = DFAPI(url: url, token: serverInstance.token)
-            _ = await api.getFilesWithGPS(selectedServer: serverInstance) { pageGeo in
-                Task { @MainActor in
-                    geoFiles.append(contentsOf: pageGeo)
-                    updateClusters()
-                    if geoFiles.count == pageGeo.count {
-                        // First page — auto-fit camera to show these pins
+        let token = serverInstance.token
+
+        loadTask?.cancel()
+        clusterTask?.cancel()
+
+        isLoading  = true
+        geoFiles   = []
+        clusters   = []
+        coordCache = [:]
+
+        loadTask = Task {
+            let api  = DFAPI(url: url, token: token)
+            var page = 1
+            var firstBatch = true
+
+            while !Task.isCancelled {
+                guard let response = await api.getFiles(page: page) else { break }
+                guard !Task.isCancelled else { break }
+
+                var newCoords: [Int: PinSummary] = [:]
+                for file in response.files {
+                    if let coord = file.gpsCoordinate {
+                        newCoords[file.id] = PinSummary(id: file.id,
+                                                        lat: coord.latitude,
+                                                        lon: coord.longitude)
+                    }
+                }
+                let newFiles = response.files.filter { newCoords[$0.id] != nil }
+
+                if !newFiles.isEmpty {
+                    coordCache.merge(newCoords) { _, new in new }
+                    geoFiles.append(contentsOf: newFiles)
+                    if firstBatch {
+                        firstBatch = false
                         cameraPosition = .automatic
                     }
                 }
+
+                guard response.next != nil else { break }
+                page += 1
             }
-            await MainActor.run { isLoading = false }
+
+            isLoading = false
+            if !Task.isCancelled {
+                updateClusters()
+            }
         }
     }
 }
 
-// MARK: - Cluster pin (thumbnail + count badge)
+// MARK: - Cluster pin
 
 struct MapClusterPin: View {
     let representativeThumbURL: URL?
@@ -261,40 +314,30 @@ struct MapClusterPin: View {
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .topTrailing) {
-                // Thumbnail of the representative file
                 Group {
                     if let url = representativeThumbURL {
                         CachedAsyncImage(url: url) { img in
                             img.resizable().scaledToFill()
                         } placeholder: {
-                            Color(.systemGray5)
-                                .overlay {
-                                    Image(systemName: "photo.stack.fill")
-                                        .foregroundStyle(.secondary)
-                                }
+                            Color(.systemGray5).overlay {
+                                Image(systemName: "photo.stack.fill").foregroundStyle(.secondary)
+                            }
                         }
                     } else {
-                        Color(.systemGray5)
-                            .overlay {
-                                Image(systemName: "photo.stack.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(.secondary)
-                            }
+                        Color(.systemGray5).overlay {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 20)).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .frame(width: 48, height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(.white, lineWidth: 2)
-                )
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white, lineWidth: 2))
 
-                // Count badge
                 Text(count < 100 ? "\(count)" : "99+")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Color.accentColor, in: Capsule())
                     .shadow(color: .black.opacity(0.3), radius: 2)
                     .offset(x: 8, y: -8)
@@ -305,7 +348,7 @@ struct MapClusterPin: View {
     }
 }
 
-// MARK: - Individual pin (with embedded popover callout)
+// MARK: - Individual pin
 
 struct FileMapPin: View {
     let file: DFFile
@@ -314,7 +357,9 @@ struct FileMapPin: View {
 
     @State private var showingCallout = false
 
-    private var showThumb: Bool { file.mime.hasPrefix("image/") && thumbnailURL != nil }
+    private var showThumb: Bool {
+        (file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/")) && thumbnailURL != nil
+    }
 
     private func icon() -> String {
         if file.mime.hasPrefix("video/") { return "video.fill" }
@@ -338,8 +383,7 @@ struct FileMapPin: View {
                         .fill(Color.accentColor.opacity(0.15))
                         .frame(width: 44, height: 44)
                         .overlay {
-                            Image(systemName: icon())
-                                .font(.system(size: 18))
+                            Image(systemName: icon()).font(.system(size: 18))
                                 .foregroundStyle(Color.accentColor)
                         }
                 }
@@ -365,7 +409,7 @@ struct FileMapPin: View {
     }
 }
 
-// MARK: - Callout popover
+// MARK: - Callout
 
 struct FileMapCallout: View {
     let file: DFFile
@@ -383,37 +427,25 @@ struct FileMapCallout: View {
                             Color(.systemGray5)
                         }
                     } else {
-                        Color(.systemGray5)
-                            .overlay {
-                                Image(systemName: "doc.fill")
-                                    .foregroundStyle(.secondary)
-                            }
+                        Color(.systemGray5).overlay {
+                            Image(systemName: "doc.fill").foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .frame(width: 64, height: 64)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(file.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-
+                    Text(file.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                     if let area = file.gpsArea {
                         Label(area, systemImage: "location.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
-
                     if let alt = file.gpsAltitude {
                         Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-
-                    Text(file.formattedDate())
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    Text(file.formattedDate()).font(.caption2).foregroundStyle(.tertiary)
                 }
             }
             .padding(14)
