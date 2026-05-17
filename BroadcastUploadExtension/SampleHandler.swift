@@ -327,8 +327,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
         let v = UserDefaults(suiteName: Self.appGroupID)?
             .integer(forKey: Self.orientationKey) ?? 0
         switch v {
-        case 1: return .right  // landscapeLeft  → content rotated CW → rotate buffer CW
-        case 2: return .left   // landscapeRight → content rotated CCW → rotate buffer CCW
+        case 1: return .left   // landscapeLeft  (device rotated CW → top points right → rotate buffer CCW)
+        case 2: return .right  // landscapeRight (device rotated CCW → top points left → rotate buffer CW)
         case 3: return .down   // portraitUpsideDown
         default: return .up    // portrait, no rotation
         }
