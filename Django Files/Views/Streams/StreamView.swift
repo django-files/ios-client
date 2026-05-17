@@ -199,8 +199,9 @@ struct StreamView: View {
     // Auth check
     private var isAuthenticated: Bool { !token.isEmpty }
 
-    // Broadcast
-    @State private var showBroadcast = false
+    // Broadcast — optional CaptureMode drives the fullScreenCover;
+    // setting it non-nil presents the cover, clearing it dismisses it.
+    @State private var broadcastMode: CaptureMode? = nil
 
     init(serverURL: URL, streamName: String, token: String,
          initialStream: DFStream? = nil, password: String? = nil) {
@@ -232,13 +233,16 @@ struct StreamView: View {
             if let live { isLive = live }
         }
         .sheet(isPresented: $showViewersList) { viewersSheet }
-        .fullScreenCover(isPresented: $showBroadcast) {
+        // Use item: so the CaptureMode value is captured directly in the closure,
+        // avoiding the stale-state bug with isPresented + a separate state variable.
+        .fullScreenCover(item: $broadcastMode) { captureMode in
             StreamBroadcastView(
                 serverURL: serverURL,
                 streamName: streamName,
                 token: token,
                 streamTitle: chatManager.streamTitle,
-                ownerUsername: initialStream?.userUsername ?? ""
+                ownerUsername: initialStream?.userUsername ?? "",
+                initialCaptureMode: captureMode
             )
         }
         .onChange(of: verticalSizeClass) { _, _ in
@@ -318,8 +322,14 @@ struct StreamView: View {
         .toolbar {
             if initialStream?.isOwner == true {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showBroadcast = true
+                    Menu {
+                        ForEach(CaptureMode.allCases) { mode in
+                            Button {
+                                broadcastMode = mode
+                            } label: {
+                                Label(mode.rawValue, systemImage: mode.icon)
+                            }
+                        }
                     } label: {
                         Label("Go Live", systemImage: "video.badge.waveform.fill")
                             .labelStyle(.iconOnly)
@@ -334,52 +344,47 @@ struct StreamView: View {
 
     private var fullscreenLayout: some View {
         ZStack {
-            // Black background fills behind safe areas
             Color.black.ignoresSafeArea()
 
-            // Video fills entire screen (behind safe areas)
             videoPlayerContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { toggleControls() }
 
-            // Controls overlay — constrained to safe area so no manual inset math needed
-            GeometryReader { geo in
-                ZStack(alignment: .bottom) {
-                    // Chat drawer
-                    if showChatDrawer {
-                        chatDrawer(height: min(geo.size.height * 0.55, 420))
+            // Controls only — chat drawer is NOT in this ZStack so it can't
+            // interfere with ZStack keyboard-avoidance behaviour.
+            VStack(spacing: 0) {
+                fullscreenTopBar
+                    .opacity(showFullscreenControls ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
+
+                Spacer()
+
+                if player != nil {
+                    Button { togglePlayPause() } label: {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 32, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(16)
+                            .background(.black.opacity(0.4), in: Circle())
                     }
-
-                    VStack(spacing: 0) {
-                        // Fading top bar
-                        fullscreenTopBar
-                            .opacity(showFullscreenControls ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
-
-                        Spacer()
-
-                        // Centered play/pause
-                        if player != nil {
-                            Button { togglePlayPause() } label: {
-                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 32, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(16)
-                                    .background(.black.opacity(0.4), in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .opacity(showFullscreenControls ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
-                        }
-
-                        Spacer()
-
-                        // Always-visible bottom bar
-                        fullscreenBottomBar
-                    }
+                    .buttonStyle(.plain)
+                    .opacity(showFullscreenControls ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.25), value: showFullscreenControls)
                 }
+
+                Spacer()
+
+                fullscreenBottomBar
+            }
+        }
+        // The chat drawer lives here as a safe-area inset so SwiftUI handles
+        // keyboard avoidance for it automatically — it always sits flush above
+        // the keyboard without any manual keyboardHeight tracking.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if showChatDrawer {
+                chatDrawer(height: 380)
             }
         }
         .toolbar(.hidden, for: .navigationBar)

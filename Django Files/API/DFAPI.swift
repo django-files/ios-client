@@ -43,19 +43,22 @@ struct DFAPI {
         case auth_application = "auth/application/"
         case user = "user/"
         case users = "users/"
+        case version = "version/"
     }
     
     let url: URL
     let token: String
     var decoder: JSONDecoder
-    
-    
+    private let apiSession: URLSession
+
+
     init(url: URL, token: String){
         self.url = url
         self.token = token
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        apiSession = URLSession(configuration: .ephemeral)
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {
@@ -101,8 +104,8 @@ struct DFAPI {
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
-        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: nil)
-        let (responseBody, response) = try await session.upload(for: request, from: body)
+        let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
+        let (responseBody, response) = try await activeSession.upload(for: request, from: body)
         
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
@@ -122,8 +125,8 @@ struct DFAPI {
             request.headerFields[kvp.key] = kvp.value
         }
         
-        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: nil)
-        let (responseBody, response) = try await session.upload(for: request, from: Data())
+        let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
+        let (responseBody, response) = try await activeSession.upload(for: request, from: Data())
         
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
@@ -321,21 +324,21 @@ struct DFAPI {
             urlRequest.httpBody = json
             
             if let url = urlRequest.url {
-                // Set the cookie directly in the request header
-                urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
-                
-                // Also set it in the cookie storage
+                let isSecure = url.scheme?.lowercased() == "https"
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
                     .name: "sessionid",
                     .value: sessionKey,
                     .domain: url.host ?? "",
                     .path: "/",
-                    .secure: false,
-                    .expires: Date().addingTimeInterval(31536000)  // 1 year from now
+                    .secure: isSecure,
+                    .expires: Date().addingTimeInterval(31536000)
                 ]
-                
                 if let cookie = HTTPCookie(properties: cookieProperties) {
                     HTTPCookieStorage.shared.setCookie(cookie)
+                    let cookieHeader = HTTPCookie.requestHeaderFields(with: [cookie])
+                    for (field, value) in cookieHeader {
+                        urlRequest.setValue(value, forHTTPHeaderField: field)
+                    }
                 }
             }
             
@@ -366,25 +369,25 @@ struct DFAPI {
     public func checkRedirect(url: String) async -> String? {
         do {
             guard let targetURL = URL(string: url) else { return nil }
-            
+
             var request = HTTPRequest(method: .get, url: targetURL)
-            request.headerFields[.authorization] = self.token
+            if targetURL.host() == self.url.host() {
+                request.headerFields[.authorization] = self.token
+            }
             request.headerFields[.referer] = self.url.absoluteString
             request.headerFields[.userAgent] = DFAPI.customUserAgent
-            
-            let configuration = URLSessionConfiguration.ephemeral
+
             let delegate = RedirectDelegate()
-            let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-            
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+
             let (_, response) = try await session.data(for: request)
-            
+
             if response.status.code == 302 {
-                if let newURL = URL(string: response.headerFields[.location]!) {
-                    if newURL.host() == nil {
-                        return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(response.headerFields[.location] ?? "")"
-                    } else {
-                        return response.headerFields[.location]
-                    }
+                guard let location = response.headerFields[.location] else { return nil }
+                if let newURL = URL(string: location), newURL.host() == nil {
+                    return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(location)"
+                } else {
+                    return location
                 }
             }
 
@@ -636,7 +639,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         self.outro.append("\r\n--\(self.boundary)--\r\n".data(using: .utf8)!)
         
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.0, repeats: true) {
+            self.timer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) {
                 [weak self] timer in
                 guard let self = self else { return }
                 

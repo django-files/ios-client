@@ -40,32 +40,22 @@ struct DFStat: Codable{
 struct DFStatField: Codable{
     let user: Int
     let stats: DFStatContainer
-    let created_at: Date?
-    let updated_at: Date?
-    
+    let createdAt: Date?
+    let updatedAt: Date?
+
     enum CodingKeys: String, CodingKey {
         case user = "user"
         case stats = "stats"
-        case created_at = "created_at"
-        case updated_at = "updated_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         user = try container.decode(Int.self, forKey: .user)
         stats = try container.decode(DFStatContainer.self, forKey: .stats)
-        do{
-            created_at = try container.decode(Date.self, forKey: .created_at)
-        }
-        catch{
-            created_at = nil
-        }
-        do{
-            updated_at = try container.decode(Date.self, forKey: .updated_at)
-        }
-        catch{
-            updated_at = nil
-        }
+        createdAt = try? container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try? container.decode(Date.self, forKey: .updatedAt)
     }
 }
 
@@ -74,16 +64,16 @@ struct DFStatContainer: Codable{
     let size: Int64
     let count: Int
     let shorts: Int
-    let human_size: String
-    
+    let humanSize: String
+
     enum CodingKeys: String, CodingKey {
         case types = "types"
         case size = "size"
         case count = "count"
         case shorts = "shorts"
-        case human_size = "human_size"
+        case humanSize = "human_size"
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let typesContainer = try container.decode([String : DFStatType].self, forKey: .types)
@@ -91,16 +81,11 @@ struct DFStatContainer: Codable{
         for item in typesContainer{
             types.append(DFStatType(name: item.key, source: item.value))
         }
-        
+
         size = try container.decode(Int64.self, forKey: .size)
         count = try container.decode(Int.self, forKey: .count)
         shorts = try container.decode(Int.self, forKey: .shorts)
-        do{
-            human_size = try container.decode(String.self, forKey: .human_size)
-        }
-        catch{
-            human_size = ""
-        }
+        humanSize = (try? container.decode(String.self, forKey: .humanSize)) ?? ""
     }
 }
 
@@ -132,10 +117,11 @@ struct DFStatType: Codable{
 extension DFAPI {
     public func getStats(amount: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFStatsResponse? {
         do {
+            var parameters: [String: String] = [:]
+            if let amount { parameters["amount"] = String(amount) }
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.stats),
-                parameters: amount == nil ? [:] : ["amount" : amount?.description ?? ""],
+                parameters: parameters,
                 selectedServer: selectedServer
             )
             return try decoder.decode(DFStatsResponse.self, from: responseBody)

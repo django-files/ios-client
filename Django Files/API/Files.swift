@@ -6,8 +6,9 @@
 //
 
 import Foundation
+import CoreLocation
 
-public struct DFFile: Codable, Hashable, Equatable {
+public struct DFFile: Codable, Hashable, Equatable, Identifiable {
     public var id: Int
     public var user: Int
     public var size: Int
@@ -96,38 +97,35 @@ public struct DFFile: Codable, Hashable, Equatable {
         try container.encode(meta, forKey: .meta)
     }
     
-    // Helper property to get a Date object when needed
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let iso8601FallbackFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
+
+    private static let displayDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
     public var dateObject: Date? {
-        let iso8601Formatter = ISO8601DateFormatter()
-        iso8601Formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        if let date = iso8601Formatter.date(from: date) {
-            return date
-        }
-        
-        // Fall back to other formatters if needed
-        let backupFormatter = DateFormatter()
-        backupFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        backupFormatter.locale = Locale(identifier: "en_US_POSIX")
-        backupFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-        
-        if let date = backupFormatter.date(from: date) {
-            return date
-        }
-        
-        return nil
+        DFFile.iso8601Formatter.date(from: date)
+            ?? DFFile.iso8601FallbackFormatter.date(from: date)
     }
-    
-    // Format the date string for display
+
     public func formattedDate() -> String {
-        guard let date = dateObject else {
-            return date // Return the raw string if we can't parse it
-        }
-        
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        guard let d = dateObject else { return date }
+        return DFFile.displayDateFormatter.string(from: d)
     }
     
     // Format file size to human readable string
@@ -233,27 +231,63 @@ public struct DFFilesResponse: Codable {
     public let count: Int
 }
 
+extension DFFile {
+    public var gpsCoordinate: CLLocationCoordinate2D? {
+        guard let gpsInfo = exif?["GPSInfo"]?.value as? [String: Any],
+              let latRaw = gpsInfo["2"] as? [Any], latRaw.count >= 3,
+              let lonRaw = gpsInfo["4"] as? [Any], lonRaw.count >= 3 else { return nil }
+
+        func toDouble(_ v: Any) -> Double? {
+            switch v {
+            case let d as Double: return d
+            case let i as Int: return Double(i)
+            default: return nil
+            }
+        }
+
+        guard let latD = toDouble(latRaw[0]), let latM = toDouble(latRaw[1]), let latS = toDouble(latRaw[2]),
+              let lonD = toDouble(lonRaw[0]), let lonM = toDouble(lonRaw[1]), let lonS = toDouble(lonRaw[2]) else {
+            return nil
+        }
+
+        var lat = latD + latM / 60.0 + latS / 3600.0
+        var lon = lonD + lonM / 60.0 + lonS / 3600.0
+
+        if (gpsInfo["1"] as? String ?? "N").uppercased() == "S" { lat = -lat }
+        if (gpsInfo["3"] as? String ?? "E").uppercased() == "W" { lon = -lon }
+
+        guard lat != 0 || lon != 0 else { return nil }
+        let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        guard CLLocationCoordinate2DIsValid(coord) else { return nil }
+        return coord
+    }
+
+    public var gpsArea: String? { meta?["GPSArea"]?.value as? String }
+
+    public var gpsAltitude: Double? {
+        guard let info = exif?["GPSInfo"]?.value as? [String: Any] else { return nil }
+        return info["6"] as? Double
+    }
+}
+
 extension DFAPI {
     public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil) async -> DFFilesResponse? {
         do {
             var parameters: [String: String] = [:]
-            if let album = album {
+            if let album {
                 parameters["album"] = String(album)
             }
-            if filterUserID != nil {
-                parameters["user"] = String(filterUserID!)
+            if let filterUserID {
+                parameters["user"] = String(filterUserID)
             }
-            
+
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.files) + "\(page)/",
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
+            return try decoder.decode(DFFilesResponse.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -270,15 +304,12 @@ extension DFAPI {
             }
             
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.file) + "\(fileID)",
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFFile.self, from: responseBody)
+            return try decoder.decode(DFFile.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -340,5 +371,19 @@ extension DFAPI {
             print("File Edit Failed \(error)")
             return false
         }
+    }
+
+    public func getFilesWithGPS(selectedServer: DjangoFilesSession? = nil, onPage: (([DFFile]) -> Void)? = nil) async -> [DFFile] {
+        var result: [DFFile] = []
+        var page = 1
+        while true {
+            guard let response = await getFiles(page: page, selectedServer: selectedServer) else { break }
+            let geo = response.files.filter { $0.gpsCoordinate != nil }
+            result.append(contentsOf: geo)
+            onPage?(geo)
+            guard response.next != nil else { break }
+            page += 1
+        }
+        return result
     }
 }
