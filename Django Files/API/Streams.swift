@@ -30,29 +30,16 @@ struct DFStream: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case name, title, description, password, url
-        case isLive = "is_live"
-        case startedAt = "started_at"
-        case endedAt = "ended_at"
-        case uniqueViews = "unique_views"
-        case isPublic = "public"
-        case viewerLimit = "viewer_limit"
-        case liveChat = "live_chat"
-        case anonymousChat = "anonymous_chat"
-        case userName = "user_name"
-        case userUsername = "user_username"
-        case isOwner = "is_owner"
-        case subscriberCount = "subscriber_count"
+        case isLive, startedAt, endedAt, uniqueViews
+        case isPublic = "public"   // JSON key is "public", not "is_public"
+        case viewerLimit, liveChat, anonymousChat
+        case userName, userUsername, isOwner, subscriberCount
     }
 }
 
 struct DFStreamIngestInfo: Codable {
     let rtmpHost: String
     let rtmpPort: Int
-
-    enum CodingKeys: String, CodingKey {
-        case rtmpHost = "rtmp_host"
-        case rtmpPort = "rtmp_port"
-    }
 }
 
 struct DFStreamsResponse: Codable {
@@ -628,9 +615,6 @@ struct StreamCommandsResponse: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case commands, title, description
-        case liveChat = "live_chat"
-        case anonymousChat = "anonymous_chat"
-        case isLive = "is_live"
-        case isPublic = "is_public"
+        case liveChat, anonymousChat, isLive, isPublic
     }
 }
