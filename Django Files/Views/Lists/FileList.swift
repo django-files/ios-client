@@ -607,6 +607,9 @@ struct FileListView: View {
             .onChange(of: filterUserID) { _, _ in
                 Task { await refreshFiles() }
             }
+            .onChange(of: mimeTypeFilter) { _, _ in
+                Task { await refreshFiles() }
+            }
         }
         .fullScreenCover(isPresented: $showingMap) {
             FileMapView(server: server)
