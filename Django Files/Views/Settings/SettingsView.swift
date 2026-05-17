@@ -156,6 +156,14 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(header: Text("Interface")) {
+                    NavigationLink {
+                        TabCustomizationView()
+                    } label: {
+                        Label("Customize Tabs", systemImage: "square.grid.2x2")
+                    }
+                }
+
                 Section(header: Text("Privacy")) {
                     Toggle(isOn: Binding(
                         get: { firebaseAnalyticsEnabled },
