@@ -490,6 +490,7 @@ final class RTMPBroadcaster: ObservableObject {
     private static let statusKey   = "stream.broadcast.status"
     private static let requestKey  = "stream.broadcast.request"
     static let micMutedKey         = "stream.broadcast.micMuted"
+    static let orientationKey      = "stream.broadcast.orientation"
 
     private var statusTimer: Timer?
     private var pendingRTMPURL: String?
@@ -762,9 +763,24 @@ final class RTMPBroadcaster: ObservableObject {
         // Stale "stop" requests would immediately kill a freshly launched
         // broadcast — wipe them on every setup/mode-switch.
         defaults.removeObject(forKey: Self.requestKey)
+        defaults.removeObject(forKey: Self.orientationKey)
     }
 
     func updateOrientation(deviceOrientation: UIDeviceOrientation) {
+        // Write orientation for screen mode so the broadcast extension can read it.
+        // The extension can't observe UIDevice directly and RPVideoSampleOrientationKey
+        // is unreliable on some iOS versions, so we relay via App Group.
+        if captureMode == .screen,
+           let defaults = UserDefaults(suiteName: Self.appGroupID) {
+            let v: Int
+            switch deviceOrientation {
+            case .landscapeLeft:      v = 1
+            case .landscapeRight:     v = 2
+            case .portraitUpsideDown: v = 3
+            default:                  v = 0
+            }
+            defaults.set(v, forKey: Self.orientationKey)
+        }
         guard captureMode == .camera else { return }
         Task {
             await mixer.setVideoOrientation(avOrientation(from: deviceOrientation))
