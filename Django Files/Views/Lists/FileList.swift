@@ -203,8 +203,9 @@ struct FileListView: View {
     @State private var redirectURLs: [String: String] = [:]
     
     @State private var showFileInfo: Bool = false
-    @State private var showingUserFilter: Bool = false
+    @State private var showingFilters: Bool = false
     @State private var users: [DFUser] = []
+    @State private var mimeTypeFilter: MimeTypeFilter = .all
     @State private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
@@ -224,6 +225,11 @@ struct FileListView: View {
     private var files: [DFFile] {
         get { fileListManager.files }
         nonmutating set { fileListManager.files = newValue }
+    }
+
+    private var filteredFiles: [DFFile] {
+        guard mimeTypeFilter != .all else { return fileListManager.files }
+        return fileListManager.files.filter { $0.mime.hasPrefix(mimeTypeFilter.rawValue) }
     }
     
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
@@ -287,7 +293,7 @@ struct FileListView: View {
     private var gridContent: some View {
         ScrollView {
             LazyVGrid(columns: gridColumns, spacing: 2) {
-                ForEach(files) { file in
+                ForEach(filteredFiles) { file in
                     Button {
                         selectedFile = file
                         showingPreview = true
@@ -303,7 +309,7 @@ struct FileListView: View {
                         fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                     }
                     .onAppear {
-                        if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
+                        if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
                             loadNextPage()
                         }
                     }
@@ -379,46 +385,47 @@ struct FileListView: View {
                 .listRowSeparator(.hidden)
             }
 
-            ForEach(files.indices, id: \.self) { index in
+            ForEach(filteredFiles) { file in
                 Button {
-                    selectedFile = files[index]
+                    selectedFile = file
                     showingPreview = true
                 } label: {
-                    if files[index].mime.starts(with: "image/") {
-                        FileRowView(
-                            file: $fileListManager.files[index],
-                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
-                        )
-                        .contextMenu {
-                            fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                        } preview: {
-                            CachedAsyncImage(url: thumbnailURL(file: files[index])) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                ProgressView()
+                    if let realIndex = fileListManager.files.firstIndex(where: { $0.id == file.id }) {
+                        if file.mime.starts(with: "image/") {
+                            FileRowView(
+                                file: $fileListManager.files[realIndex],
+                                serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                            )
+                            .contextMenu {
+                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            } preview: {
+                                CachedAsyncImage(url: thumbnailURL(file: file)) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 512, height: 512)
+                                .cornerRadius(8)
                             }
-                            .frame(width: 512, height: 512)
-                            .cornerRadius(8)
-                        }
-                    } else {
-                        FileRowView(
-                            file: $fileListManager.files[index],
-                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
-                        )
-                        .contextMenu {
-                            fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        } else {
+                            FileRowView(
+                                file: $fileListManager.files[realIndex],
+                                serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                            )
+                            .contextMenu {
+                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            }
                         }
                     }
                 }
-                .id(files[index].id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    let fileIsOwned = (server.wrappedValue?.userID != nil && files[index].user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                    let fileIsOwned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
                     if fileIsOwned {
-                        Button() {
-                            fileIDsToDelete = [files[index].id]
-                            fileNameToDelete = files[index].name
+                        Button {
+                            fileIDsToDelete = [file.id]
+                            fileNameToDelete = file.name
                             showingDeleteConfirmation = true
                         } label: {
                             Label("Delete", systemImage: "trash")
@@ -427,7 +434,7 @@ struct FileListView: View {
                     }
                 }
 
-                if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
+                if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
                     Color.clear
                         .frame(height: 20)
                         .onAppear {
@@ -482,25 +489,21 @@ struct FileListView: View {
         .navigationTitle(getTitle(server: server, albumName: albumName))
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Menu {
+                Button {
+                    showingFilters = true
                     if server.wrappedValue?.superUser ?? false {
-                        Button(action: {
-                            showingUserFilter = true
-                            Task {
-                                if let serverInstance = server.wrappedValue,
-                                   let url = URL(string: serverInstance.url) {
-                                    let api = DFAPI(url: url, token: serverInstance.token)
-                                    users = await api.getAllUsers(selectedServer: serverInstance)
-                                }
+                        Task {
+                            if let serverInstance = server.wrappedValue,
+                               let url = URL(string: serverInstance.url) {
+                                let api = DFAPI(url: url, token: serverInstance.token)
+                                users = await api.getAllUsers(selectedServer: serverInstance)
                             }
-                        }) {
-                            Label("User Filter", systemImage: "person.2.circle")
                         }
                     }
                 } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Label("Filters", systemImage: "slider.horizontal.3")
                         .overlay(alignment: .topTrailing) {
-                            if filterUserID != server.wrappedValue?.userID {
+                            if filterUserID != server.wrappedValue?.userID || mimeTypeFilter != .all {
                                 Circle()
                                     .fill(Color.accentColor)
                                     .frame(width: 8, height: 8)
@@ -593,18 +596,16 @@ struct FileListView: View {
                 CreateAlbumView(server: serverInstance)
             }
         }
-        .sheet(isPresented: $showingUserFilter, onDismiss: {
-            Task {
-                await refreshFiles()
-            }
-        }) {
-            if let _ = server.wrappedValue {
-                UserFilterView(users: $users, selectedUserID: $filterUserID)
-                    .onChange(of: filterUserID) { oldValue, newValue in
-                        Task {
-                            await refreshFiles()
-                        }
-                    }
+        .sheet(isPresented: $showingFilters) {
+            FiltersView(
+                users: $users,
+                selectedUserID: $filterUserID,
+                mimeTypeFilter: $mimeTypeFilter,
+                isSuperUser: server.wrappedValue?.superUser ?? false,
+                currentUserID: server.wrappedValue?.userID
+            )
+            .onChange(of: filterUserID) { _, _ in
+                Task { await refreshFiles() }
             }
         }
         .fullScreenCover(isPresented: $showingMap) {
@@ -853,7 +854,7 @@ struct FileListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
         
         do {
-            if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID) {
+            if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: mimeTypeFilter == .all ? nil : mimeTypeFilter.rawValue) {
                 if append {
                     // Only append new files that aren't already in the list
                     let newFiles = filesResponse.files.filter { newFile in
@@ -993,80 +994,130 @@ struct FileGridItemView: View {
                             .background(.black.opacity(0.5))
                     }
 
-                    if file.private || file.password != "" || file.expr != "" {
-                        HStack(spacing: 2) {
-                            if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
-                            if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
-                            if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 3)
-                        .background(.black.opacity(0.55))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .padding(4)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    }
                 }
                 .clipped()
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if file.private || file.password != "" || file.expr != "" {
+                    HStack(spacing: 2) {
+                        if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+                        if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+                        if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .padding(4)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
-struct UserFilterView: View {
+enum MimeTypeFilter: String, CaseIterable {
+    case all = ""
+    case image = "image/"
+    case video = "video/"
+    case audio = "audio/"
+    case text = "text/"
+    case document = "application/"
+
+    var label: String {
+        switch self {
+        case .all: "All Files"
+        case .image: "Images"
+        case .video: "Videos"
+        case .audio: "Audio"
+        case .text: "Text"
+        case .document: "Documents"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .all: "doc.on.doc"
+        case .image: "photo"
+        case .video: "video"
+        case .audio: "waveform"
+        case .text: "doc.text"
+        case .document: "doc.richtext"
+        }
+    }
+}
+
+struct FiltersView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var users: [DFUser]
     @Binding var selectedUserID: Int?
-    
+    @Binding var mimeTypeFilter: MimeTypeFilter
+    let isSuperUser: Bool
+    let currentUserID: Int?
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
-                Button(action: {
-                    selectedUserID = 0
-                    Task {
-                        await MainActor.run {
-                            dismiss()
+                Section("File Type") {
+                    ForEach(MimeTypeFilter.allCases, id: \.rawValue) { filter in
+                        Button {
+                            mimeTypeFilter = filter
+                        } label: {
+                            HStack {
+                                Label(filter.label, systemImage: filter.icon)
+                                Spacer()
+                                if mimeTypeFilter == filter {
+                                    Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                }
+                            }
                         }
-                    }
-                }) {
-                    HStack {
-                        Text("All Users")
-                        Spacer()
-                        if selectedUserID == nil {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
-                        }
+                        .tint(.primary)
                     }
                 }
-                
-                ForEach(users, id: \.id) { user in
-                    Button(action: {
-                        selectedUserID = user.id
-                        Task {
-                            await MainActor.run {
-                                dismiss()
+
+                if isSuperUser {
+                    Section("User") {
+                        Button {
+                            selectedUserID = 0
+                        } label: {
+                            HStack {
+                                Text("All Users")
+                                Spacer()
+                                if selectedUserID == 0 || selectedUserID == nil {
+                                    Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                }
                             }
                         }
-                    }) {
-                        HStack {
-                            Text(user.username)
-                            Spacer()
-                            if selectedUserID == user.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.accentColor)
+                        .tint(.primary)
+
+                        ForEach(users, id: \.id) { user in
+                            Button {
+                                selectedUserID = user.id
+                            } label: {
+                                HStack {
+                                    Text(user.username)
+                                    Spacer()
+                                    if selectedUserID == user.id {
+                                        Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                    }
+                                }
                             }
+                            .tint(.primary)
                         }
                     }
                 }
             }
-            .navigationTitle("Filter by User")
+            .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Reset") {
+                        mimeTypeFilter = .all
+                        selectedUserID = currentUserID
                     }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
                 }
             }
         }

@@ -201,68 +201,63 @@ struct FileMapView: View {
     // MARK: Body
 
     var body: some View {
-        Map(position: $cameraPosition, content: mapContent)
-            .mapStyle(.standard)
-            .onMapCameraChange(frequency: .onEnd) { ctx in
-                // Convert .automatic → .region on first camera change so that
-                // subsequent self.clusters updates don't trigger camera adjustments
-                // (which would fire onMapCameraChange → updateClusters → … ad infinitum).
-                if case .automatic = cameraPosition {
-                    cameraPosition = .region(ctx.region)
-                }
-                mapSpan = ctx.region.span
-                updateClusters()
-            }
-            .ignoresSafeArea()
-            .safeAreaInset(edge: .top) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .frame(width: 32, height: 32)
-                            .background(.ultraThinMaterial, in: Circle())
+        NavigationStack {
+            Map(position: $cameraPosition, content: mapContent)
+                .mapStyle(.standard)
+                .onMapCameraChange(frequency: .onEnd) { ctx in
+                    // Convert .automatic → .region on first camera change so that
+                    // subsequent self.clusters updates don't trigger camera adjustments
+                    // (which would fire onMapCameraChange → updateClusters → … ad infinitum).
+                    if case .automatic = cameraPosition {
+                        cameraPosition = .region(ctx.region)
                     }
-                    Spacer()
-                    if !geoFiles.isEmpty {
-                        HStack(spacing: 6) {
-                            Text("\(geoFiles.count) files")
-                            if isLoading {
-                                ProgressView().scaleEffect(0.7)
-                            }
+                    mapSpan = ctx.region.span
+                    updateClusters()
+                }
+                .ignoresSafeArea()
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
                         }
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if !geoFiles.isEmpty {
+                            HStack(spacing: 6) {
+                                if isLoading { ProgressView().scaleEffect(0.7) }
+                                Text("\(geoFiles.count) files")
+                            }
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 8)
+                        }
                     }
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-            }
-            .overlay {
-                if isLoading && geoFiles.isEmpty {
-                    ProgressView()
-                        .controlSize(.large)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.ultraThinMaterial)
-                } else if !isLoading && geoFiles.isEmpty {
-                    ContentUnavailableView(
-                        "No GPS Files",
-                        systemImage: "location.slash.fill",
-                        description: Text("Upload photos with location data to see them here.")
-                    )
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .overlay {
+                    if isLoading && geoFiles.isEmpty {
+                        ProgressView()
+                            .controlSize(.large)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(.ultraThinMaterial)
+                    } else if !isLoading && geoFiles.isEmpty {
+                        ContentUnavailableView(
+                            "No GPS Files",
+                            systemImage: "location.slash.fill",
+                            description: Text("Upload photos with location data to see them here.")
+                        )
+                    }
                 }
-            }
-            .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
-            .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
-            .onAppear(perform: loadGPSFiles)
-            .onDisappear {
-                loadTask?.cancel()
-                clusterTask?.cancel()
-            }
-            .onChange(of: server.wrappedValue?.url) { _, _ in
-                loadGPSFiles()
-            }
+                .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
+                .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
+                .onAppear(perform: loadGPSFiles)
+                .onDisappear {
+                    loadTask?.cancel()
+                    clusterTask?.cancel()
+                }
+                .onChange(of: server.wrappedValue?.url) { _, _ in
+                    loadGPSFiles()
+                }
+        }
     }
 
     // MARK: Preview

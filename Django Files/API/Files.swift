@@ -271,7 +271,7 @@ extension DFFile {
 }
 
 extension DFAPI {
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil) async -> DFFilesResponse? {
+    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil) async -> DFFilesResponse? {
         do {
             var parameters: [String: String] = [:]
             if let album {
@@ -279,6 +279,9 @@ extension DFAPI {
             }
             if let filterUserID {
                 parameters["user"] = String(filterUserID)
+            }
+            if let filterMime, !filterMime.isEmpty {
+                parameters["mime"] = filterMime
             }
 
             let responseBody = try await makeAPIRequest(
