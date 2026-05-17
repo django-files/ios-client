@@ -92,15 +92,12 @@ extension DFAPI {
     public func getCurrentUser(selectedServer: DjangoFilesSession? = nil) async -> DFUser? {
         do {
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.user),
                 parameters: [:],
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFUser.self, from: responseBody)
+            return try decoder.decode(DFUser.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -117,15 +114,12 @@ extension DFAPI {
         
         do {
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.users),
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode([DFUser].self, from: responseBody)
+            return try decoder.decode([DFUser].self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -134,6 +128,20 @@ extension DFAPI {
         return nil
     }
     
+    public func getVersion() async -> String? {
+        do {
+            let responseBody = try await makeAPIRequest(
+                path: getAPIPath(.version),
+                parameters: [:],
+                method: .get
+            )
+            struct VersionResponse: Decodable { let version: String }
+            return try decoder.decode(VersionResponse.self, from: responseBody).version
+        } catch {
+            return nil
+        }
+    }
+
     public func getAllUsers(selectedServer: DjangoFilesSession? = nil) async -> [DFUser] {
         var allUsers: [DFUser] = []
         var lastUserId: Int? = nil
@@ -170,11 +178,15 @@ extension DFAPI {
         session.userID = user.id
         session.username = user.username
         session.firstName = user.firstName
-        // Handle avatar URL more robustly
-        if let avatarURL = URL(string: user.avatarUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            session.avatarUrl = avatarURL
+        // Resolve avatar URL — absolute (S3, OAuth, https) used as-is; relative paths resolved against server base URL
+        let trimmedAvatar = user.avatarUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedAvatar.isEmpty {
+            session.avatarUrl = nil
+        } else if let absolute = URL(string: trimmedAvatar), absolute.scheme != nil {
+            session.avatarUrl = absolute
+        } else if let base = URL(string: session.url) {
+            session.avatarUrl = URL(string: trimmedAvatar, relativeTo: base)?.absoluteURL
         } else {
-            print("Warning: Invalid avatar URL received from server: \(user.avatarUrl)")
             session.avatarUrl = nil
         }
         session.superUser = user.isSuperuser

@@ -205,15 +205,10 @@ struct FileListView: View {
     @State private var showFileInfo: Bool = false
     @State private var showingUserFilter: Bool = false
     @State private var users: [DFUser] = []
+    @State private var showingMap: Bool = false
+    @AppStorage("fileListIsGridView") private var isGridView: Bool = false
+    @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
-    // Add computed property for selected username
-    private var selectedUsername: String? {
-        if let userID = filterUserID {
-            return users.first(where: { $0.id == userID })?.username
-        }
-        return nil
-    }
-    
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
         self.albumID = albumID
@@ -232,19 +227,21 @@ struct FileListView: View {
     }
     
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
+        let hostName = server.wrappedValue.flatMap { URL(string: $0.url)?.host } ?? "unknown"
         if server.wrappedValue != nil && albumName == nil {
-            return "Files (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
-        } else if server.wrappedValue != nil && albumName != nil {
-            return "\(String(describing: albumName!)) (\(String(describing: URL(string: server.wrappedValue?.url ?? "host")!.host ?? "unknown")))"
+            return "Files (\(hostName))"
+        } else if let name = albumName, server.wrappedValue != nil {
+            return "\(name) (\(hostName))"
         } else {
             return "Files"
         }
     }
-    
-    private func thumbnailURL(file: DFFile) ->  URL {
-        var components = URLComponents(url: URL(string: server.wrappedValue!.url)!.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+
+    private func thumbnailURL(file: DFFile) -> URL? {
+        guard let serverURL = server.wrappedValue.flatMap({ URL(string: $0.url) }) else { return nil }
+        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
         components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? URL(string: server.wrappedValue!.url)!
+        return components?.url
     }
     
     private func checkForDeepLinkTarget() {
@@ -283,8 +280,60 @@ struct FileListView: View {
         }
     }
     
+    private var gridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumnCount)
+    }
+
+    private var gridContent: some View {
+        ScrollView {
+            LazyVGrid(columns: gridColumns, spacing: 2) {
+                ForEach(files) { file in
+                    Button {
+                        selectedFile = file
+                        showingPreview = true
+                    } label: {
+                        FileGridItemView(
+                            file: file,
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                    }
+                    .onAppear {
+                        if hasNextPage && files.suffix(5).contains(where: { $0.id == file.id }) {
+                            loadNextPage()
+                        }
+                    }
+                }
+            }
+
+            if isLoading && hasNextPage {
+                HStack {
+                    Spacer()
+                    LoadingView()
+                        .frame(width: 60, height: 60)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .refreshable {
+            Task {
+                await refreshFiles()
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     var body: some View {
-        List {
+        Group {
+            if isGridView {
+                gridContent
+            } else {
+                List {
             if files.count == 0 && !isLoading {
                 HStack {
                     Spacer()
@@ -338,7 +387,7 @@ struct FileListView: View {
                     if files[index].mime.starts(with: "image/") {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            serverURL: URL(string: server.wrappedValue!.url)!
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
                         .contextMenu {
                             fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
@@ -356,7 +405,7 @@ struct FileListView: View {
                     } else {
                         FileRowView(
                             file: $fileListManager.files[index],
-                            serverURL: URL(string: server.wrappedValue!.url)!
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
                         .contextMenu {
                             fileContextMenu(for: files[index], isPreviewing: false, isPrivate: files[index].private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
@@ -365,14 +414,17 @@ struct FileListView: View {
                 }
                 .id(files[index].id)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button() {
-                        fileIDsToDelete = [files[index].id]
-                        fileNameToDelete = files[index].name
-                        showingDeleteConfirmation = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+                    let fileIsOwned = (server.wrappedValue?.userID != nil && files[index].user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                    if fileIsOwned {
+                        Button() {
+                            fileIDsToDelete = [files[index].id]
+                            fileNameToDelete = files[index].name
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(.red)
                     }
-                    .tint(.red)
                 }
 
                 if hasNextPage && files.suffix(5).contains(where: { $0.id == files[index].id }) {
@@ -390,6 +442,14 @@ struct FileListView: View {
                     LoadingView()
                         .frame(width: 100, height: 100)
                     Spacer()
+                }
+            }
+                }
+                .listStyle(.plain)
+                .refreshable {
+                    Task {
+                        await refreshFiles()
+                    }
                 }
             }
         }
@@ -419,55 +479,72 @@ struct FileListView: View {
                 )
             }
         }
-
-        .listStyle(.plain)
-        .refreshable {
-            Task {
-                await refreshFiles()
-            }
-        }
         .navigationTitle(getTitle(server: server, albumName: albumName))
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack {
-                    Menu {
-                        if server.wrappedValue?.superUser ?? false {
-                            Button(action: {
-                                showingUserFilter = true
-                                Task {
-                                    if let serverInstance = server.wrappedValue,
-                                       let url = URL(string: serverInstance.url) {
-                                        let api = DFAPI(url: url, token: serverInstance.token)
-                                        users = await api.getAllUsers(selectedServer: serverInstance)
-                                    }
+                Menu {
+                    if server.wrappedValue?.superUser ?? false {
+                        Button(action: {
+                            showingUserFilter = true
+                            Task {
+                                if let serverInstance = server.wrappedValue,
+                                   let url = URL(string: serverInstance.url) {
+                                    let api = DFAPI(url: url, token: serverInstance.token)
+                                    users = await api.getAllUsers(selectedServer: serverInstance)
                                 }
-                            }) {
-                                Label("User Filter", systemImage: "person.2.circle")
+                            }
+                        }) {
+                            Label("User Filter", systemImage: "person.2.circle")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .overlay(alignment: .topTrailing) {
+                            if filterUserID != server.wrappedValue?.userID {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 5, y: -4)
                             }
                         }
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                    }
-                    if selectedUsername != server.wrappedValue?.username {
-                        if let username = selectedUsername {
-                            Text("User: \(username)")
-                                .font(.caption)
-                                .padding(4)
-                                .background(Color.secondary.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                        if filterUserID == 0 {
-                            Text("User: *")
-                                .font(.caption)
-                                .padding(4)
-                                .background(Color.secondary.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                    }
-
                 }
             }
-            
+
+            ToolbarItem(placement: .navigationBarLeading) {
+                Menu {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
+                    } label: {
+                        Label(isGridView ? "List View" : "Grid View",
+                              systemImage: isGridView ? "list.bullet" : "square.grid.2x2")
+                    }
+                    if isGridView {
+                        Divider()
+                        Button { gridColumnCount = 1 } label: {
+                            Label("1 Column", systemImage: gridColumnCount == 1 ? "checkmark" : "square")
+                        }
+                        Button { gridColumnCount = 2 } label: {
+                            Label("2 Columns", systemImage: gridColumnCount == 2 ? "checkmark" : "square.grid.2x2")
+                        }
+                        Button { gridColumnCount = 3 } label: {
+                            Label("3 Columns", systemImage: gridColumnCount == 3 ? "checkmark" : "square.grid.3x3")
+                        }
+                    }
+                } label: {
+                    Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                } primaryAction: {
+                    withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
+                }
+            }
+
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showingMap = true
+                } label: {
+                    Image(systemName: "map")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: {
@@ -529,6 +606,9 @@ struct FileListView: View {
                         }
                     }
             }
+        }
+        .fullScreenCover(isPresented: $showingMap) {
+            FileMapView(server: server)
         }
         .background(
             FileDialogs(
@@ -655,9 +735,11 @@ struct FileListView: View {
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
+        let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
         return FileContextMenuButtons(
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
+            isOwner: isOwner,
             onPreview: {
                 selectedFile = file
                 showingPreview = true
@@ -854,6 +936,82 @@ struct FileListView: View {
         let _ = await fileListManager.renameFile(fileID: file.id, newName: name, onSuccess: nil)
     }
     
+}
+
+struct FileGridItemView: View {
+    let file: DFFile
+    let serverURL: URL
+
+    private var isMedia: Bool {
+        file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/")
+    }
+
+    private var thumbnailURL: URL {
+        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? serverURL
+    }
+
+    private func getIcon() -> String {
+        if file.mime.hasPrefix("video/") { return "video.fill" }
+        if file.mime.hasPrefix("audio/") { return "waveform" }
+        if file.mime.hasPrefix("text/") || file.mime == "application/json" { return "doc.text.fill" }
+        if file.mime == "application/pdf" { return "doc.richtext.fill" }
+        if file.mime.contains("zip") || file.mime.contains("archive") { return "archivebox.fill" }
+        return "doc.fill"
+    }
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                ZStack(alignment: .bottom) {
+                    if isMedia {
+                        CachedAsyncImage(url: thumbnailURL) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Color(.systemGray5)
+                        }
+                    } else {
+                        Color(.systemGray5)
+                            .overlay {
+                                Image(systemName: getIcon())
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.secondary)
+                            }
+                    }
+
+                    if !isMedia {
+                        Text(file.name)
+                            .font(.caption2)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .background(.black.opacity(0.5))
+                    }
+
+                    if file.private || file.password != "" || file.expr != "" {
+                        HStack(spacing: 2) {
+                            if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+                            if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+                            if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.55))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .padding(4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
+                }
+                .clipped()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 }
 
 struct UserFilterView: View {

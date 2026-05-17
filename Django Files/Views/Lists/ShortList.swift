@@ -70,7 +70,7 @@ struct ShortListView: View {
                             errorView(message: error)
                         }
                     }
-                    .navigationTitle(server.wrappedValue != nil ? "Short URLS (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
+                    .navigationTitle(server.wrappedValue != nil ? "Short URLS (\(server.wrappedValue.flatMap { URL(string: $0.url)?.host } ?? "unknown"))" : "Albums")
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button {
@@ -168,15 +168,16 @@ struct ShortListView: View {
         await MainActor.run {
             isLoading = true
         }
-        guard let url = URL(string: server.wrappedValue!.url) else {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
             await MainActor.run {
                 error = "Invalid session URL"
                 isLoading = false
             }
             return
         }
-        
-        let api = DFAPI(url: url, token: server.wrappedValue!.token)
+
+        let api = DFAPI(url: url, token: serverInstance.token)
         let lastShortId = shorts.last?.id
         
         if let response = await api.getShorts(amount: shortsPerPage, start: lastShortId, selectedServer: server.wrappedValue) {

@@ -16,6 +16,14 @@
 		A21CC8852DEB967300EF776C /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = A21CC8842DEB967300EF776C /* FirebaseAnalytics */; };
 		A21CC88B2DEB991100EF776C /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = A21CC88A2DEB991100EF776C /* FirebaseCrashlytics */; };
 		A22380612DFD33F000A544A0 /* FLAnimatedImage in Frameworks */ = {isa = PBXBuildFile; productRef = A22380602DFD33F000A544A0 /* FLAnimatedImage */; };
+		A273D3462FB572F900138309 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A273D3452FB572F900138309 /* ReplayKit.framework */; };
+		A273D3502FB572F900138309 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A273D3452FB572F900138309 /* ReplayKit.framework */; };
+		A273D3522FB572F900138309 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A273D3512FB572F900138309 /* UIKit.framework */; };
+		A273D3592FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A273D34F2FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A273D35C2FB572F900138309 /* BroadcastUploadExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A273D3442FB572F900138309 /* BroadcastUploadExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A273D3692FB573CF00138309 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = A273D3682FB573CF00138309 /* HaishinKit */; };
+		A273D36B2FB573CF00138309 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = A273D36A2FB573CF00138309 /* RTMPHaishinKit */; };
+		A29170AE2FA847C10000C625 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = A29170AD2FA847C10000C625 /* RTMPHaishinKit */; };
 		A2DF11D52DDA13FE0096E7C4 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +49,20 @@
 			remoteGlobalIDString = 4C82CB7E2D624E8700C0893B;
 			remoteInfo = UploadAndCopy;
 		};
+		A273D3572FB572F900138309 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4C5E20E42D603C3B009EE83A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A273D34E2FB572F900138309;
+			remoteInfo = BroadcastUploadExtensionSetupUI;
+		};
+		A273D35A2FB572F900138309 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4C5E20E42D603C3B009EE83A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A273D3432FB572F900138309;
+			remoteInfo = BroadcastUploadExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -51,6 +73,8 @@
 			dstSubfolderSpec = 13;
 			files = (
 				4C82CB892D624E8700C0893B /* UploadAndCopy.appex in Embed Foundation Extensions */,
+				A273D3592FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex in Embed Foundation Extensions */,
+				A273D35C2FB572F900138309 /* BroadcastUploadExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -63,6 +87,10 @@
 		4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Django FilesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UploadAndCopy.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4CE57E8A2D7C9F440073CFC1 /* SnapshotHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnapshotHelper.swift; path = fastlane/SnapshotHelper.swift; sourceTree = "<group>"; };
+		A273D3442FB572F900138309 /* BroadcastUploadExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BroadcastUploadExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A273D3452FB572F900138309 /* ReplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReplayKit.framework; path = System/Library/Frameworks/ReplayKit.framework; sourceTree = SDKROOT; };
+		A273D34F2FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BroadcastUploadExtensionSetupUI.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A273D3512FB572F900138309 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -96,6 +124,20 @@
 			);
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 		};
+		A273D3622FB572F900138309 /* Exceptions for "BroadcastUploadExtensionSetupUI" folder in "BroadcastUploadExtensionSetupUI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A273D34E2FB572F900138309 /* BroadcastUploadExtensionSetupUI */;
+		};
+		A273D3642FB572F900138309 /* Exceptions for "BroadcastUploadExtension" folder in "BroadcastUploadExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A273D3432FB572F900138309 /* BroadcastUploadExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -126,6 +168,22 @@
 			path = UploadAndCopy;
 			sourceTree = "<group>";
 		};
+		A273D3472FB572F900138309 /* BroadcastUploadExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A273D3642FB572F900138309 /* Exceptions for "BroadcastUploadExtension" folder in "BroadcastUploadExtension" target */,
+			);
+			path = BroadcastUploadExtension;
+			sourceTree = "<group>";
+		};
+		A273D3532FB572F900138309 /* BroadcastUploadExtensionSetupUI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A273D3622FB572F900138309 /* Exceptions for "BroadcastUploadExtensionSetupUI" folder in "BroadcastUploadExtensionSetupUI" target */,
+			);
+			path = BroadcastUploadExtensionSetupUI;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -138,6 +196,7 @@
 				A21CC88B2DEB991100EF776C /* FirebaseCrashlytics in Frameworks */,
 				A22380612DFD33F000A544A0 /* FLAnimatedImage in Frameworks */,
 				A21CC8852DEB967300EF776C /* FirebaseAnalytics in Frameworks */,
+				A29170AE2FA847C10000C625 /* RTMPHaishinKit in Frameworks */,
 				4C82CB532D62372200C0893B /* HTTPTypesFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -165,6 +224,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A273D3412FB572F900138309 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A273D3692FB573CF00138309 /* HaishinKit in Frameworks */,
+				A273D3462FB572F900138309 /* ReplayKit.framework in Frameworks */,
+				A273D36B2FB573CF00138309 /* RTMPHaishinKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A273D34C2FB572F900138309 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A273D3502FB572F900138309 /* ReplayKit.framework in Frameworks */,
+				A273D3522FB572F900138309 /* UIKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -176,6 +254,8 @@
 				4C5E21032D603C3B009EE83A /* Django FilesTests */,
 				4C5E210D2D603C3B009EE83A /* Django FilesUITests */,
 				4C82CB802D624E8700C0893B /* UploadAndCopy */,
+				A273D3472FB572F900138309 /* BroadcastUploadExtension */,
+				A273D3532FB572F900138309 /* BroadcastUploadExtensionSetupUI */,
 				4CA2E4882D6D49D6006EF3F0 /* Frameworks */,
 				4C5E20ED2D603C3B009EE83A /* Products */,
 			);
@@ -188,6 +268,8 @@
 				4C5E21002D603C3B009EE83A /* Django FilesTests.xctest */,
 				4C5E210A2D603C3B009EE83A /* Django FilesUITests.xctest */,
 				4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */,
+				A273D3442FB572F900138309 /* BroadcastUploadExtension.appex */,
+				A273D34F2FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -195,6 +277,8 @@
 		4CA2E4882D6D49D6006EF3F0 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				A273D3452FB572F900138309 /* ReplayKit.framework */,
+				A273D3512FB572F900138309 /* UIKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -215,6 +299,8 @@
 			);
 			dependencies = (
 				4C82CB882D624E8700C0893B /* PBXTargetDependency */,
+				A273D3582FB572F900138309 /* PBXTargetDependency */,
+				A273D35B2FB572F900138309 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				4C5E20EE2D603C3B009EE83A /* Django Files */,
@@ -227,6 +313,7 @@
 				A21CC8842DEB967300EF776C /* FirebaseAnalytics */,
 				A21CC88A2DEB991100EF776C /* FirebaseCrashlytics */,
 				A22380602DFD33F000A544A0 /* FLAnimatedImage */,
+				A29170AD2FA847C10000C625 /* RTMPHaishinKit */,
 			);
 			productName = "Django Files";
 			productReference = 4C5E20EC2D603C3B009EE83A /* Django Files.app */;
@@ -302,6 +389,52 @@
 			productReference = 4C82CB7F2D624E8700C0893B /* UploadAndCopy.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		A273D3432FB572F900138309 /* BroadcastUploadExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A273D3632FB572F900138309 /* Build configuration list for PBXNativeTarget "BroadcastUploadExtension" */;
+			buildPhases = (
+				A273D3402FB572F900138309 /* Sources */,
+				A273D3412FB572F900138309 /* Frameworks */,
+				A273D3422FB572F900138309 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A273D3472FB572F900138309 /* BroadcastUploadExtension */,
+			);
+			name = BroadcastUploadExtension;
+			packageProductDependencies = (
+				A273D3682FB573CF00138309 /* HaishinKit */,
+				A273D36A2FB573CF00138309 /* RTMPHaishinKit */,
+			);
+			productName = BroadcastUploadExtension;
+			productReference = A273D3442FB572F900138309 /* BroadcastUploadExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A273D34E2FB572F900138309 /* BroadcastUploadExtensionSetupUI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A273D3612FB572F900138309 /* Build configuration list for PBXNativeTarget "BroadcastUploadExtensionSetupUI" */;
+			buildPhases = (
+				A273D34B2FB572F900138309 /* Sources */,
+				A273D34C2FB572F900138309 /* Frameworks */,
+				A273D34D2FB572F900138309 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A273D3532FB572F900138309 /* BroadcastUploadExtensionSetupUI */,
+			);
+			name = BroadcastUploadExtensionSetupUI;
+			packageProductDependencies = (
+			);
+			productName = BroadcastUploadExtensionSetupUI;
+			productReference = A273D34F2FB572F900138309 /* BroadcastUploadExtensionSetupUI.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -309,7 +442,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1620;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					4C5E20EB2D603C3B009EE83A = {
@@ -325,6 +458,12 @@
 					};
 					4C82CB7E2D624E8700C0893B = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					A273D3432FB572F900138309 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					A273D34E2FB572F900138309 = {
+						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
 			};
@@ -343,6 +482,7 @@
 				A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */,
 				A21CC8832DEB950C00EF776C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				A223805D2DFD335A00A544A0 /* XCRemoteSwiftPackageReference "FLAnimatedImage" */,
+				A29170AC2FA845EC0000C625 /* XCRemoteSwiftPackageReference "HaishinKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5E20ED2D603C3B009EE83A /* Products */;
@@ -353,6 +493,8 @@
 				4C5E20FF2D603C3B009EE83A /* Django FilesTests */,
 				4C5E21092D603C3B009EE83A /* Django FilesUITests */,
 				4C82CB7E2D624E8700C0893B /* UploadAndCopy */,
+				A273D3432FB572F900138309 /* BroadcastUploadExtension */,
+				A273D34E2FB572F900138309 /* BroadcastUploadExtensionSetupUI */,
 			);
 		};
 /* End PBXProject section */
@@ -380,6 +522,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		4C82CB7D2D624E8700C0893B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A273D3422FB572F900138309 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A273D34D2FB572F900138309 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -418,6 +574,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A273D3402FB572F900138309 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A273D34B2FB572F900138309 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -435,6 +605,16 @@
 			isa = PBXTargetDependency;
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 			targetProxy = 4C82CB872D624E8700C0893B /* PBXContainerItemProxy */;
+		};
+		A273D3582FB572F900138309 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A273D34E2FB572F900138309 /* BroadcastUploadExtensionSetupUI */;
+			targetProxy = A273D3572FB572F900138309 /* PBXContainerItemProxy */;
+		};
+		A273D35B2FB572F900138309 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A273D3432FB572F900138309 /* BroadcastUploadExtension */;
+			targetProxy = A273D35A2FB572F900138309 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -457,13 +637,14 @@
 				INFOPLIST_FILE = "Django Files/Info.plist";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCameraUsageDescription = "This lets you capture and upload photos or video files to your Django Files.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This lets you stream, capture and upload photos or video files to your Django Files.";
 				INFOPLIST_KEY_NSFileProviderDomainUsageDescription = "This lets you upload files to your Django Files.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This lets you connect to Django Files on your local network.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This lets you capture and upload audio or video files to your Django Files.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This lets you stream, capture and upload audio or video files to your Django Files.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This lets you save or upload photos to your Django Files";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arm64 microphone still-camera";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
@@ -504,13 +685,14 @@
 				INFOPLIST_FILE = "Django Files/Info.plist";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCameraUsageDescription = "This lets you capture and upload photos or video files to your Django Files.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This lets you stream, capture and upload photos or video files to your Django Files.";
 				INFOPLIST_KEY_NSFileProviderDomainUsageDescription = "This lets you upload files to your Django Files.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This lets you connect to Django Files on your local network.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This lets you capture and upload audio or video files to your Django Files.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This lets you stream, capture and upload audio or video files to your Django Files.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This lets you save or upload photos to your Django Files";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arm64 microphone still-camera";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
@@ -802,6 +984,144 @@
 			};
 			name = Release;
 		};
+		A273D35D2FB572F900138309 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BroadcastUploadExtension/BroadcastUploadExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = ZY6BPTGK47;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BroadcastUploadExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BroadcastUploadExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.BroadcastUploadExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "match AppStore com.djangofiles.app.BroadcastUploadExtension";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A273D35E2FB572F900138309 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BroadcastUploadExtension/BroadcastUploadExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = ZY6BPTGK47;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BroadcastUploadExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BroadcastUploadExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.BroadcastUploadExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "match AppStore com.djangofiles.app.BroadcastUploadExtension";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A273D35F2FB572F900138309 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = ZY6BPTGK47;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BroadcastUploadExtensionSetupUI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BroadcastUploadExtensionSetupUI;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.BroadcastUploadExtensionSetupUI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "match AppStore com.djangofiles.app.BroadcastUploadExtensionSetupUI";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A273D3602FB572F900138309 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = ZY6BPTGK47;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BroadcastUploadExtensionSetupUI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BroadcastUploadExtensionSetupUI;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.djangofiles.app.BroadcastUploadExtensionSetupUI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "match AppStore com.djangofiles.app.BroadcastUploadExtensionSetupUI";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -850,6 +1170,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A273D3612FB572F900138309 /* Build configuration list for PBXNativeTarget "BroadcastUploadExtensionSetupUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A273D35F2FB572F900138309 /* Debug */,
+				A273D3602FB572F900138309 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A273D3632FB572F900138309 /* Build configuration list for PBXNativeTarget "BroadcastUploadExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A273D35D2FB572F900138309 /* Debug */,
+				A273D35E2FB572F900138309 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -883,6 +1221,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.0.17;
+			};
+		};
+		A29170AC2FA845EC0000C625 /* XCRemoteSwiftPackageReference "HaishinKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/shogo4405/HaishinKit.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.2.5;
 			};
 		};
 		A2DF11D32DDA12CA0096E7C4 /* XCRemoteSwiftPackageReference "highlightswift" */ = {
@@ -930,6 +1276,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A223805D2DFD335A00A544A0 /* XCRemoteSwiftPackageReference "FLAnimatedImage" */;
 			productName = FLAnimatedImage;
+		};
+		A273D3682FB573CF00138309 /* HaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A29170AC2FA845EC0000C625 /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = HaishinKit;
+		};
+		A273D36A2FB573CF00138309 /* RTMPHaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A29170AC2FA845EC0000C625 /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = RTMPHaishinKit;
+		};
+		A29170AD2FA847C10000C625 /* RTMPHaishinKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A29170AC2FA845EC0000C625 /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			productName = RTMPHaishinKit;
 		};
 		A2DF11D42DDA13FE0096E7C4 /* HighlightSwift */ = {
 			isa = XCSwiftPackageProductDependency;

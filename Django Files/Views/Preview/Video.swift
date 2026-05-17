@@ -7,82 +7,55 @@
 
 import SwiftUI
 import AVKit
+import UIKit
 
-struct VideoPlayerView: View {
+struct VideoPlayerView: UIViewControllerRepresentable {
     let url: URL
     @Binding var isLoading: Bool
-    @State private var player: AVPlayer?
 
-    var body: some View {
-        Group {
-            if let player = player {
-                VideoPlayer(player: player)
-            } else {
-                Color.black
-            }
-        }
-        .onAppear {
-            setupPlayer()
-        }
-        .onDisappear {
-            cleanupPlayer()
-        }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isLoading: $isLoading)
     }
 
-    private func setupPlayer() {
-        isLoading = true
-        let newPlayer = AVPlayer(url: url)
-        self.player = newPlayer
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let player = AVPlayer(url: url)
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.showsPlaybackControls = true
+        vc.videoGravity = .resizeAspect
+        context.coordinator.observe(player: player)
+        player.play()
+        return vc
+    }
 
-        // Monitor the player item status
-        if let currentItem = newPlayer.currentItem {
-            // Check initial status
-            if currentItem.status == .readyToPlay {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                }
-            } else if currentItem.status == .failed {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                }
-            }
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
 
-            // Set up status observation
-            let _ = currentItem.observe(\.status, options: [.new]) { item, _ in
+    class Coordinator: NSObject {
+        @Binding var isLoading: Bool
+        private var statusObservation: NSKeyValueObservation?
+
+        init(isLoading: Binding<Bool>) {
+            _isLoading = isLoading
+        }
+
+        func observe(player: AVPlayer) {
+            guard let item = player.currentItem else { return }
+            statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
                 DispatchQueue.main.async {
                     switch item.status {
-                    case .readyToPlay:
-                        self.isLoading = false
-                    case .failed:
-                        self.isLoading = false
+                    case .readyToPlay, .failed:
+                        self?.isLoading = false
                     case .unknown:
-                        // Keep loading
                         break
                     @unknown default:
                         break
                     }
                 }
             }
-
-            // Set up periodic checking for video readiness (fallback)
-            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
-                if currentItem.status == .readyToPlay {
-                    DispatchQueue.main.async {
-                        self.isLoading = false
-                    }
-                    timer.invalidate()
-                } else if currentItem.status == .failed {
-                    DispatchQueue.main.async {
-                        self.isLoading = false
-                    }
-                    timer.invalidate()
-                }
-            }
         }
-    }
 
-    private func cleanupPlayer() {
-        player?.pause()
-        player = nil
+        deinit {
+            statusObservation = nil
+        }
     }
 }

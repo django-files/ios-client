@@ -25,6 +25,7 @@ struct ContentPreview: View {
     @State private var lastImageScale: CGFloat = 1.0
     @State private var isPreviewing: Bool = false
     @State private var fileDetails: DFFile?
+    @State private var videoPlayRequested = false
     
     var body: some View {
         Group {
@@ -100,14 +101,34 @@ struct ContentPreview: View {
     private var videoPreview: some View {
         GeometryReader { geometry in
             ZStack {
-                VideoPlayerView(url: fileURL, isLoading: $isLoading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
+                if videoPlayRequested {
+                    VideoPlayerView(url: fileURL, isLoading: $isLoading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                        .padding(.top, geometry.size.height > geometry.size.width ? 100 : 0)
 
-                if isLoading {
-                    LoadingView()
-                        .frame(width: 100, height: 100)
+                    if isLoading {
+                        LoadingView()
+                            .frame(width: 100, height: 100)
+                    }
+                } else {
+                    if let thumbURL = URL(string: file.thumb), !file.thumb.isEmpty {
+                        CachedAsyncImage(url: thumbURL) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        } placeholder: {
+                            Color.black
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    Button(action: { videoPlayRequested = true }) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 72))
+                            .foregroundColor(.white)
+                            .shadow(radius: 10)
+                    }
                 }
             }
         }
@@ -473,6 +494,10 @@ struct FilePreviewView: View {
     private var isDeepLinkPreview: Bool {
         fileListDelegate == nil
     }
+
+    private var isOwner: Bool {
+        (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+    }
     
     private func resetMarqueeAnimation() {
         // Generate new animation ID to cancel previous animations
@@ -718,12 +743,14 @@ struct FilePreviewView: View {
 //                        Image(systemName: "info.circle")
 //                    }
 //                    Spacer()
-                    Button(action: {
-                        fileIDsToDelete = [file.id]
-                        fileNameToDelete = file.name
-                        showingDeleteConfirmation = true
-                    }) {
-                        Image(systemName: "trash")
+                    if isOwner {
+                        Button(action: {
+                            fileIDsToDelete = [file.id]
+                            fileNameToDelete = file.name
+                            showingDeleteConfirmation = true
+                        }) {
+                            Image(systemName: "trash")
+                        }
                     }
                 }
             }
@@ -872,9 +899,10 @@ struct FilePreviewView: View {
     }
     
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
-        FileContextMenuButtons(
+        return FileContextMenuButtons(
             isPreviewing: isPreviewing,
             isPrivate: isPrivate,
+            isOwner: isOwner,
             onPreview: {
                 // No-op since we're already previewing
             },

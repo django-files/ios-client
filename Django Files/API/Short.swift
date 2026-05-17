@@ -1,5 +1,5 @@
 //
-//  Stats.swift
+//  Short.swift
 //  Django Files
 //
 //  Created by Michael on 2/16/25.
@@ -97,7 +97,6 @@ extension DFAPI {
         
         do {
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.shorts),
                 parameters: parameters,
                 method: .get,

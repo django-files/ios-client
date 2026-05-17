@@ -81,7 +81,6 @@ extension DFAPI {
                 expectedResponse: .ok,
                 selectedServer: selectedServer
             )
-            let decoder = JSONDecoder()
             return try decoder.decode(AlbumsResponse.self, from: responseBody)
         } catch {
             print("Error fetching albums: \(error)")
@@ -114,8 +113,6 @@ extension DFAPI {
                 selectedServer: selectedServer
             )
             
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(CreateAlbumResponse.self, from: responseBody)
         } catch {
             print("Error creating album: \(error)")
@@ -123,6 +120,24 @@ extension DFAPI {
         }
     }
     
+    // Fetch a single album by ID
+    func getAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> DFAlbum? {
+        do {
+            let path = "\(getAPIPath(.album))\(albumId)"
+            let responseBody = try await makeAPIRequest(
+                path: path,
+                parameters: [:],
+                method: .get,
+                expectedResponse: .ok,
+                selectedServer: selectedServer
+            )
+            return try decoder.decode(DFAlbum.self, from: responseBody)
+        } catch {
+            print("Error fetching album \(albumId): \(error)")
+            return nil
+        }
+    }
+
     // Delete an album by ID
     func deleteAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {

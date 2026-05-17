@@ -6,9 +6,12 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct PreviewFileInfo: View {
     let file: DFFile
+
+    @State private var showMap = false
     
     // Helper function to format EXIF date string
     private func formatExifDate(_ dateString: String) -> String {
@@ -115,27 +118,6 @@ struct PreviewFileInfo: View {
                 .foregroundColor(.secondary)
             }
             
-            if let gpsArea = file.meta?["GPSArea"]?.value as? String {
-                HStack {
-                    Image(systemName: "location")
-                        .frame(width: 15, height: 15)
-                    Text(gpsArea)
-                        .font(.caption)
-                }
-                .foregroundColor(.secondary)
-            }
-            
-            if let elevation = file.exif?["GPSInfo"]?.value as? [String: Any],
-               let altitude = elevation["6"] as? Double {
-                HStack{
-                    Image(systemName: "mountain.2.circle")
-                        .frame(width: 15, height: 15)
-                    Text(String(format: "Elevation: %.1f m", altitude))
-                        .font(.caption)
-                }
-                .foregroundColor(.secondary)
-            }
-            
             // Camera Information Section
             Group {
                 if let model = file.exif?["Model"]?.value as? String {
@@ -213,6 +195,65 @@ struct PreviewFileInfo: View {
                 }
             }
             
+            // GPS Map Section
+            if let coordinate = file.gpsCoordinate {
+                Divider()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showMap.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "map")
+                            .frame(width: 20, height: 20)
+                        Text("Location")
+                        Spacer()
+                        Image(systemName: showMap ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.4), lineWidth: 1)
+                    )
+                }
+
+                if showMap {
+                    Map(initialPosition: .region(MKCoordinateRegion(
+                        center: coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                    ))) {
+                        Marker("", coordinate: coordinate)
+                    }
+                    .frame(height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                if let gpsArea = file.gpsArea {
+                    HStack {
+                        Image(systemName: "location")
+                            .frame(width: 15, height: 15)
+                        Text(gpsArea)
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+                }
+
+                if let altitude = file.gpsAltitude {
+                    HStack {
+                        Image(systemName: "mountain.2.circle")
+                            .frame(width: 15, height: 15)
+                        Text(String(format: "Elevation: %.1f m", altitude))
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+                }
+            }
+
             if !file.info.isEmpty {
                 Text(file.info)
                     .font(.caption)

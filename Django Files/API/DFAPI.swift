@@ -43,25 +43,31 @@ struct DFAPI {
         case auth_application = "auth/application/"
         case user = "user/"
         case users = "users/"
+        case version = "version/"
     }
     
     let url: URL
     let token: String
     var decoder: JSONDecoder
-    
-    
+    private let apiSession: URLSession
+
+
     init(url: URL, token: String){
         self.url = url
         self.token = token
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        apiSession = URLSession(configuration: .ephemeral)
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {
-        var components = URLComponents(url: url.appendingPathComponent(path), resolvingAgainstBaseURL: true)!
-        components.queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
-        return components.url!
+        let base = url.appendingPathComponent(path)
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: true) else {
+            return base
+        }
+        components.queryItems = parameters.isEmpty ? nil : parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return components.url ?? base
     }
     
     internal func getAPIPath(_ api: DjangoFilesAPIs) -> String {
@@ -76,7 +82,8 @@ struct DFAPI {
     private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async {
         print("Server response status code: \(status)")
         do {
-            let e = try decoder.decode(DFErrorResponse.self, from: data!)
+            guard let data = data else { return }
+            let e = try decoder.decode(DFErrorResponse.self, from: data)
             print("\(e.error): \(e.message)")
             
             // Check for 401 Unauthorized and update session auth status
@@ -97,8 +104,8 @@ struct DFAPI {
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
-        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
-        let (responseBody, response) = try await session.upload(for: request, from: body)
+        let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
+        let (responseBody, response) = try await activeSession.upload(for: request, from: body)
         
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
@@ -118,8 +125,8 @@ struct DFAPI {
             request.headerFields[kvp.key] = kvp.value
         }
         
-        let session = URLSession(configuration: .ephemeral, delegate: taskDelegate ?? nil, delegateQueue: .main)
-        let (responseBody, response) = try await session.upload(for: request, from: Data())
+        let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
+        let (responseBody, response) = try await activeSession.upload(for: request, from: Data())
         
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
@@ -138,11 +145,13 @@ struct DFAPI {
             request.headerFields[kvp.key] = kvp.value
         }
         
+        // The streaming delegate's state machine and Timer both run on the main thread;
+        // using .main here keeps them on the same serial queue and avoids data races.
         let session = URLSession(configuration: .ephemeral, delegate: taskDelegate, delegateQueue: .main)
         return session.uploadTask(withStreamedRequest: URLRequest(httpRequest: request)!)
     }
 
-    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
+    public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
         
@@ -166,6 +175,12 @@ struct DFAPI {
             if privateUpload {
                 headers[HTTPField.Name("Private")!] = "true"
             }
+            if stripExif {
+                headers[HTTPField.Name("strip-exif")!] = "true"
+            }
+            if stripGps {
+                headers[HTTPField.Name("strip-gps")!] = "true"
+            }
             let responseBody = try await makeAPIRequest(
                 body: data,
                 path: getAPIPath(.upload),
@@ -183,17 +198,27 @@ struct DFAPI {
         }
     }
     
-    public func uploadFileStreamed(url: URL, fileName: String? = nil, taskDelegate: URLSessionTaskDelegate) async -> DjangoFilesUploadDelegate?{
+    public func uploadFileStreamed(url: URL, fileName: String? = nil, privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate) async -> DjangoFilesUploadDelegate? {
         let boundary = UUID().uuidString
-        
-        do{
+
+        do {
+            var headers: [HTTPField.Name: String] = [.contentType: "multipart/form-data; boundary=\(boundary)"]
+            if privateUpload {
+                headers[HTTPField.Name("Private")!] = "true"
+            }
+            if stripExif {
+                headers[HTTPField.Name("strip-exif")!] = "true"
+            }
+            if stripGps {
+                headers[HTTPField.Name("strip-gps")!] = "true"
+            }
             let delegate = DjangoFilesUploadDelegate(fileURL: url, boundary: boundary, originalDelegate: taskDelegate)
-            let task = try makeAPIRequestStreamed(path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: [.contentType: "multipart/form-data; boundary=\(boundary)"], taskDelegate: delegate)
+            let task = try makeAPIRequestStreamed(path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: headers, taskDelegate: delegate)
             task.resume()
             return delegate
-        }catch {
+        } catch {
             print("Request failed \(error)")
-            return nil;
+            return nil
         }
     }
 
@@ -299,21 +324,21 @@ struct DFAPI {
             urlRequest.httpBody = json
             
             if let url = urlRequest.url {
-                // Set the cookie directly in the request header
-                urlRequest.setValue("sessionid=\(sessionKey)", forHTTPHeaderField: "Cookie")
-                
-                // Also set it in the cookie storage
+                let isSecure = url.scheme?.lowercased() == "https"
                 let cookieProperties: [HTTPCookiePropertyKey: Any] = [
                     .name: "sessionid",
                     .value: sessionKey,
                     .domain: url.host ?? "",
                     .path: "/",
-                    .secure: false,
-                    .expires: Date().addingTimeInterval(31536000)  // 1 year from now
+                    .secure: isSecure,
+                    .expires: Date().addingTimeInterval(31536000)
                 ]
-                
                 if let cookie = HTTPCookie(properties: cookieProperties) {
                     HTTPCookieStorage.shared.setCookie(cookie)
+                    let cookieHeader = HTTPCookie.requestHeaderFields(with: [cookie])
+                    for (field, value) in cookieHeader {
+                        urlRequest.setValue(value, forHTTPHeaderField: field)
+                    }
                 }
             }
             
@@ -344,25 +369,25 @@ struct DFAPI {
     public func checkRedirect(url: String) async -> String? {
         do {
             guard let targetURL = URL(string: url) else { return nil }
-            
+
             var request = HTTPRequest(method: .get, url: targetURL)
-            request.headerFields[.authorization] = self.token
+            if targetURL.host() == self.url.host() {
+                request.headerFields[.authorization] = self.token
+            }
             request.headerFields[.referer] = self.url.absoluteString
             request.headerFields[.userAgent] = DFAPI.customUserAgent
-            
-            let configuration = URLSessionConfiguration.ephemeral
+
             let delegate = RedirectDelegate()
-            let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-            
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+
             let (_, response) = try await session.data(for: request)
-            
+
             if response.status.code == 302 {
-                if let newURL = URL(string: response.headerFields[.location]!) {
-                    if newURL.host() == nil {
-                        return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(response.headerFields[.location] ?? "")"
-                    } else {
-                        return response.headerFields[.location]
-                    }
+                guard let location = response.headerFields[.location] else { return nil }
+                if let newURL = URL(string: location), newURL.host() == nil {
+                    return "\(targetURL.scheme ?? "https")://\(targetURL.host() ?? "")\(location)"
+                } else {
+                    return location
                 }
             }
 
@@ -472,15 +497,14 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         guard let input = inputOrNil, let output = outputOrNil else {
             fatalError("On return of `getBoundStreams`, both `inputStream` and `outputStream` will contain non-nil streams.")
         }
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             // configure and open output stream
             output.delegate = self
             output.schedule(in: .current, forMode: .default)
             output.open()
         }
-        
-        self.session = session
-        self.task = task
+
         state = .started
         
         return UploadStreams(input: input, output: output)
@@ -497,15 +521,17 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?){
         self.error = error?.localizedDescription
-        if error != nil{
+        if error != nil {
             state = .error
+            timer?.invalidate()
         }
     }
-    
+
     func urlSession(_ session: URLSession, didBecomeInvalidWithError error: (any Error)?){
         self.error = error?.localizedDescription
-        if error != nil{
+        if error != nil {
             state = .error
+            timer?.invalidate()
         }
     }
     
@@ -527,15 +553,15 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     }
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive: Data){
-        if dataTask.httpResponse != nil{
-            if dataTask.httpResponse!.status == 200 { }
-            else if dataTask.httpResponse!.status == 499{
+        if let httpResponse = dataTask.httpResponse {
+            switch httpResponse.status.code {
+            case 200: break
+            case 499:
                 error = "Upload timeout. (499)"
                 state = .error
                 return
-            }
-            else{
-                error = "Response error. (\(dataTask.httpResponse!.status))"
+            default:
+                error = "Response error. (\(httpResponse.status))"
                 state = .error
                 return
             }
@@ -591,7 +617,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         
         do{
             let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
-            self.size = attributes[FileAttributeKey.size] as! Int64
+            self.size = (attributes[FileAttributeKey.size] as? NSNumber)?.int64Value ?? 0
             self.fileStream = try FileHandle(forReadingFrom: fileURL)
         }
         catch{
@@ -613,7 +639,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         self.outro.append("\r\n--\(self.boundary)--\r\n".data(using: .utf8)!)
         
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.0, repeats: true) {
+            self.timer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) {
                 [weak self] timer in
                 guard let self = self else { return }
                 

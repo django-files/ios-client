@@ -111,7 +111,26 @@ struct ShareView: View {
                 .padding(.horizontal, 16)
             }
             .padding(.top, 8)
-            
+
+            VStack(spacing: 2) {
+                Toggle("Private", isOn: $viewModel.privateUpload)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                if viewModel.isImageUpload {
+                    Divider()
+                        .padding(.horizontal, 16)
+                    Toggle("Strip EXIF", isOn: $viewModel.stripExif)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                    Divider()
+                        .padding(.horizontal, 16)
+                    Toggle("Strip GPS", isOn: $viewModel.stripGps)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                }
+            }
+            .padding(.top, 4)
+
             HStack(spacing: 12) {
                 Button {
                     viewModel.cancel()
@@ -141,11 +160,11 @@ struct ShareView: View {
         .toastNotification(
             message: viewModel.alertMessage,
             isPresented: $viewModel.showAlert,
-            duration: 2.5
+            duration: 1.25
         )
         .onChange(of: viewModel.showAlert) { oldValue, newValue in
             if newValue && viewModel.shouldAutoDismiss {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) {
                     if viewModel.showAlert && viewModel.shouldAutoDismiss {
                         viewModel.dismissAlert()
                     }
@@ -173,7 +192,11 @@ class ShareViewModel: ObservableObject {
     @Published var showAlert: Bool = false
     @Published var alertMessage: String = ""
     @Published var shouldAutoDismiss: Bool = false
-    
+    @Published var privateUpload: Bool = false
+    @Published var stripExif: Bool = false
+    @Published var stripGps: Bool = false
+    @Published var isImageUpload: Bool = false
+
     weak var shareViewController: ShareViewController?
     
     func selectSession(_ session: DjangoFilesSession) {
@@ -181,20 +204,31 @@ class ShareViewModel: ObservableObject {
     }
     
     func share() {
-        shareViewController?.handleShare(from: self)
+        guard let vc = shareViewController else {
+            print("ShareViewModel: shareViewController is nil, cannot share")
+            return
+        }
+        vc.handleShare(from: self)
     }
-    
+
     func cancel() {
-        shareViewController?.handleCancel()
+        guard let vc = shareViewController else {
+            print("ShareViewModel: shareViewController is nil, cannot cancel")
+            return
+        }
+        vc.handleCancel()
     }
-    
+
     func dismissAlert() {
         if showAlert {
             let wasAutoDismiss = shouldAutoDismiss
             showAlert = false
             shouldAutoDismiss = false
-            // Always call dismissAfterAlert, but it will handle completion differently
-            shareViewController?.dismissAfterAlert(shouldComplete: wasAutoDismiss)
+            guard let vc = shareViewController else {
+                print("ShareViewModel: shareViewController is nil, cannot dismiss alert")
+                return
+            }
+            vc.dismissAfterAlert(shouldComplete: wasAutoDismiss)
         }
     }
 }

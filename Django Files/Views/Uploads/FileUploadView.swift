@@ -22,6 +22,8 @@ struct FileUploadView: View {
     @State private var capturedImage: UIImage?
     
     @State private var uploadPrivate: Bool = false
+    @State private var stripExif: Bool = false
+    @State private var stripGps: Bool = false
     
     // Album selection states
     @State private var albums: [DFAlbum] = []
@@ -39,6 +41,8 @@ struct FileUploadView: View {
         NavigationView {
             VStack(spacing: 20) {
                 Toggle("Make Private", isOn: $uploadPrivate)
+                Toggle("Strip EXIF", isOn: $stripExif)
+                Toggle("Strip GPS", isOn: $stripGps)
                 
                 // Album Selection
                 VStack(alignment: .leading) {
@@ -212,9 +216,9 @@ struct FileUploadView: View {
             }
             
             if let albumId = selectedAlbum?.id {
-                _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+                _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
             } else {
-                _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+                _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
             }
             try? FileManager.default.removeItem(at: tempURL)
         }
@@ -239,9 +243,9 @@ struct FileUploadView: View {
                 }
                 
                 if let albumId = selectedAlbum?.id {
-                    _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+                    _ = await api.uploadFile(url: tempURL, albums: String(albumId), privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
                 } else {
-                    _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, taskDelegate: delegate)
+                    _ = await api.uploadFile(url: tempURL, privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
                 }
                 try? FileManager.default.removeItem(at: tempURL)
             }
@@ -264,9 +268,9 @@ struct FileUploadView: View {
             }
             
             if let albumId = selectedAlbum?.id {
-                _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+                _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
             } else {
-                _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+                _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
             }
         }
         
@@ -333,9 +337,9 @@ struct FileUploadView: View {
         }
         
         if let albumId = selectedAlbum?.id {
-            _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, taskDelegate: delegate)
+            _ = await api.uploadFile(url: url, albums: String(albumId), privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
         } else {
-            _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, taskDelegate: delegate)
+            _ = await api.uploadFile(url: url, privateUpload: uploadPrivate, stripExif: stripExif, stripGps: stripGps, taskDelegate: delegate)
         }
         try? FileManager.default.removeItem(at: url)
         

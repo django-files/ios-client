@@ -75,23 +75,14 @@ struct SessionEditor: View {
         NavigationStack {
             Form {
                 if onBoarding {
-                    HStack {
-                        Spacer()
-                        Label("", systemImage: "hand.wave.fill")
-                            .font(.system(size: 50))
-                            .padding(.bottom)
-                            .shadow(color: .purple, radius: 20)
-                            .listRowSeparator(.hidden)
-                        Spacer()
-                    }
-                    Text("Welcome to Django Files!")
+                    Text("Welcome to Django Files iOS!")
                         .font(.system(size: 25))
                         .padding(.bottom)
                         .shadow(color: .purple, radius: 20)
                         .listRowSeparator(.hidden)
-                    Text("Thanks for using our iOS app! If you don’t have a server set up yet, check out our GitHub README to get started.")
+                    Text("If you don’t have a server set up yet, check out our GitHub README.md to get started.")
                         .listRowSeparator(.hidden)
-                    Text("https://github.com/django-files/django-files")
+                    Text("https://github.com/django-files/django-files#-getting-started")
                         .listRowSeparator(.hidden)
                 }
                 Section(header: Text("Server URL")) {

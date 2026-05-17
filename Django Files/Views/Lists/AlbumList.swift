@@ -12,7 +12,9 @@ import Foundation
 struct AlbumListView: View {
     let navigationPath: Binding<NavigationPath>
     let server: Binding<DjangoFilesSession?>
-    
+
+    @EnvironmentObject private var albumStateManager: AlbumStateManager
+
     @State private var albums: [DFAlbum] = []
     @State private var currentPage = 1
     @State private var hasNextPage = false
@@ -152,6 +154,9 @@ struct AlbumListView: View {
                 selectedAlbum = nil // Reset after navigation
             }
         }
+        .onChange(of: albumStateManager.deepLinkNavigationAlbumID) { _, _ in
+            navigateToPendingDeepLink()
+        }
         .confirmationDialog("Are you sure?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 if let album = albumToDelete {
@@ -168,6 +173,30 @@ struct AlbumListView: View {
         }
         .onAppear {
             loadAlbums()
+            navigateToPendingDeepLink()
+        }
+    }
+
+    private func navigateToPendingDeepLink() {
+        guard let albumID = albumStateManager.deepLinkNavigationAlbumID else { return }
+        albumStateManager.deepLinkNavigationAlbumID = nil
+        albumStateManager.deepLinkNavigationAlbumName = nil
+
+        // Use the already-loaded album when available (real name, no extra request)
+        if let existing = albums.first(where: { $0.id == albumID }) {
+            navigationPath.wrappedValue.append(existing)
+            return
+        }
+
+        // Fetch from the API so the title is correct
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else { return }
+
+        Task { @MainActor in
+            let api = DFAPI(url: url, token: serverInstance.token)
+            if let album = await api.getAlbum(albumId: albumID, selectedServer: serverInstance) {
+                navigationPath.wrappedValue.append(album)
+            }
         }
     }
     
