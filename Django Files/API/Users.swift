@@ -92,15 +92,12 @@ extension DFAPI {
     public func getCurrentUser(selectedServer: DjangoFilesSession? = nil) async -> DFUser? {
         do {
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.user),
                 parameters: [:],
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFUser.self, from: responseBody)
+            return try decoder.decode(DFUser.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -117,15 +114,12 @@ extension DFAPI {
         
         do {
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.users),
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode([DFUser].self, from: responseBody)
+            return try decoder.decode([DFUser].self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -142,7 +136,7 @@ extension DFAPI {
                 method: .get
             )
             struct VersionResponse: Decodable { let version: String }
-            return try JSONDecoder().decode(VersionResponse.self, from: responseBody).version
+            return try decoder.decode(VersionResponse.self, from: responseBody).version
         } catch {
             return nil
         }

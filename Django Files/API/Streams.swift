@@ -533,9 +533,7 @@ extension DFAPI {
                 method: .get,
                 selectedServer: selectedServer
             )
-            let dec = JSONDecoder()
-            dec.dateDecodingStrategy = .iso8601
-            return try dec.decode(DFStreamsResponse.self, from: responseBody)
+            return try decoder.decode(DFStreamsResponse.self, from: responseBody)
         } catch {
             print("getStreams failed: \(error)")
             return nil
@@ -560,7 +558,7 @@ extension DFAPI {
                 headerFields: [.accept: "application/json"],
                 selectedServer: selectedServer
             )
-            return try JSONDecoder().decode(DFStreamIngestInfo.self, from: responseBody)
+            return try decoder.decode(DFStreamIngestInfo.self, from: responseBody)
         } catch {
             print("getStreamIngestInfo failed: \(error)")
             return nil
@@ -576,7 +574,7 @@ extension DFAPI {
                 headerFields: [.accept: "application/json"],
                 selectedServer: selectedServer
             )
-            return try JSONDecoder().decode(DFStreamViewersResponse.self, from: responseBody).count
+            return try decoder.decode(DFStreamViewersResponse.self, from: responseBody).count
         } catch {
             print("getStreamViewerCount failed: \(error)")
             return nil
@@ -592,7 +590,7 @@ extension DFAPI {
                 headerFields: [.accept: "application/json"],
                 selectedServer: selectedServer
             )
-            return try JSONDecoder().decode(StreamCommandsResponse.self, from: responseBody)
+            return try decoder.decode(StreamCommandsResponse.self, from: responseBody)
         } catch {
             print("getStreamCommands failed: \(error)")
             return nil

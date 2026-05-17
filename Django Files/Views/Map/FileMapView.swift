@@ -48,6 +48,9 @@ struct FileMapView: View {
     @State private var showingPreview                     = false
     @State private var showFileInfo                       = false
     @State private var previewIndex                       = 0
+    @State private var showingClusterPreview              = false
+    @State private var clusterPreviewFiles: [DFFile]      = []
+    @State private var clusterPreviewIndex                = 0
     @State private var loadTask:    Task<Void, Never>?    = nil
     @State private var clusterTask: Task<Void, Never>?    = nil
 
@@ -143,13 +146,11 @@ struct FileMapView: View {
               let minLon = lons.min(), let maxLon = lons.max() else { return }
 
         // All files at essentially the same coordinate — can't
-        // resolve via zoom; open the preview directly instead.
-        if (maxLat - minLat) < 0.0001 && (maxLon - minLon) < 0.0001 {
-            if let first = cluster.files.first,
-               let idx = geoFiles.firstIndex(of: first.file) {
-                previewIndex = idx
-                showingPreview = true
-            }
+        // resolve via zoom; open a cluster-scoped preview instead.
+        if (maxLat - minLat) < 0.001 && (maxLon - minLon) < 0.001 {
+            clusterPreviewFiles = cluster.files.map { $0.file }
+            clusterPreviewIndex = 0
+            showingClusterPreview = true
             return
         }
 
@@ -252,7 +253,8 @@ struct FileMapView: View {
                     )
                 }
             }
-            .fullScreenCover(isPresented: $showingPreview, content: previewContent)
+            .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
+            .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
             .onAppear(perform: loadGPSFiles)
             .onDisappear {
                 loadTask?.cancel()
@@ -266,7 +268,7 @@ struct FileMapView: View {
     // MARK: Preview
 
     @ViewBuilder
-    private func previewContent() -> some View {
+    private func fullPreview() -> some View {
         if !geoFiles.isEmpty, previewIndex < geoFiles.count {
             FilePreviewView(
                 file: Binding(get: { geoFiles[previewIndex] },
@@ -333,6 +335,7 @@ struct FileMapView: View {
 
                 if !newEntries.isEmpty {
                     applyEntries(newEntries)
+                    updateClusters()
                 }
 
                 if fullyKnown { break }
@@ -355,6 +358,25 @@ struct FileMapView: View {
         let newFiles = entries.map { $0.file }
         geoFiles.removeAll { newIDs.contains($0.id) }
         geoFiles.append(contentsOf: newFiles)
+    }
+
+    @ViewBuilder
+    private func clusterPreviewContent() -> some View {
+        if !clusterPreviewFiles.isEmpty, clusterPreviewIndex < clusterPreviewFiles.count {
+            FilePreviewView(
+                file: Binding(get: { clusterPreviewFiles[clusterPreviewIndex] },
+                              set: { clusterPreviewFiles[clusterPreviewIndex] = $0 }),
+                server: server,
+                showingPreview: $showingClusterPreview,
+                showFileInfo: $showFileInfo,
+                fileListDelegate: nil,
+                allFiles: $clusterPreviewFiles,
+                currentIndex: clusterPreviewIndex,
+                onNavigate: { idx in
+                    if idx >= 0, idx < clusterPreviewFiles.count { clusterPreviewIndex = idx }
+                }
+            )
+        }
     }
 }
 

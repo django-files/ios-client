@@ -97,38 +97,35 @@ public struct DFFile: Codable, Hashable, Equatable, Identifiable {
         try container.encode(meta, forKey: .meta)
     }
     
-    // Helper property to get a Date object when needed
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let iso8601FallbackFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
+
+    private static let displayDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
     public var dateObject: Date? {
-        let iso8601Formatter = ISO8601DateFormatter()
-        iso8601Formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        if let date = iso8601Formatter.date(from: date) {
-            return date
-        }
-        
-        // Fall back to other formatters if needed
-        let backupFormatter = DateFormatter()
-        backupFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        backupFormatter.locale = Locale(identifier: "en_US_POSIX")
-        backupFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-        
-        if let date = backupFormatter.date(from: date) {
-            return date
-        }
-        
-        return nil
+        DFFile.iso8601Formatter.date(from: date)
+            ?? DFFile.iso8601FallbackFormatter.date(from: date)
     }
-    
-    // Format the date string for display
+
     public func formattedDate() -> String {
-        guard let date = dateObject else {
-            return date // Return the raw string if we can't parse it
-        }
-        
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        guard let d = dateObject else { return date }
+        return DFFile.displayDateFormatter.string(from: d)
     }
     
     // Format file size to human readable string
@@ -277,23 +274,20 @@ extension DFAPI {
     public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil) async -> DFFilesResponse? {
         do {
             var parameters: [String: String] = [:]
-            if let album = album {
+            if let album {
                 parameters["album"] = String(album)
             }
-            if filterUserID != nil {
-                parameters["user"] = String(filterUserID!)
+            if let filterUserID {
+                parameters["user"] = String(filterUserID)
             }
-            
+
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.files) + "\(page)/",
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFFilesResponse.self, from: responseBody)
+            return try decoder.decode(DFFilesResponse.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {
@@ -310,15 +304,12 @@ extension DFAPI {
             }
             
             let responseBody = try await makeAPIRequest(
-                body: Data(),
                 path: getAPIPath(.file) + "\(fileID)",
                 parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
-            let specialDecoder = JSONDecoder()
-            specialDecoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try specialDecoder.decode(DFFile.self, from: responseBody)
+            return try decoder.decode(DFFile.self, from: responseBody)
         } catch let DecodingError.keyNotFound(key, context) {
             print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
         } catch {

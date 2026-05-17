@@ -81,7 +81,6 @@ extension DFAPI {
                 expectedResponse: .ok,
                 selectedServer: selectedServer
             )
-            let decoder = JSONDecoder()
             return try decoder.decode(AlbumsResponse.self, from: responseBody)
         } catch {
             print("Error fetching albums: \(error)")
@@ -114,8 +113,6 @@ extension DFAPI {
                 selectedServer: selectedServer
             )
             
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(CreateAlbumResponse.self, from: responseBody)
         } catch {
             print("Error creating album: \(error)")
@@ -134,7 +131,6 @@ extension DFAPI {
                 expectedResponse: .ok,
                 selectedServer: selectedServer
             )
-            let decoder = JSONDecoder()
             return try decoder.decode(DFAlbum.self, from: responseBody)
         } catch {
             print("Error fetching album \(albumId): \(error)")
