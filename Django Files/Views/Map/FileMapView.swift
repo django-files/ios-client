@@ -493,8 +493,8 @@ struct FileMapCallout: View {
     let onViewFile: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
+            Button(action: onViewFile) {
                 Group {
                     if file.mime.hasPrefix("image/"), let url = thumbnailURL {
                         CachedAsyncImage(url: url) { img in
@@ -508,35 +508,25 @@ struct FileMapCallout: View {
                         }
                     }
                 }
-                .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(file.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-                    if let area = file.gpsArea {
-                        Label(area, systemImage: "location.fill")
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                    if let alt = file.gpsAltitude {
-                        Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(file.formattedDate()).font(.caption2).foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(file.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+                if let area = file.gpsArea {
+                    Label(area, systemImage: "location.fill")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
+                if let alt = file.gpsAltitude {
+                    Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text(file.formattedDate()).font(.caption2).foregroundStyle(.tertiary)
             }
-            .padding(14)
-
-            Divider()
-
-            Button(action: onViewFile) {
-                Label("View File", systemImage: "arrow.up.right.square")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .font(.subheadline.weight(.medium))
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(10)
         }
+        .padding(14)
         .frame(width: 280)
     }
 }
