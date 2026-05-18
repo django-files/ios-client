@@ -32,7 +32,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private static let configKey   = "stream.broadcast.config"
     private static let statusKey   = "stream.broadcast.status"
     private static let requestKey  = "stream.broadcast.request"
-    private static let micMutedKey = "stream.broadcast.micMuted"
+    private static let micMutedKey    = "stream.broadcast.micMuted"
+    private static let orientationKey = "stream.broadcast.orientation"
 
     // MARK: - RTMP plumbing
 
@@ -304,19 +305,33 @@ final class SampleHandler: RPBroadcastSampleHandler {
         )
     }
 
-    /// Reads the display orientation that ReplayKit attaches to every video
-    /// sample buffer. When the attachment is absent, `.up` (portrait) is assumed.
+    /// Reads the display orientation from the sample buffer.
+    /// Primary: RPVideoSampleOrientationKey via CMGetAttachment (works regardless of
+    /// propagation mode, unlike CMCopyDictionaryOfAttachments(ShouldPropagate) which
+    /// silently misses non-propagating attachments).
+    /// Fallback: orientation written by the host app into the shared App Group,
+    /// covering iOS versions where ReplayKit omits the attachment entirely.
     private func bufferOrientation(_ buffer: CMSampleBuffer) -> CGImagePropertyOrientation {
-        guard
-            let attachments = CMCopyDictionaryOfAttachments(
-                allocator: nil,
-                target: buffer,
-                attachmentMode: kCMAttachmentMode_ShouldPropagate
-            ) as? [String: Any],
-            let raw = attachments[RPVideoSampleOrientationKey] as? NSNumber,
-            let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value)
-        else { return .up }
-        return orientation
+        if let raw = CMGetAttachment(
+            buffer,
+            key: RPVideoSampleOrientationKey as CFString,
+            attachmentModeOut: nil
+        ) as? NSNumber,
+           let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value) {
+            return orientation
+        }
+        return hostAppOrientation()
+    }
+
+    private func hostAppOrientation() -> CGImagePropertyOrientation {
+        let v = UserDefaults(suiteName: Self.appGroupID)?
+            .integer(forKey: Self.orientationKey) ?? 0
+        switch v {
+        case 1: return .left   // landscapeLeft  (device rotated CW → top points right → rotate buffer CCW)
+        case 2: return .right  // landscapeRight (device rotated CCW → top points left → rotate buffer CW)
+        case 3: return .down   // portraitUpsideDown
+        default: return .up    // portrait, no rotation
+        }
     }
 
     private func videoSizePreservingAspect(source: CGSize, longEdge: CGFloat) -> CGSize {

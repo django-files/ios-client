@@ -203,6 +203,13 @@ struct StreamView: View {
     // setting it non-nil presents the cover, clearing it dismisses it.
     @State private var broadcastMode: CaptureMode? = nil
 
+    @State private var showingShareSheet = false
+
+    private var streamShareURL: URL {
+        if let urlString = initialStream?.url, let url = URL(string: urlString) { return url }
+        return serverURL.appendingPathComponent("stream/\(streamName)/")
+    }
+
     init(serverURL: URL, streamName: String, token: String,
          initialStream: DFStream? = nil, password: String? = nil) {
         self.serverURL = serverURL
@@ -233,6 +240,7 @@ struct StreamView: View {
             if let live { isLive = live }
         }
         .sheet(isPresented: $showViewersList) { viewersSheet }
+        .sheet(isPresented: $showingShareSheet) { ShareSheet(url: streamShareURL) }
         // Use item: so the CaptureMode value is captured directly in the closure,
         // avoiding the stale-state bug with isPresented + a separate state variable.
         .fullScreenCover(item: $broadcastMode) { captureMode in
@@ -320,6 +328,12 @@ struct StreamView: View {
         .navigationTitle(chatManager.streamTitle.isEmpty ? streamName : chatManager.streamTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showingShareSheet = true } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .labelStyle(.iconOnly)
+                }
+            }
             if initialStream?.isOwner == true {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -439,6 +453,12 @@ struct StreamView: View {
             Button { showViewersList = true } label: {
                 Label("\(viewerCount)", systemImage: "eye")
                     .font(.caption)
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            Button { showingShareSheet = true } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)

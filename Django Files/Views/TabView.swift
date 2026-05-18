@@ -24,7 +24,25 @@ struct TabViewWindow: View {
     @State private var filesNavigationPath = NavigationPath()
     @State private var albumsNavigationPath = NavigationPath()
     @State private var showFileInfo = false
-    
+
+    @AppStorage("tabOrder")   private var tabOrderString   = "files,albums,shorts,streams"
+    @AppStorage("hiddenTabs") private var hiddenTabsString = ""
+
+    private var orderedVisibleTabs: [Tab] {
+        let hidden = Set(hiddenTabsString.split(separator: ",").map(String.init).filter { !$0.isEmpty })
+        let order  = tabOrderString.split(separator: ",").map(String.init)
+        return order.compactMap { id -> Tab? in
+            guard !hidden.contains(id) else { return nil }
+            switch id {
+            case "files":   return .files
+            case "albums":  return .albums
+            case "shorts":  return .shorts
+            case "streams": return .streams
+            default:        return nil
+            }
+        }
+    }
+
     init(sessionManager: SessionManager, selectedTab: Binding<Tab>) {
         self.sessionManager = sessionManager
         _selectedTab = selectedTab
@@ -39,39 +57,11 @@ struct TabViewWindow: View {
             if let server = sessionManager.selectedSession {
                 TabView(selection: $selectedTab) {
                     if server.auth {
-                        NavigationStack(path: $filesNavigationPath) {
-                            FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
-                                .id(serverChangeRefreshTrigger)
+                        ForEach(orderedVisibleTabs, id: \.self) { tab in
+                            tabContent(for: tab, server: server)
                         }
-                        .tabItem {
-                            Label("Files", systemImage: "document.fill")
-                        }
-                        .tag(Tab.files)
-                        
-                        NavigationStack(path: $albumsNavigationPath) {
-                            AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
-                                .id(serverChangeRefreshTrigger)
-                        }
-                        .tabItem {
-                            Label("Albums", systemImage: "square.stack")
-                        }
-                        .tag(Tab.albums)
-                        
-                        ShortListView(server: $sessionManager.selectedSession)
-                            .id(serverChangeRefreshTrigger)
-                            .tabItem {
-                                Label("Shorts", systemImage: "link")
-                            }
-                            .tag(Tab.shorts)
-
-                        StreamListView(server: $sessionManager.selectedSession)
-                            .id(serverChangeRefreshTrigger)
-                            .tabItem {
-                                Label("Streams", systemImage: "video.fill")
-                            }
-                            .tag(Tab.streams)
                     }
-                    
+
                     SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
                         .tabItem {
                             Label("Settings", systemImage: "gear")
@@ -119,6 +109,38 @@ struct TabViewWindow: View {
         }
     }
     
+    @ViewBuilder
+    private func tabContent(for tab: Tab, server: DjangoFilesSession) -> some View {
+        switch tab {
+        case .files:
+            NavigationStack(path: $filesNavigationPath) {
+                FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
+                    .id(serverChangeRefreshTrigger)
+            }
+            .tabItem { Label("Files", systemImage: "document.fill") }
+            .tag(Tab.files)
+        case .albums:
+            NavigationStack(path: $albumsNavigationPath) {
+                AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
+                    .id(serverChangeRefreshTrigger)
+            }
+            .tabItem { Label("Albums", systemImage: "square.stack") }
+            .tag(Tab.albums)
+        case .shorts:
+            ShortListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+                .tabItem { Label("Shorts", systemImage: "link") }
+                .tag(Tab.shorts)
+        case .streams:
+            StreamListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+                .tabItem { Label("Streams", systemImage: "video.fill") }
+                .tag(Tab.streams)
+        default:
+            EmptyView()
+        }
+    }
+
     private func refreshUserData(session: DjangoFilesSession) async {
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         _ = await api.updateSessionWithUserData(session)

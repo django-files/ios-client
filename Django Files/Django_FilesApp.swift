@@ -50,14 +50,20 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     let shouldDisableFirebase = ProcessInfo.processInfo.arguments.contains("--DisableFirebase")
     if !shouldDisableFirebase {
         FirebaseApp.configure()
-        
+
         // Initialize Firebase Analytics based on user preference
         let analyticsEnabled = UserDefaults.standard.bool(forKey: "firebaseAnalyticsEnabled")
         Analytics.setAnalyticsCollectionEnabled(analyticsEnabled)
-        
+
         // Initialize Crashlytics based on user preference
         let crashlyticsEnabled = UserDefaults.standard.bool(forKey: "crashlyticsEnabled")
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
+    }
+
+    if ProcessInfo.processInfo.arguments.contains("--MockNetwork") {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        DFAPIConfiguration.sessionOverride = URLSession(configuration: config)
     }
 
     return true
@@ -95,7 +101,7 @@ struct Django_FilesApp: App {
     init() {
         // print("📱 Setting up WebSocketToastObserver")
         let _ = WebSocketToastObserver.shared
-        
+
         // Handle reset arguments
         if CommandLine.arguments.contains("--DeleteAllData") {
             // Clear UserDefaults
@@ -123,6 +129,18 @@ struct Django_FilesApp: App {
                     }
                 }
             }
+        }
+
+        if CommandLine.arguments.contains("--InjectTestSession") {
+            let context = sharedModelContainer.mainContext
+            let testSession = DjangoFilesSession(url: "http://localhost", token: "test-token")
+            testSession.auth = true
+            testSession.defaultSession = true
+            testSession.username = "testuser"
+            testSession.firstName = "Test"
+            testSession.userID = 1
+            context.insert(testSession)
+            try? context.save()
         }
     }
 
