@@ -52,13 +52,13 @@ struct DFAPI {
     private let apiSession: URLSession
 
 
-    init(url: URL, token: String){
+    init(url: URL, token: String, session: URLSession? = nil){
         self.url = url
         self.token = token
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        apiSession = URLSession(configuration: .ephemeral)
+        apiSession = session ?? DFAPIConfiguration.sessionOverride ?? URLSession(configuration: .ephemeral)
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {
@@ -778,5 +778,77 @@ class RedirectDelegate: NSObject, URLSessionTaskDelegate {
     ) {
         // Don't follow the redirect by passing nil
         completionHandler(nil)
+    }
+}
+
+// MARK: - Session Configuration
+
+/// App-wide URLSession override. Set before creating any DFAPI instance to replace the default
+/// ephemeral session — useful for proxies, custom TLS configs, or test interception.
+enum DFAPIConfiguration {
+    static var sessionOverride: URLSession? = nil
+}
+
+// MARK: - Mock Network Support
+
+/// URLProtocol that returns static JSON for known API paths.
+/// Registered only when the app is launched with --MockNetwork (never in production).
+final class MockURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let path = request.url?.path ?? ""
+        let (json, status) = MockURLProtocol.response(forPath: path)
+        let httpResponse = HTTPURLResponse(
+            url: request.url ?? URL(string: "http://localhost")!,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(json.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    static func response(forPath path: String) -> (String, Int) {
+        if path.contains("/api/auth/methods") {
+            return ("""
+                {"auth_methods":[],"site_name":"Test Server"}
+                """, 200)
+        }
+        if path.contains("/api/files/1") {
+            return ("""
+                {
+                  "files":[
+                    {"id":1,"user":1,"size":2048,"mime":"image/jpeg","name":"photo.jpg",
+                     "user_name":"Test User","user_username":"testuser","info":"","expr":"",
+                     "view":0,"maxv":0,"password":"","private":false,"avatar":false,
+                     "url":"http://localhost/i/abc/","thumb":"http://localhost/t/abc/",
+                     "raw":"http://localhost/r/abc/photo.jpg",
+                     "date":"2025-01-01T00:00:00.000Z","albums":[],"exif":null,"meta":null},
+                    {"id":2,"user":1,"size":512,"mime":"text/plain","name":"notes.txt",
+                     "user_name":"Test User","user_username":"testuser","info":"","expr":"",
+                     "view":0,"maxv":0,"password":"","private":true,"avatar":false,
+                     "url":"http://localhost/i/def/","thumb":"",
+                     "raw":"http://localhost/r/def/notes.txt",
+                     "date":"2025-01-02T00:00:00.000Z","albums":[],"exif":null,"meta":null}
+                  ],
+                  "next":null,"count":2
+                }
+                """, 200)
+        }
+        if path.contains("/api/files/") {
+            return (#"{"files":[],"next":null,"count":0}"#, 200)
+        }
+        if path.contains("/api/user") {
+            return (#"{"id":1,"username":"testuser","first_name":"Test","is_superuser":false}"#, 200)
+        }
+        if path.contains("/api/stats") {
+            return (#"{"total_files":2,"total_size":2560}"#, 200)
+        }
+        return (#"{"error":"not found"}"#, 404)
     }
 }
