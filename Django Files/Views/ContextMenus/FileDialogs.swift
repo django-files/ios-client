@@ -31,7 +31,7 @@ struct FileDialogs: View {
     
     var body: some View {
         EmptyView()
-            .confirmationDialog("Are you sure?", isPresented: $showingDeleteConfirmation) {
+            .alert("Delete \"\(fileNameToDelete)\"?", isPresented: $showingDeleteConfirmation) {
                 Button("Delete", role: .destructive) {
                     Task {
                         let _ = await onDelete(fileIDsToDelete)
@@ -39,7 +39,7 @@ struct FileDialogs: View {
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Are you sure you want to delete \"\(fileNameToDelete)\"?")
+                Text("This action cannot be undone.")
             }
             .alert("Set File Expiration", isPresented: $showingExpirationDialog) {
                 TextField("Enter expiration", text: $expirationText)
