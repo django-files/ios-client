@@ -10,6 +10,7 @@ import SwiftData
 
 class SessionManager: ObservableObject {
     @Published var selectedSession: DjangoFilesSession?
+    @Published var cachedVersion: String?
     private let userDefaultsKey = "lastSelectedSessionURL"
     
     func saveSelectedSession() {
@@ -35,6 +36,14 @@ class SessionManager: ObservableObject {
         }
 
         return nil
+    }
+
+    @MainActor
+    func fetchVersion() async {
+        cachedVersion = nil
+        guard let session = selectedSession,
+              let url = URL(string: session.url) else { return }
+        cachedVersion = await DFAPI(url: url, token: session.token).getVersion()
     }
 
     func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {

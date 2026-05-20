@@ -923,6 +923,7 @@ struct StreamBroadcastView: View {
     let streamName: String
     let token: String
     let streamTitle: String
+    let streamDescription: String
     let ownerUsername: String
     let initialCaptureMode: CaptureMode
 
@@ -948,11 +949,12 @@ struct StreamBroadcastView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(serverURL: URL, streamName: String, token: String, streamTitle: String,
-         ownerUsername: String = "", initialCaptureMode: CaptureMode = .camera) {
+         streamDescription: String = "", ownerUsername: String = "", initialCaptureMode: CaptureMode = .camera) {
         self.serverURL = serverURL
         self.streamName = streamName
         self.token = token
         self.streamTitle = streamTitle
+        self.streamDescription = streamDescription
         self.ownerUsername = ownerUsername
         self.initialCaptureMode = initialCaptureMode
         // Initialize broadcaster with the selected mode so captureMode is correct
@@ -964,7 +966,8 @@ struct StreamBroadcastView: View {
             streamName: streamName,
             isOwner: true,
             ownerUsername: ownerUsername,
-            title: streamTitle
+            title: streamTitle,
+            description: streamDescription
         ))
     }
 
@@ -1120,6 +1123,11 @@ struct StreamBroadcastView: View {
             NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
         ) { _ in
             withAnimation(.easeOut(duration: 0.25)) { keyboardHeight = 0 }
+        }
+        .onChange(of: broadcaster.broadcastState.isLive) { _, isLive in
+            guard isLive else { return }
+            if !streamTitle.isEmpty { chatManager.setTitle(streamTitle) }
+            if !streamDescription.isEmpty { chatManager.setDescription(streamDescription) }
         }
         .confirmationDialog(
             "End Stream?",
@@ -1643,6 +1651,13 @@ struct StreamBroadcastView: View {
     private var currentRTMPURL: String {
         let host = ingestInfo?.rtmpHost ?? serverURL.host ?? serverURL.absoluteString
         let port = ingestInfo?.rtmpPort ?? 1935
-        return "rtmp://\(host):\(port)/live?token=\(token)"
+        var url = "rtmp://\(host):\(port)/live?token=\(token)"
+        if !streamTitle.isEmpty, let encoded = streamTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            url += "&title=\(encoded)"
+        }
+        if !streamDescription.isEmpty, let encoded = streamDescription.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            url += "&description=\(encoded)"
+        }
+        return url
     }
 }

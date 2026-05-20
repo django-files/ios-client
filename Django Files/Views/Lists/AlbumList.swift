@@ -24,8 +24,6 @@ struct AlbumListView: View {
     @State private var selectedAlbum: DFAlbum? = nil
     @State private var showDeleteConfirmation = false
     @State private var albumToDelete: DFAlbum? = nil
-    @State private var showingAlbumCreator: Bool = false
-        
     var body: some View {
         List {
             if isLoading && albums.isEmpty {
@@ -130,23 +128,11 @@ struct AlbumListView: View {
         .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    showingAlbumCreator = true
-                }) {
-                    Label("Create Album", systemImage: "plus")
-                }
+                UploadMenuButton(server: server)
             }
         }
         .navigationDestination(for: DFAlbum.self) { album in
             FileListView(server: server, albumID: album.id, navigationPath: navigationPath, albumName: album.name)
-        }
-        .sheet(isPresented: $showingAlbumCreator) {
-            if let serverInstance = server.wrappedValue {
-                CreateAlbumView(server: serverInstance)
-                    .onDisappear {
-                        showingAlbumCreator = false
-                    }
-            }
         }
         .onChange(of: selectedAlbum) { oldValue, newValue in
             if let album = newValue {

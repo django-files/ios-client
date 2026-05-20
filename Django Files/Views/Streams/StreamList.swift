@@ -76,6 +76,11 @@ struct StreamListView: View {
                     .navigationTitle(
                         "Streams (\(serverURL.host ?? "unknown"))"
                     )
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            UploadMenuButton(server: server)
+                        }
+                    }
                 }
             } else {
                 Label("No server selected.", systemImage: "exclamationmark.triangle")
