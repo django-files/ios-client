@@ -81,6 +81,9 @@ struct TabViewWindow: View {
                         Task {
                             await refreshUserData(session: session)
                         }
+                        Task {
+                            await sessionManager.fetchVersion()
+                        }
                     }
                 }
                 .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
@@ -104,6 +107,9 @@ struct TabViewWindow: View {
                 connectToWebSocket(session: selectedSession)
                 Task {
                     await refreshUserData(session: selectedSession)
+                }
+                Task {
+                    await sessionManager.fetchVersion()
                 }
             }
         }

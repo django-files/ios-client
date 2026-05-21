@@ -298,6 +298,112 @@ struct Django_FilesTests {
         #expect(file.gpsCoordinate == nil)
     }
 
+    // MARK: - DFShortRequest encoding
+
+    @Test func testDFShortRequestEncodesHyphenatedKey() throws {
+        let request = DFShortRequest(url: "https://example.com", vanity: "abc", maxViews: 5)
+        let data = try JSONEncoder().encode(request)
+        let dict = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(dict["url"] as? String == "https://example.com")
+        #expect(dict["vanity"] as? String == "abc")
+        #expect(dict["max-views"] as? Int == 5)
+        #expect(dict["maxViews"] == nil)
+    }
+
+    // MARK: - formatSize boundary
+
+    @Test func testFormatSizeJustUnderKilo() throws {
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSON(size: 1023))
+        #expect(file.formatSize() == "1023 B")
+    }
+
+    @Test func testFormatSizeExactKiloBoundary() throws {
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSON(size: 1024))
+        #expect(file.formatSize() == "1.0 KB")
+    }
+
+    // MARK: - DFStatsResponse decoding
+
+    @Test func testDFStatsResponseDecoding() throws {
+        let json = """
+        [
+          {
+            "model": "files.stat", "pk": 1,
+            "fields": {
+              "user": 1,
+              "stats": {
+                "types": {
+                  "image/jpeg": {"size": 2048, "count": 1},
+                  "text/plain": {"size": 512, "count": 1}
+                },
+                "size": 2560, "count": 2, "shorts": 0, "human_size": "2.5 KB"
+              },
+              "created_at": null, "updated_at": null
+            }
+          }
+        ]
+        """.data(using: .utf8)!
+        let response = try JSONDecoder().decode(DFStatsResponse.self, from: json)
+        #expect(response.stats.count == 1)
+        let stat = response.stats[0]
+        #expect(stat.model == "files.stat")
+        #expect(stat.pk == 1)
+        #expect(stat.fields.user == 1)
+        #expect(stat.fields.stats.count == 2)
+        #expect(stat.fields.stats.size == 2560)
+        #expect(stat.fields.stats.humanSize == "2.5 KB")
+        #expect(stat.fields.stats.types.count == 2)
+        let mimes = Set(stat.fields.stats.types.map { $0.name })
+        #expect(mimes.contains("image/jpeg"))
+        #expect(mimes.contains("text/plain"))
+    }
+
+    // MARK: - GPS altitude and area
+
+    private func sampleFileJSONWithExif(exif: String, meta: String = "null") -> Data {
+        return """
+        {
+          "id": 1, "user": 1, "size": 1024, "mime": "image/jpeg",
+          "name": "geo.jpg", "user_name": "Test User", "user_username": "testuser",
+          "info": "", "expr": "", "view": 0, "maxv": 0, "password": "",
+          "private": false, "avatar": false,
+          "url": "http://localhost/i/x/", "thumb": "http://localhost/t/x/",
+          "raw": "http://localhost/r/x/geo.jpg",
+          "date": "2025-06-01T12:00:00.000Z",
+          "albums": [], "exif": \(exif), "meta": \(meta)
+        }
+        """.data(using: .utf8)!
+    }
+
+    @Test func testGPSAltitude() throws {
+        let exif = #"{"GPSInfo":{"6":85.5}}"#
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSONWithExif(exif: exif))
+        #expect(file.gpsAltitude != nil)
+        #expect(abs(file.gpsAltitude! - 85.5) < 0.001)
+    }
+
+    @Test func testGPSAltitudeNilWhenMissing() throws {
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSONWithExif(exif: #"{"GPSInfo":{}}"#))
+        #expect(file.gpsAltitude == nil)
+    }
+
+    @Test func testGPSArea() throws {
+        let meta = #"{"GPSArea":"New York"}"#
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSONWithExif(exif: "null", meta: meta))
+        #expect(file.gpsArea == "New York")
+    }
+
+    @Test func testGPSAreaNilWhenMissing() throws {
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSON())
+        #expect(file.gpsArea == nil)
+    }
+
+    @Test func testGPSCoordinateNilForZeroZero() throws {
+        let exif = #"{"GPSInfo":{"1":"N","2":[0,0,0.0],"3":"E","4":[0,0,0.0]}}"#
+        let file = try makeDecoder().decode(DFFile.self, from: sampleFileJSONWithExif(exif: exif))
+        #expect(file.gpsCoordinate == nil)
+    }
+
     // MARK: - API layer (mock network)
 
     @Test func testGetAuthMethodsWithMock() async {

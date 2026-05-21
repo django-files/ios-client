@@ -35,6 +35,7 @@ private struct MapCluster: Identifiable, @unchecked Sendable {
 
 struct FileMapView: View {
     let server: Binding<DjangoFilesSession?>
+    var inlineMode: Bool = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -200,63 +201,71 @@ struct FileMapView: View {
 
     // MARK: Body
 
+    private var mapCoreView: some View {
+        Map(position: $cameraPosition, content: mapContent)
+            .mapStyle(.standard)
+            .onMapCameraChange(frequency: .onEnd) { ctx in
+                // Convert .automatic → .region on first camera change so that
+                // subsequent self.clusters updates don't trigger camera adjustments
+                // (which would fire onMapCameraChange → updateClusters → … ad infinitum).
+                if case .automatic = cameraPosition {
+                    cameraPosition = .region(ctx.region)
+                }
+                mapSpan = ctx.region.span
+                updateClusters()
+            }
+            .overlay {
+                if isLoading && geoFiles.isEmpty {
+                    ProgressView()
+                        .controlSize(.large)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.ultraThinMaterial)
+                } else if !isLoading && geoFiles.isEmpty {
+                    ContentUnavailableView(
+                        "No GPS Files",
+                        systemImage: "location.slash.fill",
+                        description: Text("Upload photos with location data to see them here.")
+                    )
+                }
+            }
+            .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
+            .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
+            .onAppear(perform: loadGPSFiles)
+            .onDisappear {
+                loadTask?.cancel()
+                clusterTask?.cancel()
+            }
+            .onChange(of: server.wrappedValue?.url) { _, _ in
+                loadGPSFiles()
+            }
+    }
+
     var body: some View {
-        NavigationStack {
-            Map(position: $cameraPosition, content: mapContent)
-                .mapStyle(.standard)
-                .onMapCameraChange(frequency: .onEnd) { ctx in
-                    // Convert .automatic → .region on first camera change so that
-                    // subsequent self.clusters updates don't trigger camera adjustments
-                    // (which would fire onMapCameraChange → updateClusters → … ad infinitum).
-                    if case .automatic = cameraPosition {
-                        cameraPosition = .region(ctx.region)
-                    }
-                    mapSpan = ctx.region.span
-                    updateClusters()
-                }
-                .ignoresSafeArea()
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if !geoFiles.isEmpty {
-                            HStack(spacing: 6) {
-                                if isLoading { ProgressView().scaleEffect(0.7) }
-                                Text("\(geoFiles.count) files")
+        if inlineMode {
+            mapCoreView
+        } else {
+            NavigationStack {
+                mapCoreView
+                    .ignoresSafeArea(.all, edges: .top)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { dismiss() } label: {
+                                Image(systemName: "xmark")
                             }
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 8)
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            if !geoFiles.isEmpty {
+                                HStack(spacing: 6) {
+                                    if isLoading { ProgressView().scaleEffect(0.7) }
+                                    Text("\(geoFiles.count) files")
+                                }
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 8)
+                            }
                         }
                     }
-                }
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .overlay {
-                    if isLoading && geoFiles.isEmpty {
-                        ProgressView()
-                            .controlSize(.large)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(.ultraThinMaterial)
-                    } else if !isLoading && geoFiles.isEmpty {
-                        ContentUnavailableView(
-                            "No GPS Files",
-                            systemImage: "location.slash.fill",
-                            description: Text("Upload photos with location data to see them here.")
-                        )
-                    }
-                }
-                .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
-                .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
-                .onAppear(perform: loadGPSFiles)
-                .onDisappear {
-                    loadTask?.cancel()
-                    clusterTask?.cancel()
-                }
-                .onChange(of: server.wrappedValue?.url) { _, _ in
-                    loadGPSFiles()
-                }
+                    .toolbarBackground(.hidden, for: .navigationBar)
+            }
         }
     }
 
@@ -511,7 +520,7 @@ struct FileMapCallout: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(file.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                 if let area = file.gpsArea {
-                    Label(area, systemImage: "location.fill")
+                    Text(area)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
                 if let alt = file.gpsAltitude {
