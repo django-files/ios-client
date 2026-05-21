@@ -305,13 +305,16 @@ final class SampleHandler: RPBroadcastSampleHandler {
         )
     }
 
-    /// Reads the display orientation from the sample buffer.
-    /// Primary: RPVideoSampleOrientationKey via CMGetAttachment (works regardless of
-    /// propagation mode, unlike CMCopyDictionaryOfAttachments(ShouldPropagate) which
-    /// silently misses non-propagating attachments).
-    /// Fallback: orientation written by the host app into the shared App Group,
-    /// covering iOS versions where ReplayKit omits the attachment entirely.
+    /// Reads the display orientation for the sample buffer.
+    /// Priority 1: orientation relayed from the host app via App Group (UIDevice.orientation
+    ///   is unambiguous; the host app writes it on every change and before broadcast starts).
+    /// Priority 2: RPVideoSampleOrientationKey — used only when no App Group value is set
+    ///   (e.g., broadcast launched without the host app running in the foreground).
     private func bufferOrientation(_ buffer: CMSampleBuffer) -> CGImagePropertyOrientation {
+        let defaults = UserDefaults(suiteName: Self.appGroupID)
+        if defaults?.object(forKey: Self.orientationKey) != nil {
+            return hostAppOrientation()
+        }
         if let raw = CMGetAttachment(
             buffer,
             key: RPVideoSampleOrientationKey as CFString,
@@ -320,7 +323,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
            let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value) {
             return orientation
         }
-        return hostAppOrientation()
+        return .up
     }
 
     private func hostAppOrientation() -> CGImagePropertyOrientation {

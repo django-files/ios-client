@@ -547,6 +547,9 @@ final class RTMPBroadcaster: ObservableObject {
             // everything. We just observe the status it writes to App Group.
             clearExtensionStatus()
             startObservingExtensionStatus()
+            // Write initial orientation so the extension has it from the first
+            // frame (clearExtensionStatus wiped the key).
+            updateOrientation(deviceOrientation: deviceOrientation)
         }
     }
 
@@ -851,6 +854,7 @@ final class RTMPBroadcaster: ObservableObject {
         case .screen:
             clearExtensionStatus()
             startObservingExtensionStatus()
+            updateOrientation(deviceOrientation: deviceOrientation)
         }
     }
 
