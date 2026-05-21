@@ -73,9 +73,7 @@ struct StreamListView: View {
                     .overlay {
                         if let error { errorView(message: error) }
                     }
-                    .navigationTitle(
-                        "Streams (\(serverURL.host ?? "unknown"))"
-                    )
+                    .navigationTitle("Streams")
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             UploadMenuButton(server: server)

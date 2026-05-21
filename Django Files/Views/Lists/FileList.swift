@@ -203,7 +203,7 @@ struct FileListView: View {
     @State private var showingFilters: Bool = false
     @State private var users: [DFUser] = []
     @State private var mimeTypeFilter: MimeTypeFilter = .all
-    @State private var showingMap: Bool = false
+    @AppStorage("fileListShowingMap") private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
@@ -230,14 +230,16 @@ struct FileListView: View {
     }
     
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
-        let hostName = server.wrappedValue.flatMap { URL(string: $0.url)?.host } ?? "unknown"
-        if server.wrappedValue != nil && albumName == nil {
-            return "Files (\(hostName))"
-        } else if let name = albumName, server.wrappedValue != nil {
-            return "\(name) (\(hostName))"
-        } else {
-            return "Files"
+        if let name = albumName {
+            return name
         }
+        return "Files"
+    }
+
+    private var viewModeIcon: String {
+        if showingMap { return "map" }
+        if isGridView { return "square.grid.2x2" }
+        return "list.bullet"
     }
 
     private func thumbnailURL(file: DFFile) -> URL? {
@@ -333,7 +335,9 @@ struct FileListView: View {
 
     var body: some View {
         Group {
-            if isGridView {
+            if showingMap {
+                FileMapView(server: server, inlineMode: true)
+            } else if isGridView {
                 gridContent
             } else {
                 List {
@@ -483,7 +487,7 @@ struct FileListView: View {
                 )
             }
         }
-        .navigationTitle(getTitle(server: server, albumName: albumName))
+        .navigationTitle(showingMap ? "" : getTitle(server: server, albumName: albumName))
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
@@ -513,35 +517,32 @@ struct FileListView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 Menu {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
+                        withAnimation(.easeInOut(duration: 0.2)) { showingMap = false; isGridView = false }
                     } label: {
-                        Label(isGridView ? "List View" : "Grid View",
-                              systemImage: isGridView ? "list.bullet" : "square.grid.2x2")
+                        Label("List", systemImage: !isGridView && !showingMap ? "checkmark" : "list.bullet")
                     }
-                    if isGridView {
-                        Divider()
-                        Button { gridColumnCount = 1 } label: {
-                            Label("1 Column", systemImage: gridColumnCount == 1 ? "checkmark" : "square")
-                        }
-                        Button { gridColumnCount = 2 } label: {
-                            Label("2 Columns", systemImage: gridColumnCount == 2 ? "checkmark" : "square.grid.2x2")
-                        }
-                        Button { gridColumnCount = 3 } label: {
-                            Label("3 Columns", systemImage: gridColumnCount == 3 ? "checkmark" : "square.grid.3x3")
-                        }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showingMap = false; isGridView = true }
+                    } label: {
+                        Label("Grid", systemImage: isGridView && !showingMap ? "checkmark" : "square.grid.2x2")
+                    }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showingMap = true; isGridView = false }
+                    } label: {
+                        Label("Map", systemImage: showingMap ? "checkmark" : "map")
+                    }
+                    Divider()
+                    Button { gridColumnCount = 1 } label: {
+                        Label("1 Column", systemImage: gridColumnCount == 1 ? "checkmark" : "square")
+                    }
+                    Button { gridColumnCount = 2 } label: {
+                        Label("2 Columns", systemImage: gridColumnCount == 2 ? "checkmark" : "square.grid.2x2")
+                    }
+                    Button { gridColumnCount = 3 } label: {
+                        Label("3 Columns", systemImage: gridColumnCount == 3 ? "checkmark" : "square.grid.3x3")
                     }
                 } label: {
-                    Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
-                } primaryAction: {
-                    withAnimation(.easeInOut(duration: 0.2)) { isGridView.toggle() }
-                }
-            }
-
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showingMap = true
-                } label: {
-                    Image(systemName: "map")
+                    Image(systemName: viewModeIcon)
                 }
             }
 
@@ -568,9 +569,6 @@ struct FileListView: View {
             .onChange(of: mimeTypeFilter) { _, _ in
                 Task { await refreshFiles() }
             }
-        }
-        .fullScreenCover(isPresented: $showingMap) {
-            FileMapView(server: server)
         }
         .background(
             FileDialogs(

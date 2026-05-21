@@ -68,7 +68,7 @@ struct ShortListView: View {
                             errorView(message: error)
                         }
                     }
-                    .navigationTitle(server.wrappedValue != nil ? "Short URLS (\(server.wrappedValue.flatMap { URL(string: $0.url)?.host } ?? "unknown"))" : "Albums")
+                    .navigationTitle("Short URLs")
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             UploadMenuButton(server: server)

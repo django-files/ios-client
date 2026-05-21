@@ -125,7 +125,7 @@ struct AlbumListView: View {
                 await refreshAlbumsAsync()
             }
         }
-        .navigationTitle(server.wrappedValue != nil ? "Albums (\(URL(string: server.wrappedValue!.url)?.host ?? "unknown"))" : "Albums")
+        .navigationTitle("Albums")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 UploadMenuButton(server: server)
