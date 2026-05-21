@@ -306,24 +306,27 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 
     /// Reads the display orientation for the sample buffer.
-    /// Priority 1: orientation relayed from the host app via App Group (UIDevice.orientation
-    ///   is unambiguous; the host app writes it on every change and before broadcast starts).
-    /// Priority 2: RPVideoSampleOrientationKey — used only when no App Group value is set
-    ///   (e.g., broadcast launched without the host app running in the foreground).
+    /// Primary: RPVideoSampleOrientationKey via CMGetAttachment.
+    ///   ReplayKit reports landscape values with .left/.right swapped relative to
+    ///   what CIImage.oriented() expects, so we invert them before use.
+    /// Fallback: orientation relayed from the host app via App Group, covering
+    ///   iOS versions where ReplayKit omits the attachment entirely.
     private func bufferOrientation(_ buffer: CMSampleBuffer) -> CGImagePropertyOrientation {
-        let defaults = UserDefaults(suiteName: Self.appGroupID)
-        if defaults?.object(forKey: Self.orientationKey) != nil {
-            return hostAppOrientation()
-        }
         if let raw = CMGetAttachment(
             buffer,
             key: RPVideoSampleOrientationKey as CFString,
             attachmentModeOut: nil
         ) as? NSNumber,
            let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value) {
-            return orientation
+            // Invert .left ↔ .right — RPVideoSampleOrientationKey landscape values
+            // are the mirror of what CIImage.oriented() needs to produce an upright frame.
+            switch orientation {
+            case .left:  return .right
+            case .right: return .left
+            default:     return orientation
+            }
         }
-        return .up
+        return hostAppOrientation()
     }
 
     private func hostAppOrientation() -> CGImagePropertyOrientation {
