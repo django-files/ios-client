@@ -305,12 +305,12 @@ final class SampleHandler: RPBroadcastSampleHandler {
         )
     }
 
-    /// Reads the display orientation from the sample buffer.
-    /// Primary: RPVideoSampleOrientationKey via CMGetAttachment (works regardless of
-    /// propagation mode, unlike CMCopyDictionaryOfAttachments(ShouldPropagate) which
-    /// silently misses non-propagating attachments).
-    /// Fallback: orientation written by the host app into the shared App Group,
-    /// covering iOS versions where ReplayKit omits the attachment entirely.
+    /// Reads the display orientation for the sample buffer.
+    /// Primary: RPVideoSampleOrientationKey via CMGetAttachment.
+    ///   ReplayKit reports landscape values with .left/.right swapped relative to
+    ///   what CIImage.oriented() expects, so we invert them before use.
+    /// Fallback: orientation relayed from the host app via App Group, covering
+    ///   iOS versions where ReplayKit omits the attachment entirely.
     private func bufferOrientation(_ buffer: CMSampleBuffer) -> CGImagePropertyOrientation {
         if let raw = CMGetAttachment(
             buffer,
@@ -318,7 +318,13 @@ final class SampleHandler: RPBroadcastSampleHandler {
             attachmentModeOut: nil
         ) as? NSNumber,
            let orientation = CGImagePropertyOrientation(rawValue: raw.uint32Value) {
-            return orientation
+            // Invert .left ↔ .right — RPVideoSampleOrientationKey landscape values
+            // are the mirror of what CIImage.oriented() needs to produce an upright frame.
+            switch orientation {
+            case .left:  return .right
+            case .right: return .left
+            default:     return orientation
+            }
         }
         return hostAppOrientation()
     }
@@ -327,8 +333,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
         let v = UserDefaults(suiteName: Self.appGroupID)?
             .integer(forKey: Self.orientationKey) ?? 0
         switch v {
-        case 1: return .left   // landscapeLeft  (device rotated CW → top points right → rotate buffer CCW)
-        case 2: return .right  // landscapeRight (device rotated CCW → top points left → rotate buffer CW)
+        case 1: return .right  // landscapeLeft  (home button right, device rotated CW → right column → top → rotate buffer 90° CCW)
+        case 2: return .left   // landscapeRight (home button left, device rotated CCW → left column → top → rotate buffer 90° CW)
         case 3: return .down   // portraitUpsideDown
         default: return .up    // portrait, no rotation
         }

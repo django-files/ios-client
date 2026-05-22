@@ -42,6 +42,8 @@ struct PreviewFileInfo: View {
     }
     
     var body: some View {
+        ScrollViewReader { proxy in
+        ScrollView {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(file.name)")
                 .font(.title)
@@ -199,10 +201,28 @@ struct PreviewFileInfo: View {
             if let coordinate = file.gpsCoordinate {
                 Divider()
 
-                Button {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showMap.toggle()
+                if let gpsArea = file.gpsArea {
+                    HStack {
+                        Image(systemName: "location")
+                            .frame(width: 15, height: 15)
+                        Text(gpsArea)
+                            .font(.caption)
                     }
+                    .foregroundColor(.secondary)
+                }
+
+                if let altitude = file.gpsAltitude {
+                    HStack {
+                        Image(systemName: "mountain.2.circle")
+                            .frame(width: 15, height: 15)
+                        Text(String(format: "Elevation: %.1f m", altitude))
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+                }
+
+                Button {
+                    showMap.toggle()
                 } label: {
                     HStack {
                         Image(systemName: "map")
@@ -231,26 +251,14 @@ struct PreviewFileInfo: View {
                     }
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-
-                if let gpsArea = file.gpsArea {
-                    HStack {
-                        Image(systemName: "location")
-                            .frame(width: 15, height: 15)
-                        Text(gpsArea)
-                            .font(.caption)
+                    .id("map")
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                proxy.scrollTo("map", anchor: .bottom)
+                            }
+                        }
                     }
-                    .foregroundColor(.secondary)
-                }
-
-                if let altitude = file.gpsAltitude {
-                    HStack {
-                        Image(systemName: "mountain.2.circle")
-                            .frame(width: 15, height: 15)
-                        Text(String(format: "Elevation: %.1f m", altitude))
-                            .font(.caption)
-                    }
-                    .foregroundColor(.secondary)
                 }
             }
 
@@ -261,5 +269,7 @@ struct PreviewFileInfo: View {
             }
         }
         .padding(40)
+        }
+        }
     }
 }

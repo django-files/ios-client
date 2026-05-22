@@ -54,17 +54,11 @@ struct DFShort: Identifiable, Codable, Hashable {
     }
 }
 
-// Response structure for shorts API call
+// Response structure for paginated shorts API call
 struct ShortsResponse: Codable {
     let shorts: [DFShort]
-    
-    init(shorts: [DFShort]) {
-        self.shorts = shorts
-    }
-    
-    enum CodingKeys: String, CodingKey {
-        case shorts
-    }
+    let next: Int?
+    let count: Int
 }
 
 extension DFAPI {
@@ -89,23 +83,15 @@ extension DFAPI {
         }
     }
     
-    public func getShorts(amount: Int = 50, start: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
-        var parameters: [String: String] = ["amount": "\(amount)"]
-        if let start = start {
-            parameters["start"] = "\(start)"
-        }
-        
+    public func getShorts(page: Int = 1, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
         do {
             let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.shorts),
-                parameters: parameters,
+                path: getAPIPath(.shorts) + "\(page)/",
+                parameters: [:],
                 method: .get,
                 selectedServer: selectedServer
             )
-            
-            let shorts = try decoder.decode([DFShort].self, from: responseBody)
-            return ShortsResponse(shorts: shorts)
-            
+            return try decoder.decode(ShortsResponse.self, from: responseBody)
         } catch {
             print("Error fetching shorts: \(error)")
             return nil
