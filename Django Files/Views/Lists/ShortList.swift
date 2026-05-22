@@ -12,11 +12,10 @@ struct ShortListView: View {
     let server: Binding<DjangoFilesSession?>
     
     @State private var shorts: [DFShort] = []
+    @State private var currentPage = 1
+    @State private var hasNextPage = false
     @State private var isLoading = false
-    @State private var hasMoreResults = true
     @State private var error: String? = nil
-    
-    private let shortsPerPage = 50
     
     var body: some View {
         ZStack{
@@ -49,14 +48,18 @@ struct ShortListView: View {
                                     UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
                                     ToastManager.shared.showToast(message: "Short URL copied to clipboard")
                                 }
-                        }
-                        if isLoading {
-                            HStack {
-                                Spacer()
-                                LoadingView()
-                                    .frame(width: 100, height: 100)
-                                Spacer()
+
+                            if hasNextPage && short.id == shorts.last?.id {
+                                Color.clear
+                                    .frame(height: 20)
+                                    .onAppear {
+                                        loadNextPage()
+                                    }
                             }
+                        }
+                        if isLoading && hasNextPage {
+                            ProgressView()
+                                .frame(width: 50, height: 50)
                         }
                     }
                     .listStyle(.plain)
@@ -122,65 +125,55 @@ struct ShortListView: View {
     }
     
     private func loadInitialShorts() {
-        if shorts.count == 0 && !isLoading {
-            error = nil
-            shorts = []
-            
-            Task {
-                await fetchShorts()
-            }
+        guard shorts.isEmpty && !isLoading else { return }
+        isLoading = true
+        error = nil
+        currentPage = 1
+        Task {
+            await fetchShorts(page: 1)
         }
     }
-    
+
+    private func loadNextPage() {
+        guard hasNextPage && !isLoading else { return }
+        isLoading = true
+        Task {
+            await fetchShorts(page: currentPage + 1, append: true)
+        }
+    }
+
     private func refreshShorts() async {
-        await MainActor.run {
-            error = nil
-            shorts = []
-        }
-        Task {
-            await fetchShorts()
-        }
+        error = nil
+        currentPage = 1
+        await fetchShorts(page: 1)
     }
-    
-    private func loadMoreShorts() {
-        guard !isLoading, hasMoreResults else { return }
-        
-        Task {
-            await fetchShorts()
-        }
-    }
-    
-    private func fetchShorts() async {
-        await MainActor.run {
-            isLoading = true
-        }
+
+    @MainActor
+    private func fetchShorts(page: Int, append: Bool = false) async {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
-            await MainActor.run {
-                error = "Invalid session URL"
-                isLoading = false
-            }
+            error = "Invalid session URL"
+            isLoading = false
             return
         }
 
         let api = DFAPI(url: url, token: serverInstance.token)
-        let lastShortId = shorts.last?.id
-        
-        if let response = await api.getShorts(amount: shortsPerPage, start: lastShortId, selectedServer: server.wrappedValue) {
-            await MainActor.run {
+
+        if let response = await api.getShorts(page: page, selectedServer: serverInstance) {
+            if append {
                 shorts.append(contentsOf: response.shorts)
-                hasMoreResults = response.shorts.count >= shortsPerPage
-                error = nil
+            } else {
+                shorts = response.shorts
             }
+            hasNextPage = response.next != nil
+            currentPage = page
+            error = nil
         } else {
-            await MainActor.run {
-                error = "Failed to load shorts. Please try again."
-            }
+            if !append { shorts = [] }
+            error = "Failed to load shorts. Please try again."
         }
-        
-        await MainActor.run {
-            isLoading = false
-        }
+
+        isLoading = false
     }
 }
 
