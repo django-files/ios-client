@@ -24,6 +24,11 @@ struct AlbumListView: View {
     @State private var selectedAlbum: DFAlbum? = nil
     @State private var showDeleteConfirmation = false
     @State private var albumToDelete: DFAlbum? = nil
+    @State private var filterUserID: Int? = nil
+    @State private var users: [DFUser] = []
+
+    private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
+
     var body: some View {
         List {
             if isLoading && albums.isEmpty {
@@ -77,7 +82,7 @@ struct AlbumListView: View {
             } else {
                 ForEach(albums, id: \.id) { album in
                     NavigationLink(value: album) {
-                        AlbumRowView(album: album)
+                        AlbumRowView(album: album, session: server.wrappedValue)
                             .contextMenu {
                                 Button(action: {
                                     UIPasteboard.general.string = album.url
@@ -127,6 +132,36 @@ struct AlbumListView: View {
         }
         .navigationTitle("Albums")
         .toolbar {
+            if server.wrappedValue?.superUser ?? false {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Section("Filters") {
+                            Menu {
+                                Picker("", selection: Binding(
+                                    get: { filterUserID },
+                                    set: { newValue in
+                                        filterUserID = newValue
+                                        Task { await refreshAlbumsAsync() }
+                                    }
+                                )) {
+                                    Label("All Users", systemImage: "person.2")
+                                        .tag(Optional<Int>(0))
+                                    ForEach(users, id: \.id) { user in
+                                        Label(user.username, systemImage: "person.circle")
+                                            .tag(Optional(user.id))
+                                    }
+                                }
+                                .pickerStyle(.inline)
+                            } label: {
+                                Label("Users", systemImage: "person.2")
+                                    .symbolVariant(isFilteringUsers ? .fill : .none)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: isFilteringUsers ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    }
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 UploadMenuButton(server: server)
             }
@@ -158,8 +193,17 @@ struct AlbumListView: View {
             Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
         }
         .onAppear {
+            if filterUserID == nil { filterUserID = server.wrappedValue?.userID }
             loadAlbums()
             navigateToPendingDeepLink()
+            if server.wrappedValue?.superUser == true {
+                Task {
+                    if let serverInstance = server.wrappedValue, let url = URL(string: serverInstance.url) {
+                        let api = DFAPI(url: url, token: serverInstance.token)
+                        users = await api.getAllUsers(selectedServer: serverInstance)
+                    }
+                }
+            }
         }
     }
 
@@ -226,7 +270,7 @@ struct AlbumListView: View {
         
         let api = DFAPI(url: url, token: serverInstance.token)
         
-        if let albumsResponse = await api.getAlbums(page: page) {
+        if let albumsResponse = await api.getAlbums(page: page, filterUserID: filterUserID, selectedServer: serverInstance) {
             if append {
                 albums.append(contentsOf: albumsResponse.albums)
             } else {
@@ -267,34 +311,92 @@ struct AlbumListView: View {
 
 struct AlbumRowView: View {
     let album: DFAlbum
-    
+    let session: DjangoFilesSession?
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(album.name)
-                .font(.headline)
-                .lineLimit(1)
-                .foregroundColor(.blue)
-            HStack(spacing: 5) {
-                Label("\(album.view) views", systemImage: "eye")
-                    .font(.caption)
-                    .labelStyle(CustomLabel(spacing: 3))
-                
-                if album.private {
+        HStack(alignment: .center) {
+            AlbumThumbnailGrid(albumID: album.id, session: session)
+                .frame(width: 64, height: 64)
+                .cornerRadius(8)
+                .clipped()
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(album.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundColor(.blue)
+
+                HStack(spacing: 6) {
+                    Label("\(album.view)", systemImage: "eye")
+                        .font(.caption)
+                        .labelStyle(CustomLabel(spacing: 3))
                     Label("", systemImage: "lock")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
-                }
-                if album.password != "" {
+                        .opacity(album.private ? 1 : 0)
                     Label("", systemImage: "key")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
+                        .opacity((album.password ?? "").isEmpty ? 0 : 1)
                 }
+
                 Text(album.formattedDate())
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                     .lineLimit(1)
             }
         }
+    }
+}
+
+struct AlbumThumbnailGrid: View {
+    let albumID: Int
+    let session: DjangoFilesSession?
+
+    @State private var thumbURLs: [URL] = []
+
+    var body: some View {
+        Group {
+            if thumbURLs.isEmpty {
+                Image(systemName: "photo.stack.fill")
+                    .font(.system(size: 28))
+                    .frame(width: 64, height: 64)
+                    .background(Color.secondary.opacity(0.12))
+                    .foregroundStyle(.secondary)
+            } else {
+                let columns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
+                LazyVGrid(columns: columns, spacing: 2) {
+                    ForEach(0..<4, id: \.self) { i in
+                        if i < thumbURLs.count {
+                            CachedAsyncImage(url: thumbURLs[i]) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Color.secondary.opacity(0.12)
+                            }
+                            .frame(width: 31, height: 31)
+                            .clipped()
+                        } else {
+                            Color.secondary.opacity(0.07)
+                                .frame(width: 31, height: 31)
+                        }
+                    }
+                }
+                .frame(width: 64, height: 64)
+            }
+        }
+        .task(id: albumID) {
+            await loadThumbnails()
+        }
+    }
+
+    private func loadThumbnails() async {
+        guard let session, let url = URL(string: session.url) else { return }
+        let api = DFAPI(url: url, token: session.token)
+        guard let response = await api.getFiles(page: 1, album: albumID, selectedServer: session) else { return }
+        let urls = response.files
+            .filter { $0.mime.hasPrefix("image/") }
+            .prefix(4)
+            .compactMap { URL(string: $0.thumb) }
+        await MainActor.run { thumbURLs = Array(urls) }
     }
 }

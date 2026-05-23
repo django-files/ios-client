@@ -120,7 +120,7 @@ struct SettingsView: View {
                                         .font(.callout)
                                         .foregroundStyle(.secondary)
                                         .frame(width: 44)
-                                    Text("Select Active Server")
+                                    Text("Active Server")
                                         .font(.subheadline)
                                 }
                             }

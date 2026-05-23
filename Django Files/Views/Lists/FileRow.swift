@@ -81,21 +81,28 @@ struct FileRowView: View {
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .lineLimit(1)
-                    
+
                     Label("", systemImage: "lock")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .opacity(isPrivate ? 1 : 0)
-                    
+
                     Label("", systemImage: "key")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .opacity(hasPassword ? 1 : 0)
-                    
+
                     Label("", systemImage: "calendar.badge.exclamationmark")
                         .font(.caption)
                         .labelStyle(CustomLabel(spacing: 3))
                         .opacity(hasExpiration ? 1 : 0)
+
+                    Spacer()
+
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 
                 HStack(spacing: 5) {

@@ -273,7 +273,7 @@ struct Django_FilesApp: App {
                             albumName: albumStateManager.deepLinkAlbumName
                         )
                         .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
+                            ToolbarItem(placement: .cancellationAction) {
                                 Button("Done") {
                                     albumStateManager.showingDeepLinkAlbum = false
                                 }

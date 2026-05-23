@@ -83,11 +83,15 @@ extension DFAPI {
         }
     }
     
-    public func getShorts(page: Int = 1, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
+    public func getShorts(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
         do {
+            var parameters: [String: String] = [:]
+            if let filterUserID {
+                parameters["user"] = String(filterUserID)
+            }
             let responseBody = try await makeAPIRequest(
                 path: getAPIPath(.shorts) + "\(page)/",
-                parameters: [:],
+                parameters: parameters,
                 method: .get,
                 selectedServer: selectedServer
             )
@@ -95,6 +99,23 @@ extension DFAPI {
         } catch {
             print("Error fetching shorts: \(error)")
             return nil
+        }
+    }
+
+    public func deleteShort(shortID: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
+        do {
+            let body = try JSONSerialization.data(withJSONObject: ["ids": [shortID]])
+            _ = try await makeAPIRequest(
+                body: body,
+                path: getAPIPath(.delete_short),
+                parameters: [:],
+                method: .delete,
+                selectedServer: selectedServer
+            )
+            return true
+        } catch {
+            print("Short delete failed: \(error)")
+            return false
         }
     }
 }

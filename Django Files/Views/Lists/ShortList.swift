@@ -16,6 +16,10 @@ struct ShortListView: View {
     @State private var hasNextPage = false
     @State private var isLoading = false
     @State private var error: String? = nil
+    @State private var filterUserID: Int? = nil
+    @State private var users: [DFUser] = []
+
+    private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
     
     var body: some View {
         ZStack{
@@ -48,6 +52,13 @@ struct ShortListView: View {
                                     UIPasteboard.general.string = "\(server.wrappedValue?.url ?? "")/s/\(short.short)"
                                     ToastManager.shared.showToast(message: "Short URL copied to clipboard")
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task { await deleteShort(short) }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
 
                             if hasNextPage && short.id == shorts.last?.id {
                                 Color.clear
@@ -73,6 +84,36 @@ struct ShortListView: View {
                     }
                     .navigationTitle("Short URLs")
                     .toolbar {
+                        if server.wrappedValue?.superUser ?? false {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Menu {
+                                    Section("Filters") {
+                                        Menu {
+                                            Picker("", selection: Binding(
+                                                get: { filterUserID },
+                                                set: { newValue in
+                                                    filterUserID = newValue
+                                                    Task { await refreshShorts() }
+                                                }
+                                            )) {
+                                                Label("All Users", systemImage: "person.2")
+                                                    .tag(Optional<Int>(0))
+                                                ForEach(users, id: \.id) { user in
+                                                    Label(user.username, systemImage: "person.circle")
+                                                        .tag(Optional(user.id))
+                                                }
+                                            }
+                                            .pickerStyle(.inline)
+                                        } label: {
+                                            Label("Users", systemImage: "person.2")
+                                                .symbolVariant(isFilteringUsers ? .fill : .none)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: isFilteringUsers ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                }
+                            }
+                        }
                         ToolbarItem(placement: .navigationBarTrailing) {
                             UploadMenuButton(server: server)
                         }
@@ -84,8 +125,15 @@ struct ShortListView: View {
             }
         }
         .onAppear {
-            if shorts.isEmpty {
-                loadInitialShorts()
+            if filterUserID == nil { filterUserID = server.wrappedValue?.userID }
+            if shorts.isEmpty { loadInitialShorts() }
+            if server.wrappedValue?.superUser == true {
+                Task {
+                    if let serverInstance = server.wrappedValue, let url = URL(string: serverInstance.url) {
+                        let api = DFAPI(url: url, token: serverInstance.token)
+                        users = await api.getAllUsers(selectedServer: serverInstance)
+                    }
+                }
             }
         }
     }
@@ -149,6 +197,19 @@ struct ShortListView: View {
     }
 
     @MainActor
+    private func deleteShort(_ short: DFShort) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else { return }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let success = await api.deleteShort(shortID: short.id, selectedServer: serverInstance)
+        if success {
+            withAnimation {
+                shorts.removeAll { $0.id == short.id }
+            }
+        }
+    }
+
+    @MainActor
     private func fetchShorts(page: Int, append: Bool = false) async {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
@@ -159,7 +220,7 @@ struct ShortListView: View {
 
         let api = DFAPI(url: url, token: serverInstance.token)
 
-        if let response = await api.getShorts(page: page, selectedServer: serverInstance) {
+        if let response = await api.getShorts(page: page, filterUserID: filterUserID, selectedServer: serverInstance) {
             if append {
                 shorts.append(contentsOf: response.shorts)
             } else {

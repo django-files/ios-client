@@ -12,6 +12,20 @@ struct StreamListView: View {
     @State private var isLoading = false
     @State private var hasMoreResults = true
     @State private var error: String?
+    @State private var filterUserID: Int? = nil
+    @State private var users: [DFUser] = []
+    @State private var liveFilter: LiveFilter = .all
+
+    private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
+    private var hasActiveFilters: Bool { isFilteringUsers || liveFilter != .all }
+
+    private var filteredStreams: [DFStream] {
+        switch liveFilter {
+        case .all:     return streams
+        case .live:    return streams.filter { $0.isLive }
+        case .offline: return streams.filter { !$0.isLive }
+        }
+    }
 
     private let streamsPerPage = 50
 
@@ -41,7 +55,7 @@ struct StreamListView: View {
                             .listRowSeparator(.hidden)
                         }
 
-                        ForEach(streams) { stream in
+                        ForEach(filteredStreams) { stream in
                             NavigationLink {
                                 StreamView(
                                     serverURL: serverURL,
@@ -75,6 +89,44 @@ struct StreamListView: View {
                     }
                     .navigationTitle("Streams")
                     .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Menu {
+                                Picker("Status", selection: $liveFilter) {
+                                    Image(systemName: "video").tag(LiveFilter.all)
+                                    Image(systemName: "video.fill").tag(LiveFilter.live)
+                                    Image(systemName: "video.slash").tag(LiveFilter.offline)
+                                }
+                                .pickerStyle(.segmented)
+
+                                if server.wrappedValue?.superUser ?? false {
+                                    Divider()
+                                    Section("Filters") {
+                                        Menu {
+                                            Picker("", selection: Binding(
+                                                get: { filterUserID },
+                                                set: { newValue in
+                                                    filterUserID = newValue
+                                                    Task { await refreshStreams() }
+                                                }
+                                            )) {
+                                                Label("All Users", systemImage: "person.2")
+                                                    .tag(Optional<Int>(0))
+                                                ForEach(users, id: \.id) { user in
+                                                    Label(user.username, systemImage: "person.circle")
+                                                        .tag(Optional(user.id))
+                                                }
+                                            }
+                                            .pickerStyle(.inline)
+                                        } label: {
+                                            Label("Users", systemImage: "person.2")
+                                                .symbolVariant(isFilteringUsers ? .fill : .none)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            }
+                        }
                         ToolbarItem(placement: .navigationBarTrailing) {
                             UploadMenuButton(server: server)
                         }
@@ -85,7 +137,16 @@ struct StreamListView: View {
             }
         }
         .onAppear {
+            if filterUserID == nil { filterUserID = server.wrappedValue?.userID }
             if streams.isEmpty { loadInitialStreams() }
+            if server.wrappedValue?.superUser == true {
+                Task {
+                    if let session = server.wrappedValue, let url = URL(string: session.url) {
+                        let api = DFAPI(url: url, token: session.token)
+                        users = await api.getAllUsers(selectedServer: session)
+                    }
+                }
+            }
         }
     }
 
@@ -136,7 +197,7 @@ struct StreamListView: View {
         let api = DFAPI(url: url, token: session.token)
         let page = (streams.count / streamsPerPage) + 1
 
-        if let response = await api.getStreams(page: page, selectedServer: session) {
+        if let response = await api.getStreams(page: page, filterUserID: filterUserID, selectedServer: session) {
             await MainActor.run {
                 streams.append(contentsOf: response.streams)
                 hasMoreResults = response.next != nil
@@ -150,6 +211,12 @@ struct StreamListView: View {
             }
         }
     }
+}
+
+// MARK: - LiveFilter
+
+enum LiveFilter {
+    case all, live, offline
 }
 
 // MARK: - StreamRow

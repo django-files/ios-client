@@ -20,7 +20,7 @@ struct DFAlbum: Identifiable, Decodable, Hashable {
     let expr: String?
     let date: String
     let url: String
-    
+
     // Format date for display
     func formattedDate() -> String {
         let dateFormatter = DateFormatter()
@@ -72,11 +72,15 @@ struct CreateAlbumResponse: Decodable {
 
 extension DFAPI {
     // Fetch albums with pagination
-    func getAlbums(page: Int = 1, selectedServer: DjangoFilesSession? = nil) async -> AlbumsResponse? {
+    func getAlbums(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> AlbumsResponse? {
         do {
+            var parameters: [String: String] = [:]
+            if let filterUserID {
+                parameters["user"] = String(filterUserID)
+            }
             let responseBody = try await makeAPIRequest(
                 path: getAPIPath(.albums) + "\(page)/",
-                parameters: [:],
+                parameters: parameters,
                 method: .get,
                 expectedResponse: .ok,
                 selectedServer: selectedServer
