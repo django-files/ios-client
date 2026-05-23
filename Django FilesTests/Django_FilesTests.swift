@@ -230,7 +230,7 @@ struct Django_FilesTests {
         {"shorts":[
           {"id":1,"short":"x","url":"https://a.com","max":0,"views":1,"user":1,"fullUrl":"http://localhost/s/x/"},
           {"id":2,"short":"y","url":"https://b.com","max":5,"views":0,"user":1,"fullUrl":"http://localhost/s/y/"}
-        ]}
+        ], "next": null, "count": 2}
         """.data(using: .utf8)!
         let response = try makeDecoder().decode(ShortsResponse.self, from: json)
         #expect(response.shorts.count == 2)
