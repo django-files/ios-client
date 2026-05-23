@@ -430,6 +430,10 @@ class StreamChatManager: NSObject, ObservableObject {
     // MARK: - Send
 
     private func sendSocket(_ data: [String: String]) {
+        sendSocketAny(data)
+    }
+
+    private func sendSocketAny(_ data: [String: Any]) {
         guard let json = try? JSONSerialization.data(withJSONObject: data),
               let text = String(data: json, encoding: .utf8) else { return }
         webSocketTask?.send(.string(text)) { error in
@@ -484,6 +488,14 @@ class StreamChatManager: NSObject, ObservableObject {
     func banMessageCleanup(_ target: String) {
         sendSocket(["method": "ban-message-cleanup", "name": streamName, "target": target])
     }
+
+    func setLiveChat(_ enabled: Bool) {
+        sendSocketAny(["method": "set-stream-live-chat", "name": streamName, "enabled": enabled])
+    }
+
+    func setAnonymousChat(_ enabled: Bool) {
+        sendSocketAny(["method": "set-stream-anonymous-chat", "name": streamName, "enabled": enabled])
+    }
 }
 
 // MARK: - URLSessionWebSocketDelegate
@@ -494,6 +506,9 @@ extension StreamChatManager: URLSessionWebSocketDelegate {
         Task { @MainActor in
             self.reconnectAttempts = 0
             self.isConnected = true
+            if !self.token.isEmpty {
+                self.sendSocket(["method": "authorize", "authorization": self.token])
+            }
             self.joinChat()
         }
     }

@@ -257,16 +257,7 @@ class DFWebSocket: NSObject {
                     userInfo: ["message": toastText]
                 )
             } else {
-                // For debugging - post a notification for all message types
-                print("WebSocket: Received message with event: \(message.event)")
-                let displayText = "WebSocket: \(message.event) - \(message.message ?? "No message")"
-                
-                // Post notification for all WebSocket events during debugging
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": displayText]
-                )
+                print("WebSocket: Unhandled event: \(message.event)")
             }
             
             // Process the message
