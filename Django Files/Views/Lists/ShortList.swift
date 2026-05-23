@@ -33,13 +33,13 @@ struct ShortListView: View {
                                     Spacer()
                                     Image(systemName: "personalhotspot.slash")
                                         .font(.system(size: 50))
+                                        .foregroundStyle(.secondary)
                                         .padding(.bottom)
-                                        .shadow(color: .purple, radius: 20)
                                     Text("No shorts found")
                                         .font(.headline)
-                                        .shadow(color: .purple, radius: 20)
-                                    Text("Create a short URL to get started.")
-                                        .foregroundColor(.secondary)
+                                    Text("Create a short URL to get started")
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
                                 }
                                 .padding()
                                 Spacer()
@@ -110,7 +110,8 @@ struct ShortListView: View {
                                         }
                                     }
                                 } label: {
-                                    Image(systemName: isFilteringUsers ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                    Image(systemName: "line.3.horizontal.decrease")
+                                        .foregroundStyle(isFilteringUsers ? Color.accentColor : Color.primary)
                                 }
                             }
                         }

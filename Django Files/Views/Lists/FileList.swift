@@ -275,18 +275,6 @@ struct FileListView: View {
         )
     }
 
-    private var menuButtonIcon: String {
-        if showingMap { return "map" }
-        if isGridView {
-            switch gridColumnCount {
-            case 1:  return "rectangle.grid.1x2"
-            case 3:  return "square.grid.3x3"
-            default: return "square.grid.2x2"
-            }
-        }
-        return "list.bullet"
-    }
-
 
     private var hasActiveFilters: Bool {
         !selectedMimeTypes.isEmpty || filterUserID != server.wrappedValue?.userID
@@ -403,17 +391,14 @@ struct FileListView: View {
                     VStack {
                         Spacer()
                         if let errorMessage = errorMessage {
-                            // Show error message instead of "no files found"
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 50))
-                                .foregroundColor(.orange)
+                                .foregroundStyle(.orange)
                                 .padding(.bottom)
-                                .shadow(color: .orange, radius: 15)
                             Text("Error loading files")
                                 .font(.headline)
-                                .shadow(color: .orange, radius: 20)
                             Text(errorMessage)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                             Button("Retry") {
@@ -424,16 +409,15 @@ struct FileListView: View {
                             .padding(.top)
                             .buttonStyle(.borderedProminent)
                         } else {
-                            // Show "no files found" when there's no error
                             Image(systemName: "document.on.document.fill")
                                 .font(.system(size: 50))
+                                .foregroundStyle(.secondary)
                                 .padding(.bottom)
-                                .shadow(color: .purple, radius: 15)
                             Text("No files found")
                                 .font(.headline)
-                                .shadow(color: .purple, radius: 20)
                             Text("Upload a file to get started")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
                         }
                     }
                     .padding()
@@ -615,15 +599,8 @@ struct FileListView: View {
                     }
                     }
                 } label: {
-                    Image(systemName: menuButtonIcon)
-                        .overlay(alignment: .topTrailing) {
-                            if hasActiveFilters {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 5, y: -4)
-                            }
-                        }
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
                 }
             }
             
