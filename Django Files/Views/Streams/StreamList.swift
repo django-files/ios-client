@@ -37,15 +37,15 @@ struct StreamListView: View {
                         if streams.isEmpty && !isLoading {
                             HStack {
                                 Spacer()
-                                VStack(spacing: 12) {
+                                VStack {
+                                    Spacer()
                                     Image(systemName: "video.slash")
                                         .font(.system(size: 50))
                                         .foregroundStyle(.secondary)
-                                        .shadow(color: .blue, radius: 20)
+                                        .padding(.bottom)
                                     Text("No streams found")
                                         .font(.headline)
-                                    Text("Start a stream via OBS or another RTMP client.")
-                                        .font(.caption)
+                                    Text("Start a stream via OBS or another RTMP client")
                                         .foregroundStyle(.secondary)
                                         .multilineTextAlignment(.center)
                                 }
@@ -124,7 +124,8 @@ struct StreamListView: View {
                                     }
                                 }
                             } label: {
-                                Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                Image(systemName: "line.3.horizontal.decrease")
+                                    .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
                             }
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {

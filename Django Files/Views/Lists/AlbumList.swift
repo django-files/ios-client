@@ -42,23 +42,27 @@ struct AlbumListView: View {
                 HStack {
                     Spacer()
                     VStack {
+                        Spacer()
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(.orange)
+                            .padding(.bottom)
                         Text("Error loading albums")
                             .font(.headline)
-                            .padding(.bottom, 4)
                         Text(error)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                         Button("Retry") {
                             loadAlbums()
                         }
                         .padding(.top)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.borderedProminent)
                     }
                     .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
                     Spacer()
                 }
+                .listRowSeparator(.hidden)
             } else if albums.isEmpty {
                 HStack {
                     Spacer()
@@ -66,13 +70,13 @@ struct AlbumListView: View {
                         Spacer()
                         Image(systemName: "photo.stack.fill")
                             .font(.system(size: 50))
+                            .foregroundStyle(.secondary)
                             .padding(.bottom)
-                            .shadow(color: .purple, radius: 20)
                         Text("No albums found")
                             .font(.headline)
-                            .shadow(color: .purple, radius: 20)
                         Text("Create an album to get started")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                     .padding()
                     Spacer()
@@ -158,7 +162,8 @@ struct AlbumListView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: isFilteringUsers ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .foregroundStyle(isFilteringUsers ? Color.accentColor : Color.primary)
                     }
                 }
             }
