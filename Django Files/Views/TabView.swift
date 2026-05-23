@@ -68,6 +68,7 @@ struct TabViewWindow: View {
                         }
                         .tag(Tab.settings)
                 }
+                .tabBarMinimizeIfAvailable()
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
                         // Clear navigation paths when switching servers
@@ -160,6 +161,17 @@ struct TabViewWindow: View {
         // Connect to WebSocket
         print("TabViewWindow: Connecting to WebSocket for session \(session.url)")
         _ = api.connectToWebSocket()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func tabBarMinimizeIfAvailable() -> some View {
+        if #available(iOS 26.0, *) {
+            self.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
     }
 }
 
