@@ -188,7 +188,6 @@ struct StreamView: View {
     @State private var showFullscreenControls = true
     @State private var controlsFadeTimer: Timer?
     @State private var showChatDrawer = false
-    @State private var chatDrawerOffset: CGFloat = 0
     @State private var isPlaying = true
 
     private var effectiveFullscreen: Bool { isFullscreen || verticalSizeClass == .compact }
@@ -198,6 +197,8 @@ struct StreamView: View {
 
     // Auth check
     private var isAuthenticated: Bool { !token.isEmpty }
+
+    @Environment(\.dismiss) private var dismiss
 
     // Broadcast — optional CaptureMode drives the fullScreenCover;
     // setting it non-nil presents the cover, clearing it dismisses it.
@@ -327,28 +328,43 @@ struct StreamView: View {
         }
         .navigationTitle(chatManager.streamTitle.isEmpty ? streamName : chatManager.streamTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showingShareSheet = true } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .labelStyle(.iconOnly)
-                }
-            }
-            if initialStream?.isOwner == true {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        ForEach(CaptureMode.allCases) { mode in
-                            Button {
-                                broadcastMode = mode
-                            } label: {
-                                Label(mode.rawValue, systemImage: mode.icon)
+                Menu {
+                    ControlGroup {
+                        if initialStream?.isOwner == true {
+                            ForEach(CaptureMode.allCases) { mode in
+                                Button {
+                                    broadcastMode = mode
+                                } label: {
+                                    Label(mode.rawValue, systemImage: mode.icon)
+                                }
                             }
                         }
-                    } label: {
-                        Label("Go Live", systemImage: "video.badge.waveform.fill")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(isLive ? .red : .accentColor)
+                        Button {
+                            showingShareSheet = true
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
                     }
+                    if chatManager.isOwner {
+                        Toggle(isOn: Binding(
+                            get: { chatManager.liveChat },
+                            set: { chatManager.setLiveChat($0) }
+                        )) {
+                            Label("Live Chat", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        Toggle(isOn: Binding(
+                            get: { chatManager.anonymousChat },
+                            set: { chatManager.setAnonymousChat($0) }
+                        )) {
+                            Label("Anonymous Chat", systemImage: "person.crop.circle.badge.questionmark")
+                        }
+                        .disabled(!chatManager.liveChat)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
             }
         }
@@ -366,7 +382,7 @@ struct StreamView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { toggleControls() }
 
-            // Controls only — chat drawer is NOT in this ZStack so it can't
+            // Controls only — chat sheet is presented separately so it can't
             // interfere with ZStack keyboard-avoidance behaviour.
             VStack(spacing: 0) {
                 fullscreenTopBar
@@ -393,13 +409,19 @@ struct StreamView: View {
                 fullscreenBottomBar
             }
         }
-        // The chat drawer lives here as a safe-area inset so SwiftUI handles
-        // keyboard avoidance for it automatically — it always sits flush above
-        // the keyboard without any manual keyboardHeight tracking.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if showChatDrawer {
-                chatDrawer(height: 380)
+        .sheet(isPresented: $showChatDrawer) {
+            Group {
+                if chatManager.liveChat {
+                    chatPanel
+                } else {
+                    chatDisabledView
+                }
             }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(.ultraThinMaterial)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationCompactAdaptation(.none)
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
@@ -407,39 +429,19 @@ struct StreamView: View {
         .persistentSystemOverlays(.hidden)
     }
 
-    private func chatDrawer(height: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(Color(white: 0.6, opacity: 0.8))
-                .frame(width: 36, height: 4)
-                .padding(.vertical, 8)
-
-            if chatManager.liveChat {
-                chatPanel
-            } else {
-                chatDisabledView
-            }
-        }
-        .frame(height: height)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 16)
-        .offset(y: chatDrawerOffset)
-        .gesture(
-            DragGesture()
-                .onChanged { value in chatDrawerOffset = max(0, value.translation.height) }
-                .onEnded { value in
-                    if value.translation.height > 100 {
-                        withAnimation(.easeOut(duration: 0.25)) { showChatDrawer = false }
-                    }
-                    withAnimation(.spring()) { chatDrawerOffset = 0 }
-                }
-        )
-        .transition(.move(edge: .bottom))
-    }
 
     private var fullscreenTopBar: some View {
         HStack {
+            if verticalSizeClass == .compact {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
             Text(chatManager.streamTitle.isEmpty ? streamName : chatManager.streamTitle)
                 .font(.subheadline.bold())
                 .foregroundStyle(.white)
@@ -475,10 +477,7 @@ struct StreamView: View {
         HStack {
             // Chat toggle — always visible
             Button {
-                withAnimation(.spring(duration: 0.3)) {
-                    showChatDrawer.toggle()
-                    chatDrawerOffset = 0
-                }
+                showChatDrawer.toggle()
                 resetControlsTimer()
             } label: {
                 Image(systemName: showChatDrawer ? "bubble.left.fill" : "bubble.left")
@@ -670,8 +669,9 @@ struct StreamView: View {
                                 .id(msg.id)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 6)
                 }
                 .onChange(of: chatManager.messages.count) { _, _ in
                     if let last = chatManager.messages.last {
@@ -692,7 +692,8 @@ struct StreamView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             } else if chatManager.isManuallyDisconnected {
                 HStack {
                     Image(systemName: "wifi.slash").foregroundStyle(.secondary)
@@ -702,7 +703,8 @@ struct StreamView: View {
                     Button("Rejoin") { chatManager.rejoinChat() }
                         .font(.caption.bold())
                 }
-                .padding(10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             } else if !isAuthenticated && !chatManager.anonymousChat {
                 HStack {
                     Image(systemName: "person.crop.circle.badge.questionmark")
@@ -711,7 +713,8 @@ struct StreamView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             } else {
                 // Autocomplete
                 if showAutocomplete && !autocompleteItems.isEmpty {
@@ -784,7 +787,7 @@ struct StreamView: View {
             }
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
     }
 
