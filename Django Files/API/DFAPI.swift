@@ -817,7 +817,7 @@ final class MockURLProtocol: URLProtocol {
     static func response(forPath path: String) -> (String, Int) {
         if path.contains("/api/auth/methods") {
             return ("""
-                {"auth_methods":[],"site_name":"Test Server"}
+                {"auth_methods":[{"name":"local","url":""}],"site_name":"Test Server"}
                 """, 200)
         }
         if path.contains("/api/files/1") {

@@ -1,0 +1,53 @@
+name: "Screenshots"
+
+on:
+  # Run automatically alongside releases (after publishing so the build number is stamped).
+  release:
+    types: [published]
+  # Also allow manual trigger for ad-hoc screenshot updates.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: "Capture Screenshots"
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Google Services File"
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
+
+      - name: "Select Xcode"
+        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
+
+      - name: "Capture Screenshots"
+        run: fastlane screenshots
+        env:
+          # Add these three secrets to your repo:
+          #   SCREENSHOT_SERVER_URL  — e.g. https://files.example.com
+          #   SCREENSHOT_USERNAME    — a dedicated screenshot account
+          #   SCREENSHOT_PASSWORD    — its password
+          SCREENSHOT_SERVER_URL: ${{ secrets.SCREENSHOT_SERVER_URL }}
+          SCREENSHOT_USERNAME: ${{ secrets.SCREENSHOT_USERNAME }}
+          SCREENSHOT_PASSWORD: ${{ secrets.SCREENSHOT_PASSWORD }}
+
+      - name: "Upload Screenshots"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: "fastlane/screenshots"
+
+      - name: "Send Failure Notification"
+        if: ${{ failure() && github.event_name == 'release' }}
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}

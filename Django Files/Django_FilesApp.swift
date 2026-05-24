@@ -142,6 +142,10 @@ struct Django_FilesApp: App {
             context.insert(testSession)
             try? context.save()
         }
+
+        if CommandLine.arguments.contains("--FileListGridView") {
+            UserDefaults.standard.set(true, forKey: "fileListIsGridView")
+        }
     }
 
     var body: some Scene {
