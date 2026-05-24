@@ -459,7 +459,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     final let BUFFER_SIZE: Int = 1000000
     
     //File read chunk size
-    final let CHUNK_SIZE: Int = 4096
+    final let CHUNK_SIZE: Int = 1000000  // Match BUFFER_SIZE — stream pipe can't accept more per tick anyway
     
     public let originalDelegate: URLSessionTaskDelegate
     public let boundary: String
@@ -640,7 +640,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         self.outro.append("\r\n--\(self.boundary)--\r\n".data(using: .utf8)!)
         
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) {
+            self.timer = Timer.scheduledTimer(withTimeInterval: 0.001, repeats: true) {
                 [weak self] timer in
                 guard let self = self else { return }
                 
