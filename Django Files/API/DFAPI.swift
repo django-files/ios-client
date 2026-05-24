@@ -456,10 +456,10 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
     }
     
     //Upload buffer size
-    final let BUFFER_SIZE: Int = 1000000
-    
+    final let BUFFER_SIZE: Int = 4000000
+
     //File read chunk size
-    final let CHUNK_SIZE: Int = 1000000  // Match BUFFER_SIZE — stream pipe can't accept more per tick anyway
+    final let CHUNK_SIZE: Int = 4000000  // Match BUFFER_SIZE — stream pipe can't accept more per tick anyway
     
     public let originalDelegate: URLSessionTaskDelegate
     public let boundary: String

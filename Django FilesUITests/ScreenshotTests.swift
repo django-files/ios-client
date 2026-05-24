@@ -50,7 +50,9 @@ final class ScreenshotTests: XCTestCase {
         let urlField = app.textFields["urlTextField"]
         XCTAssertTrue(urlField.waitForExistence(timeout: 10))
         urlField.tap()
-        urlField.typeText("http://localhost")
+        // The field pre-populates with "https://" on focus; type only the host so the
+        // result is "https://localhost" — a valid URL the mock can respond to.
+        urlField.typeText("localhost")
         app.buttons["serverSubmitButton"].tap()
 
         XCTAssertTrue(app.textFields["Username"].waitForExistence(timeout: 10))
@@ -120,7 +122,11 @@ final class ScreenshotTests: XCTestCase {
         let urlField = app.textFields["urlTextField"]
         _ = urlField.waitForExistence(timeout: 10)
         urlField.tap()
-        urlField.typeText(serverURL)
+        // The field pre-populates with "https://" on focus.  Strip the scheme from
+        // the env URL so we type only the host+path and avoid "https://https://…".
+        let hostAndPath = serverURL.replacingOccurrences(
+            of: "^https?://", with: "", options: .regularExpression)
+        urlField.typeText(hostAndPath)
         app.buttons["serverSubmitButton"].tap()
 
         let usernameField = app.textFields["Username"]
