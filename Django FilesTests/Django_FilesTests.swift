@@ -411,7 +411,8 @@ struct Django_FilesTests {
         let result = await api.getAuthMethods()
         #expect(result != nil)
         #expect(result?.siteName == "Test Server")
-        #expect(result?.authMethods.isEmpty == true)
+        #expect(result?.authMethods.count == 1)
+        #expect(result?.authMethods.first?.name == "local")
     }
 
     @Test func testGetFilesPage1WithMock() async {
