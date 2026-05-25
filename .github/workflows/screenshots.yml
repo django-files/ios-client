@@ -10,7 +10,7 @@ concurrency:
 jobs:
   screenshots:
     name: "Capture Screenshots"
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
 
     steps:
@@ -22,7 +22,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
 
       - name: "Capture Screenshots"
         run: fastlane screenshots

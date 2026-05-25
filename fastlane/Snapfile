@@ -23,6 +23,8 @@ devices([
 
 languages(["en-US"])
 
+ios_version("latest")
+
 scheme("Django Files")
 
 clear_previous_screenshots(true)

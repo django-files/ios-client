@@ -16,7 +16,7 @@ jobs:
   # together.  Only runs for full releases — pre-releases (beta) skip this.
   screenshots:
     name: "Screenshots"
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
 
     steps:
@@ -28,7 +28,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
 
       - name: "Capture Screenshots"
         run: fastlane screenshots
@@ -45,7 +45,7 @@ jobs:
 
   publish:
     name: "Publish"
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     # Wait for screenshots on full releases; pre-releases skip the screenshots
     # job so needs.screenshots.result will be 'skipped' — run anyway.
@@ -76,7 +76,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
 
       # Download the screenshots captured by the screenshots job so
       # upload_to_app_store can include them.  Skipped for pre-releases.
