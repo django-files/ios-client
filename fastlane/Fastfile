@@ -68,18 +68,36 @@ platform :ios do
     )
     upload_to_app_store(
       skip_metadata: true,
-      skip_screenshots: true,
+      skip_screenshots: false,
       api_key: api_key,
       precheck_include_in_app_purchases: false
     )
   end
 
 
+  lane :screenshots do
+    setup_ci if ENV['CI']
+    capture_ios_screenshots(
+      scheme: "Django Files",
+      output_directory: "./fastlane/screenshots",
+      clear_previous_screenshots: true,
+      override_status_bar: true,
+      concurrent_simulators: false,
+      erase_simulator: true,
+      launch_environment: {
+        "SCREENSHOT_SERVER_URL" => ENV["SCREENSHOT_SERVER_URL"].to_s,
+        "SCREENSHOT_USERNAME"   => ENV["SCREENSHOT_USERNAME"].to_s,
+        "SCREENSHOT_PASSWORD"   => ENV["SCREENSHOT_PASSWORD"].to_s
+      }
+    )
+  end
+
   lane :tests do
     scan(
       destination: "platform=iOS Simulator,name=iPhone 16,OS=18.6",
       number_of_retries: 1,
-      xcargs: "-maximum-parallel-testing-workers 1"
+      xcargs: "-maximum-parallel-testing-workers 1",
+      skip_testing: "Django FilesUITests/ScreenshotTests"
     )
   end
 
