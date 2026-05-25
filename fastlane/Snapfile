@@ -1,11 +1,7 @@
 devices([
   "iPhone 17 Pro Max",
-  "iPhone Air",
   "iPhone 17",
-  "iPhone 17e",
-  "iPad Pro 13-inch (M5)",
-  "iPad Pro 11-inch (M5)",
-  "iPad mini (A17 Pro)"
+  "iPad Pro 11-inch (M5)"
 ])
 
 languages(["en-US"])
@@ -16,8 +12,6 @@ scheme("Django Files")
 
 clear_previous_screenshots(true)
 
-# Clean status bar: 9:41, full battery, full signal.
 override_status_bar(true)
 
-# Run one simulator at a time — avoids parallel login races on the real server.
 concurrent_simulators(false)

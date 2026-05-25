@@ -18,6 +18,7 @@ jobs:
     name: "Screenshots"
     runs-on: macos-26
     timeout-minutes: 90
+    if: ${{ !contains(github.event.release.body, '[skip screenshots]') }}
 
     steps:
       - name: "Checkout"

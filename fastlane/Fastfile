@@ -82,8 +82,7 @@ platform :ios do
       output_directory: "./fastlane/screenshots",
       clear_previous_screenshots: true,
       override_status_bar: true,
-      concurrent_simulators: false,
-      erase_simulator: true
+      concurrent_simulators: false
     )
   end
 
