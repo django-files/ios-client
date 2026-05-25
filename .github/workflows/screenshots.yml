@@ -1,10 +1,6 @@
 name: "Screenshots"
 
 on:
-  # Run automatically alongside releases (after publishing so the build number is stamped).
-  release:
-    types: [published]
-  # Also allow manual trigger for ad-hoc screenshot updates.
   workflow_dispatch:
 
 concurrency:
