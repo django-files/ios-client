@@ -83,12 +83,7 @@ platform :ios do
       clear_previous_screenshots: true,
       override_status_bar: true,
       concurrent_simulators: false,
-      erase_simulator: true,
-      launch_environment: {
-        "SCREENSHOT_SERVER_URL" => ENV["SCREENSHOT_SERVER_URL"].to_s,
-        "SCREENSHOT_USERNAME"   => ENV["SCREENSHOT_USERNAME"].to_s,
-        "SCREENSHOT_PASSWORD"   => ENV["SCREENSHOT_PASSWORD"].to_s
-      }
+      erase_simulator: true
     )
   end
 
