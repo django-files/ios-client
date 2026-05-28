@@ -10,7 +10,6 @@ ios_version("latest")
 
 scheme("Django Files")
 
-clear_previous_screenshots(true)
 
 override_status_bar(true)
 

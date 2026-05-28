@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Initialize rbenv so the correct Ruby version is used in non-interactive shells
+export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
+if command -v rbenv &>/dev/null; then
+  eval "$(rbenv init - bash)"
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env.screenshots"
 
@@ -23,18 +29,19 @@ DEVICES=(
 
 cd "$REPO_ROOT"
 
+SCREENSHOTS_DIR="$REPO_ROOT/fastlane/screenshots"
+
+echo "Clearing previous screenshots..."
+rm -rf "$SCREENSHOTS_DIR"
 
 for device in "${DEVICES[@]}"; do
   echo ""
   echo "==> Capturing screenshots for: $device"
   SNAPSHOT_DEVICE="$device" bundle exec fastlane screenshots
 done
-
-
-SCREENSHOTS_DIR="$REPO_ROOT/fastlane/screenshots"
-echo ""
-echo "Screenshots saved to: $SCREENSHOTS_DIR"
-open "$SCREENSHOTS_DIR"
+# echo ""
+# echo "Screenshots saved to: $SCREENSHOTS_DIR"
+# open "$SCREENSHOTS_DIR"
 
 echo ""
 read -rp "Upload screenshots to App Store Connect? [y/N] " answer

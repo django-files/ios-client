@@ -146,6 +146,17 @@ struct Django_FilesApp: App {
         if CommandLine.arguments.contains("--FileListGridView") {
             UserDefaults.standard.set(true, forKey: "fileListIsGridView")
         }
+
+        if let columnsArg = CommandLine.arguments.first(where: { $0.hasPrefix("--FileListGridColumns=") }),
+           let count = Int(columnsArg.dropFirst("--FileListGridColumns=".count)),
+           (1...3).contains(count) {
+            UserDefaults.standard.set(true, forKey: "fileListIsGridView")
+            UserDefaults.standard.set(count, forKey: "fileListGridColumns")
+        }
+
+        if CommandLine.arguments.contains("--FileListMapView") {
+            UserDefaults.standard.set(true, forKey: "fileListShowingMap")
+        }
     }
 
     var body: some Scene {

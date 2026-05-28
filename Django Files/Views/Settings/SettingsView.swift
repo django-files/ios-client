@@ -51,10 +51,10 @@ struct SettingsView: View {
                                     }
                                     VStack(alignment: .leading, spacing: 2) {
                                         if let username = server.username {
-                                            Text(username).font(.headline)
+                                            Text(ScreenshotDisplay.username(username)).font(.headline)
                                         }
                                         if let firstName = server.firstName, !firstName.isEmpty {
-                                            Text(firstName)
+                                            Text(ScreenshotDisplay.firstName(firstName))
                                                 .font(.subheadline)
                                                 .foregroundColor(.secondary)
                                         }
@@ -84,7 +84,7 @@ struct SettingsView: View {
                                         }
                                         .frame(width: 44)
                                         VStack(alignment: .leading, spacing: 1) {
-                                            Text(URL(string: server.url)?.host ?? server.url)
+                                            Text(ScreenshotDisplay.host(URL(string: server.url)?.host ?? server.url))
                                                 .font(.subheadline)
                                             Text(sessionManager.cachedVersion ?? "placeholder")
                                                 .font(.caption)
@@ -100,7 +100,7 @@ struct SettingsView: View {
                                         .foregroundStyle(.secondary)
                                         .frame(width: 44)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(URL(string: server.url)?.host ?? server.url)
+                                        Text(ScreenshotDisplay.host(URL(string: server.url)?.host ?? server.url))
                                             .font(.subheadline)
                                         Text(sessionManager.cachedVersion ?? "placeholder")
                                             .font(.caption)
@@ -131,7 +131,7 @@ struct SettingsView: View {
                                         sessionManager.saveSelectedSession()
                                     } label: {
                                         Label(
-                                            URL(string: session.url)?.host ?? session.url,
+                                            ScreenshotDisplay.host(URL(string: session.url)?.host ?? session.url),
                                             systemImage: session.url == server.url ? "checkmark" : "server.rack"
                                         )
                                     }
@@ -141,7 +141,7 @@ struct SettingsView: View {
                                         for s in allSessions { s.defaultSession = false }
                                         server.defaultSession = true
                                     } label: {
-                                        Label("Set \(URL(string: server.url)?.host ?? server.url) as Default", systemImage: "star.fill")
+                                        Label("Set \(ScreenshotDisplay.host(URL(string: server.url)?.host ?? server.url)) as Default", systemImage: "star.fill")
                                     }
                                     .disabled(server.defaultSession)
                                 }

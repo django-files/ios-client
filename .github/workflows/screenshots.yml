@@ -57,7 +57,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     needs: [screenshots]
-    if: ${{ always() && !cancelled() && needs.screenshots.result == 'success' }}
+    if: ${{ !cancelled() && needs.screenshots.result != 'skipped' }}
 
     steps:
       - name: "Checkout"
