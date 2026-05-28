@@ -106,6 +106,7 @@ platform :ios do
       run_precheck_before_submit: false,
       precheck_include_in_app_purchases: false
     )
+
   end
 
   lane :tests do

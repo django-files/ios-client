@@ -7,6 +7,7 @@ ENV_FILE="$REPO_ROOT/.env.screenshots"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Error: $ENV_FILE not found."
   echo "Copy .env.screenshots.example and fill in your credentials."
+
   exit 1
 fi
 
@@ -22,11 +23,13 @@ DEVICES=(
 
 cd "$REPO_ROOT"
 
+
 for device in "${DEVICES[@]}"; do
   echo ""
   echo "==> Capturing screenshots for: $device"
   SNAPSHOT_DEVICE="$device" bundle exec fastlane screenshots
 done
+
 
 SCREENSHOTS_DIR="$REPO_ROOT/fastlane/screenshots"
 echo ""
