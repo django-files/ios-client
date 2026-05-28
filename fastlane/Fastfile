@@ -68,7 +68,7 @@ platform :ios do
     )
     upload_to_app_store(
       skip_metadata: true,
-      skip_screenshots: false,
+      skip_screenshots: true,
       api_key: api_key,
       precheck_include_in_app_purchases: false
     )
@@ -77,13 +77,16 @@ platform :ios do
 
   lane :screenshots do
     setup_ci if ENV['CI']
-    capture_ios_screenshots(
+    device = ENV['SNAPSHOT_DEVICE']
+    params = {
       scheme: "Django Files",
       output_directory: "./fastlane/screenshots",
       clear_previous_screenshots: true,
       override_status_bar: true,
       concurrent_simulators: false
-    )
+    }
+    params[:devices] = [device] unless device.nil? || device.empty?
+    capture_ios_screenshots(params)
   end
 
   lane :tests do
