@@ -83,10 +83,30 @@ platform :ios do
       output_directory: "./fastlane/screenshots",
       clear_previous_screenshots: true,
       override_status_bar: true,
-      concurrent_simulators: false
+      concurrent_simulators: false,
+      only_testing: "Django FilesUITests/ScreenshotTests"
     }
     params[:devices] = [device] unless device.nil? || device.empty?
     capture_ios_screenshots(params)
+  end
+
+  lane :upload_screenshots do
+    api_key = app_store_connect_api_key(
+      key_id: ENV['ASC_API_ID'],
+      issuer_id: ENV['ASC_ISSUER_ID'],
+      key_content: ENV['ASC_API_KEY'],
+      duration: 1200,
+      in_house: false
+    )
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: false,
+      api_key: api_key,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false
+    )
+
   end
 
   lane :tests do
