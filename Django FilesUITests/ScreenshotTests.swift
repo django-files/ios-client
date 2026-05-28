@@ -130,11 +130,34 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["serverSubmitButton"].tap()
 
         let usernameField = app.textFields["Username"]
-        _ = usernameField.waitForExistence(timeout: 20)
+        _ = usernameField.waitForExistence(timeout: 30)
         usernameField.tap()
         usernameField.typeText(screenshotUsername)
         app.secureTextFields["Password"].tap()
         app.secureTextFields["Password"].typeText(screenshotPassword)
         app.buttons["Login"].tap()
+    }
+
+    // MARK: - 06: File Preview
+
+    @MainActor
+    func testFilePreview() throws {
+        guard hasCredentials else {
+            throw XCTSkip("SCREENSHOT_SERVER_URL / USERNAME / PASSWORD not set")
+        }
+        let app = XCUIApplication()
+        setupSnapshot(app)
+        app.launchArguments = ["--DeleteAllData", "--DisableFirebase"]
+        app.launch()
+
+        login(app: app)
+
+        XCTAssertTrue(app.navigationBars["Files"].waitForExistence(timeout: 30))
+        let firstCell = app.cells.firstMatch
+        XCTAssertTrue(firstCell.waitForExistence(timeout: 10))
+        firstCell.tap()
+        // Share button is always visible in the preview toolbar overlay
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 15))
+        snapshot("06_FilePreview")
     }
 }
