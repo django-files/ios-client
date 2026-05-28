@@ -12,45 +12,10 @@ env:
   command: ${{ github.event.release.prerelease && 'beta' || 'push_appstore' }}
 
 jobs:
-  # Capture App Store screenshots before the build so they can be uploaded
-  # together.  Only runs for full releases — pre-releases (beta) skip this.
-  screenshots:
-    name: "Screenshots"
-    runs-on: macos-15
-    timeout-minutes: 90
-
-    steps:
-      - name: "Checkout"
-        uses: actions/checkout@v4
-
-      - name: "Google Services File"
-        run: |
-          echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
-
-      - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
-
-      - name: "Capture Screenshots"
-        run: fastlane screenshots
-        env:
-          SCREENSHOT_SERVER_URL: ${{ secrets.SCREENSHOT_SERVER_URL }}
-          SCREENSHOT_USERNAME: ${{ secrets.SCREENSHOT_USERNAME }}
-          SCREENSHOT_PASSWORD: ${{ secrets.SCREENSHOT_PASSWORD }}
-
-      - name: "Upload Screenshots Artifact"
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: "fastlane/screenshots"
-
   publish:
     name: "Publish"
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
-    # Wait for screenshots on full releases; pre-releases skip the screenshots
-    # job so needs.screenshots.result will be 'skipped' — run anyway.
-    needs: [screenshots]
-    if: ${{ always() && !cancelled() && (needs.screenshots.result == 'success' || needs.screenshots.result == 'skipped') }}
 
     steps:
       - name: "Checkout"
@@ -76,16 +41,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
-
-      # Download the screenshots captured by the screenshots job so
-      # upload_to_app_store can include them.  Skipped for pre-releases.
-      - name: "Download Screenshots"
-        if: ${{ needs.screenshots.result == 'success' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: screenshots
-          path: "fastlane/screenshots"
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
 
       - name: "Fastlane ${{ env.command }}"
         run: fastlane ${{ env.command }}

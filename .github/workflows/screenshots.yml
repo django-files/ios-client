@@ -9,9 +9,16 @@ concurrency:
 
 jobs:
   screenshots:
-    name: "Capture Screenshots"
-    runs-on: macos-15
-    timeout-minutes: 90
+    name: "Screenshots (${{ matrix.device }})"
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        device:
+          - "iPhone 17 Pro Max"
+          - "iPhone 17"
+          - "iPad Pro 11-inch (M5)"
+      fail-fast: false
 
     steps:
       - name: "Checkout"
@@ -22,15 +29,12 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
 
       - name: "Capture Screenshots"
         run: fastlane screenshots
         env:
-          # Add these three secrets to your repo:
-          #   SCREENSHOT_SERVER_URL  — e.g. https://files.example.com
-          #   SCREENSHOT_USERNAME    — a dedicated screenshot account
-          #   SCREENSHOT_PASSWORD    — its password
+          SNAPSHOT_DEVICE: ${{ matrix.device }}
           SCREENSHOT_SERVER_URL: ${{ secrets.SCREENSHOT_SERVER_URL }}
           SCREENSHOT_USERNAME: ${{ secrets.SCREENSHOT_USERNAME }}
           SCREENSHOT_PASSWORD: ${{ secrets.SCREENSHOT_PASSWORD }}
@@ -39,11 +43,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ github.run_number }}
+          name: screenshots-${{ matrix.device }}
           path: "fastlane/screenshots"
 
       - name: "Send Failure Notification"
-        if: ${{ failure() && github.event_name == 'release' }}
+        if: failure()
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}

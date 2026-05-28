@@ -1,34 +1,17 @@
-# Current-generation devices — one per unique screen size.
-#
-# iPhones (4 unique sizes):
-#   6.9"  → iPhone 16 Pro Max  (required by App Store for largest iPhone tier)
-#   6.7"  → iPhone 16 Plus     (6.7" slot; App Store accepts 6.9" screenshots here too,
-#                               but including gives better per-size fidelity)
-#   6.1"  → iPhone 16           (standard size; also covers iPhone SE 4th gen at 6.1")
-#   4.7"  → iPhone SE (3rd generation)  (legacy slot still required by App Store)
-#
-# iPads (3 unique sizes):
-#   13"   → iPad Pro 13-inch (M4)
-#   11"   → iPad Pro 11-inch (M4)
-#   8.3"  → iPad mini (7th generation)
 devices([
-  "iPhone 16 Pro Max",
-  "iPhone 16 Plus",
-  "iPhone 16",
-  "iPhone SE (3rd generation)",
-  "iPad Pro 13-inch (M4)",
-  "iPad Pro 11-inch (M4)",
-  "iPad mini (A17 Pro)"
+  "iPhone 17 Pro Max",
+  "iPhone 17",
+  "iPad Pro 11-inch (M5)"
 ])
 
 languages(["en-US"])
+
+ios_version("latest")
 
 scheme("Django Files")
 
 clear_previous_screenshots(true)
 
-# Clean status bar: 9:41, full battery, full signal.
 override_status_bar(true)
 
-# Run one simulator at a time — avoids parallel login races on the real server.
 concurrent_simulators(false)
