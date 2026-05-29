@@ -195,20 +195,46 @@ struct SessionEditor: View {
                         dismiss()
                     }
                 } else if let tempSession = tempSession, !tempSession.auth {
-                    DFAnalytics.logServerAddFailed(
-                        reason: .authFailed,
-                        scheme: URL(string: tempSession.url)?.scheme
-                    )
+                    let scheme = URL(string: tempSession.url)?.scheme
+                    if let serverURL = URL(string: tempSession.url) {
+                        Task {
+                            let serverVersion = await DFAPI(url: serverURL, token: "").getVersion()
+                            DFAnalytics.logServerAddFailed(
+                                reason: .authFailed,
+                                scheme: scheme,
+                                serverVersion: serverVersion
+                            )
+                        }
+                    } else {
+                        DFAnalytics.logServerAddFailed(reason: .authFailed, scheme: scheme)
+                    }
                 } else if let tempSession = tempSession, tempSession.auth {
                     let wasFirstServer = items.isEmpty
                     modelContext.insert(tempSession)
                     try? modelContext.save()
-                    DFAnalytics.logServerAdded(
-                        authMethod: .interactive,
-                        scheme: URL(string: tempSession.url)?.scheme,
-                        isFirstServer: wasFirstServer,
-                        setAsDefault: tempSession.defaultSession
-                    )
+                    let scheme = URL(string: tempSession.url)?.scheme
+                    let setAsDefault = tempSession.defaultSession
+                    if let serverURL = URL(string: tempSession.url) {
+                        let token = tempSession.token
+                        Task {
+                            let serverVersion = await DFAPI(url: serverURL, token: token).getVersion()
+                            DFAnalytics.logServerAdded(
+                                authMethod: .interactive,
+                                scheme: scheme,
+                                serverVersion: serverVersion,
+                                isFirstServer: wasFirstServer,
+                                setAsDefault: setAsDefault
+                            )
+                        }
+                    } else {
+                        DFAnalytics.logServerAdded(
+                            authMethod: .interactive,
+                            scheme: scheme,
+                            serverVersion: nil,
+                            isFirstServer: wasFirstServer,
+                            setAsDefault: setAsDefault
+                        )
+                    }
                     onSessionCreated?(tempSession)
                     dismiss()
                 }

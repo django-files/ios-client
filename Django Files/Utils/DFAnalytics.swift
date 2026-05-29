@@ -67,7 +67,11 @@ enum DFAnalytics {
 
     static func logAppOpen() {
         guard isReportingEnabled else { return }
-        Analytics.logEvent(Event.appOpen, parameters: nil)
+        let info = Bundle.main.infoDictionary
+        Analytics.logEvent(Event.appOpen, parameters: [
+            "app_version": info?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "build_number": info?["CFBundleVersion"] as? String ?? "unknown",
+        ])
     }
 
     /// Record a successful server addition. Parameters describe the *shape* of
@@ -75,6 +79,7 @@ enum DFAnalytics {
     static func logServerAdded(
         authMethod: AuthMethod,
         scheme: String?,
+        serverVersion: String?,
         isFirstServer: Bool,
         setAsDefault: Bool
     ) {
@@ -82,6 +87,7 @@ enum DFAnalytics {
         Analytics.logEvent(Event.serverAdded, parameters: [
             "auth_method": authMethod.rawValue,
             "scheme": normalizedScheme(scheme),
+            "server_version": serverVersion ?? "unknown",
             "is_first_server": isFirstServer,
             "set_as_default": setAsDefault,
         ])
@@ -89,12 +95,14 @@ enum DFAnalytics {
 
     static func logServerAddFailed(
         reason: AddFailReason,
-        scheme: String?
+        scheme: String?,
+        serverVersion: String? = nil
     ) {
         guard isReportingEnabled else { return }
         Analytics.logEvent(Event.serverAddFailed, parameters: [
             "reason": reason.rawValue,
             "scheme": normalizedScheme(scheme),
+            "server_version": serverVersion ?? "unknown",
         ])
     }
 
