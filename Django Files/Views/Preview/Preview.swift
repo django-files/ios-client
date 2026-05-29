@@ -716,6 +716,7 @@ struct FilePreviewView: View {
                             Image(systemName: "ellipsis")
                                 .foregroundColor(Color.white)
                         }
+                        .accessibilityIdentifier("filePreviewMoreMenu")
 
                     }
                 }

@@ -51,3 +51,37 @@ jobs:
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
+
+  upload:
+    name: "Upload to App Store Connect"
+    runs-on: macos-26
+    timeout-minutes: 30
+    needs: [screenshots]
+    if: ${{ !cancelled() && needs.screenshots.result != 'skipped' }}
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Download All Screenshots"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: screenshots-*
+          path: "fastlane/screenshots"
+          merge-multiple: true
+
+      - name: "Select Xcode"
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
+
+      - name: "Upload Screenshots to App Store Connect"
+        run: fastlane upload_screenshots
+        env:
+          ASC_API_ID: ${{ secrets.ASC_API_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+
+      - name: "Send Failure Notification"
+        if: failure()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}

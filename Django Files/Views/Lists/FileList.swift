@@ -602,8 +602,9 @@ struct FileListView: View {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
                 }
+                .accessibilityIdentifier("fileListViewOptionsMenu")
             }
-            
+
 
             if canUpload {
                 ToolbarItem(placement: .navigationBarTrailing) {

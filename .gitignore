@@ -1,5 +1,8 @@
 # Xcode
 .gitignore
+.key
+fastlane/screenshots
+fastlane/Preview.html
 
 ## User settings
 xcuserdata/
