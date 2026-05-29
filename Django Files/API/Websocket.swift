@@ -29,6 +29,7 @@ struct DFWebSocketMessage: Codable {
     let old_name: String?
     let objects: [DFWebSocketObject]?
     let isLive: Bool?
+    let updateFields: [String]?
 
     enum CodingKeys: String, CodingKey {
         case event, message, delay, id, name, user, expr, password, objects
@@ -36,6 +37,7 @@ struct DFWebSocketMessage: Codable {
         case `private`
         case old_name
         case isLive = "is_live"
+        case updateFields = "update_fields"
     }
 }
 
@@ -199,80 +201,66 @@ class DFWebSocket: NSObject {
         }
     }
     
+    private static let toastNotification = Notification.Name("DFWebSocketToastNotification")
+
+    private func postToast(_ message: String) {
+        NotificationCenter.default.post(
+            name: Self.toastNotification,
+            object: nil,
+            userInfo: ["message": message]
+        )
+    }
+
     private func handleMessage(_ messageText: String) {
         print("WebSocket message received: \(messageText)")
-        
+
         guard let data = messageText.data(using: .utf8) else { return }
-        
+
+        let message: DFWebSocketMessage
         do {
-            let message = try JSONDecoder().decode(DFWebSocketMessage.self, from: data)
-            
-            // Post a notification for toast messages if the event is appropriate
-            if message.event == "toast" || message.event == "notification" {
-                let userInfo: [String: Any] = ["message": message.message ?? "New notification"]
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: userInfo
-                )
-            } else if message.event == "file-new" {
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": "New file \(message.name ?? "Untitled.file") uploaded."]
-                )
-            } else if message.event == "file-delete" {
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": "File \(message.name ?? "Untitled.file") deleted."]
-                )
-            } else if message.event == "file-update" {
-                print(message)
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": "File \(String(describing: message.id!)) renamed to \(message.name ?? "unknown.file")."]
-                )
-            } else if message.event == "album-new" {
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": "Album \(message.name ?? "Untitled.file") created."]
-                )
-            } else if message.event == "album-delete"{
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": "Album (\(message.name ?? "Untitled.file")) deleted."]
-                )
-            } else if message.event == "stream-status" {
-                let streamName = message.name ?? "Stream"
-                let toastText = (message.isLive == true)
-                    ? "\(streamName) is now live."
-                    : "\(streamName) has ended."
-                NotificationCenter.default.post(
-                    name: Notification.Name("DFWebSocketToastNotification"),
-                    object: nil,
-                    userInfo: ["message": toastText]
-                )
-            } else {
-                print("WebSocket: Unhandled event: \(message.event)")
-            }
-            
-            // Process the message
-            DispatchQueue.main.async {
-                self.delegate?.webSocket(self, didReceiveMessage: message)
-            }
+            message = try JSONDecoder().decode(DFWebSocketMessage.self, from: data)
         } catch {
             print("Failed to decode WebSocket message: \(error)")
-            
-            // Try to show the raw message as a toast for debugging
-            NotificationCenter.default.post(
-                name: Notification.Name("DFWebSocketToastNotification"),
-                object: nil,
-                userInfo: ["message": "Raw WebSocket message: \(messageText)"]
-            )
+            return
+        }
+
+        switch message.event {
+        case "toast", "notification":
+            postToast(message.message ?? "New notification")
+
+        case "file-new":
+            let name = message.name ?? "Untitled.file"
+            if !RecentUploadTracker.shared.consume(name: name) {
+                postToast("New file \(name) uploaded.")
+            }
+
+        case "file-delete":
+            postToast("File \(message.name ?? "Untitled.file") deleted.")
+
+        case "file-update":
+            // post_save fires for every save (including initial upload), so only
+            // toast when the name field actually changed and we have a new name.
+            let nameChanged = message.updateFields?.contains("name") ?? false
+            if nameChanged, let newName = message.name, !newName.isEmpty {
+                postToast("Renamed to \(newName).")
+            }
+
+        case "album-new":
+            postToast("Album \(message.name ?? "Untitled.file") created.")
+
+        case "album-delete":
+            postToast("Album (\(message.name ?? "Untitled.file")) deleted.")
+
+        case "stream-status":
+            let streamName = message.name ?? "Stream"
+            postToast(message.isLive == true ? "\(streamName) is now live." : "\(streamName) has ended.")
+
+        default:
+            print("WebSocket: Unhandled event: \(message.event)")
+        }
+
+        DispatchQueue.main.async {
+            self.delegate?.webSocket(self, didReceiveMessage: message)
         }
     }
     
@@ -305,27 +293,17 @@ extension DFWebSocket: URLSessionWebSocketDelegate {
         print("WebSocket Connected.")
         isConnected = true
         
-        // Post a notification that connection was successful
-        NotificationCenter.default.post(
-            name: Notification.Name("DFWebSocketToastNotification"),
-            object: nil,
-            userInfo: ["message": "WebSocket Connected"]
-        )
-        
+        postToast("WebSocket Connected")
+
         delegate?.webSocketDidConnect(self)
     }
-    
+
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         isConnected = false
         let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown reason"
         print("WebSocket Closed with code: \(closeCode), reason: \(reasonString)")
-        
-        // Post a notification about the disconnection
-        NotificationCenter.default.post(
-            name: Notification.Name("DFWebSocketToastNotification"),
-            object: nil,
-            userInfo: ["message": "WebSocket Disconnected: \(closeCode)"]
-        )
+
+        postToast("WebSocket Disconnected: \(closeCode)")
         
         // Only trigger reconnect for abnormal closures
         if closeCode != .normalClosure && closeCode != .goingAway {

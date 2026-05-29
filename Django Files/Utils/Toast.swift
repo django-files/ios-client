@@ -6,72 +6,157 @@
 //
 
 import SwiftUI
+import UIKit
 
-class ToastManager {
+struct ToastItem: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+    let systemImage: String?
+}
+
+@MainActor
+final class ToastManager: ObservableObject {
     static let shared = ToastManager()
-    
-    func showToast(message: String) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else { return }
 
-        // Create a label for the toast
-        let toastContainer = UIView()
-        toastContainer.backgroundColor = UIColor.darkGray.withAlphaComponent(0.9)
-        toastContainer.layer.cornerRadius = 16
-        toastContainer.clipsToBounds = true
-        
-        let messageLabel = UILabel()
-        messageLabel.text = message
-        messageLabel.textColor = .white
-        messageLabel.textAlignment = .center
-        messageLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        messageLabel.numberOfLines = 0
-        
-//        // Create an image view for the clipboard icon
-//        let imageView = UIImageView(image: UIImage(systemName: "doc.on.clipboard"))
-//        imageView.tintColor = .white
-//        imageView.contentMode = .scaleAspectFit
-        
-        // Create a stack view to hold the image and label
-        let stackView = UIStackView(arrangedSubviews: [/*imageView,*/ messageLabel])
-        stackView.axis = .horizontal
-        stackView.spacing = 8
-        stackView.alignment = .center
-        
-        // Add the stack view to the container
-        toastContainer.addSubview(stackView)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
+    @Published fileprivate(set) var current: ToastItem?
+    /// Extra distance to lift the toast away from the bottom edge — used to clear the
+    /// `tabViewBottomAccessory` when uploads are in flight.
+    @Published var bottomInset: CGFloat = 0
+
+    private var queue: [ToastItem] = []
+    private var lifecycle: Task<Void, Never>?
+    private let displayDuration: Duration = .seconds(2.5)
+    private let gapBetween: Duration = .milliseconds(220)
+
+    private var host: UIHostingController<ToastHostView>?
+
+    nonisolated init() {}
+
+    nonisolated func showToast(message: String, systemImage: String? = nil) {
+        let item = ToastItem(message: message, systemImage: systemImage)
+        Task { @MainActor in
+            self.enqueue(item)
+        }
+    }
+
+    private func enqueue(_ item: ToastItem) {
+        installHostIfNeeded()
+        queue.append(item)
+        if current == nil { advance() }
+    }
+
+    private func advance() {
+        lifecycle?.cancel()
+        guard !queue.isEmpty else {
+            current = nil
+            return
+        }
+        current = queue.removeFirst()
+        lifecycle = Task { [weak self, displayDuration, gapBetween] in
+            try? await Task.sleep(for: displayDuration)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.current = nil }
+            try? await Task.sleep(for: gapBetween)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.advance() }
+        }
+    }
+
+    private func installHostIfNeeded() {
+        guard host == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+                ?? UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first
+        else { return }
+
+        let hc = UIHostingController(rootView: ToastHostView())
+        hc.view.backgroundColor = .clear
+        hc.view.translatesAutoresizingMaskIntoConstraints = false
+        hc.view.isUserInteractionEnabled = false
+        window.addSubview(hc.view)
+        let guide = window.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: toastContainer.topAnchor, constant: 12),
-            stackView.bottomAnchor.constraint(equalTo: toastContainer.bottomAnchor, constant: -12),
-            stackView.leadingAnchor.constraint(equalTo: toastContainer.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: toastContainer.trailingAnchor, constant: -16),
-//            imageView.widthAnchor.constraint(equalToConstant: 20),
-//            imageView.heightAnchor.constraint(equalToConstant: 20)
+            hc.view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+            hc.view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+            hc.view.topAnchor.constraint(equalTo: guide.topAnchor),
+            hc.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
         ])
-        
-        // Add the toast container to the window
-        window.addSubview(toastContainer)
-        toastContainer.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Position the toast at the center bottom of the screen
-        NSLayoutConstraint.activate([
-            toastContainer.centerXAnchor.constraint(equalTo: window.centerXAnchor),
-            toastContainer.bottomAnchor.constraint(equalTo: window.safeAreaLayoutGuide.bottomAnchor, constant: -64),
-            toastContainer.widthAnchor.constraint(lessThanOrEqualTo: window.widthAnchor, multiplier: 0.85)
-        ])
-        
-        // Animate the toast
-        toastContainer.alpha = 0
-        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseIn, animations: {
-            toastContainer.alpha = 1
-        }) { _ in
-            // Dismiss the toast after a delay
-            UIView.animate(withDuration: 0.2, delay: 2.0, options: .curveEaseOut, animations: {
-                toastContainer.alpha = 0
-            }) { _ in
-                toastContainer.removeFromSuperview()
+        host = hc
+    }
+}
+
+private struct ToastHostView: View {
+    @ObservedObject private var manager = ToastManager.shared
+
+    var body: some View {
+        VStack {
+            Spacer()
+            if let toast = manager.current {
+                ToastBanner(item: toast)
+                    .padding(.bottom, manager.bottomInset + 64)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        )
+                    )
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.42, dampingFraction: 0.82), value: manager.current)
+        .animation(.easeInOut(duration: 0.2), value: manager.bottomInset)
+        .sensoryFeedbackIfAvailable(trigger: manager.current?.id)
+        .accessibilityElement(children: .contain)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct ToastBanner: View {
+    let item: ToastItem
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let symbol = item.systemImage {
+                Image(systemName: symbol)
+                    .imageScale(.medium)
+                    .foregroundStyle(.secondary)
+            }
+            Text(item.message)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .modifier(ToastBackgroundModifier())
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(item.message))
+        .accessibilityAddTraits(.isStaticText)
+    }
+}
+
+private struct ToastBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: Capsule(style: .continuous))
+        } else {
+            content.background(.regularMaterial, in: Capsule(style: .continuous))
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func sensoryFeedbackIfAvailable<T: Equatable>(trigger: T) -> some View {
+        if #available(iOS 17.0, *) {
+            self.sensoryFeedback(.impact(weight: .light), trigger: trigger)
+        } else {
+            self
         }
     }
 }

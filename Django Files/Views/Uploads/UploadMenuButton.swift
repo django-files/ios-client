@@ -10,17 +10,28 @@ struct UploadMenuButton: View {
     var onUploadComplete: (() async -> Void)? = nil
     var showPurpleShadow: Bool = false
 
-    @State private var showingUploadSheet = false
+    @EnvironmentObject private var uploadProgressManager: UploadProgressManager
+    @State private var uploadSource: UploadSource?
     @State private var showingShortCreator = false
     @State private var showingAlbumCreator = false
     @State private var showingNewStream = false
 
+    private var useAccessoryProgress: Bool {
+        if #available(iOS 26.0, *) { return true } else { return false }
+    }
+
     var body: some View {
         Menu {
-            Button {
-                showingUploadSheet = true
+            Menu {
+                ForEach(UploadSource.allCases) { source in
+                    Button {
+                        uploadSource = source
+                    } label: {
+                        Label(source.title, systemImage: source.systemImage)
+                    }
+                }
             } label: {
-                Label("Upload File", systemImage: "arrow.up.doc")
+                Label("Upload", systemImage: "arrow.up.doc")
             }
             Button {
                 Task { await uploadClipboard() }
@@ -46,12 +57,9 @@ struct UploadMenuButton: View {
             Image(systemName: "plus")
         }
         .shadow(color: .purple, radius: showPurpleShadow ? 3 : 0)
-        .sheet(isPresented: $showingUploadSheet, onDismiss: {
-            guard let refresh = onUploadComplete else { return }
-            Task { await refresh() }
-        }) {
+        .sheet(item: $uploadSource) { source in
             if let serverInstance = server.wrappedValue {
-                FileUploadView(server: serverInstance)
+                FileUploadView(source: source, server: serverInstance, onUploadComplete: onUploadComplete)
             }
         }
         .sheet(isPresented: $showingShortCreator) {
@@ -79,7 +87,6 @@ struct UploadMenuButton: View {
             return
         }
 
-        let api = DFAPI(url: url, token: serverInstance.token)
         let pasteboard = UIPasteboard.general
 
         if let text = pasteboard.string {
@@ -87,42 +94,28 @@ struct UploadMenuButton: View {
             let tempURL = tempDir.appendingPathComponent("ios-clip.txt")
             do {
                 try text.write(to: tempURL, atomically: true, encoding: .utf8)
-                let delegate = UploadProgressDelegate { _ in }
-                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
-                try? FileManager.default.removeItem(at: tempURL)
-                if response != nil {
-                    if let refresh = onUploadComplete { await refresh() }
-                    ToastManager.shared.showToast(message: "Text uploaded successfully")
-                } else {
-                    ToastManager.shared.showToast(message: "Failed to upload text")
-                }
             } catch {
-                try? FileManager.default.removeItem(at: tempURL)
                 ToastManager.shared.showToast(message: "Error uploading text: \(error.localizedDescription)")
+                return
             }
+            await dispatchClipboardUpload(serverURL: url, token: serverInstance.token, tempURL: tempURL, displayName: "ios-clip.txt", successMessage: "Text uploaded successfully", failureMessage: "Failed to upload text")
             return
         }
 
         if let image = pasteboard.image {
             let tempDir = FileManager.default.temporaryDirectory
             let tempURL = tempDir.appendingPathComponent("image.jpg")
-            if let imageData = image.jpegData(compressionQuality: 0.8) {
-                do {
-                    try imageData.write(to: tempURL)
-                    let delegate = UploadProgressDelegate { _ in }
-                    let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
-                    try? FileManager.default.removeItem(at: tempURL)
-                    if response != nil {
-                        if let refresh = onUploadComplete { await refresh() }
-                        ToastManager.shared.showToast(message: "Image uploaded successfully")
-                    } else {
-                        ToastManager.shared.showToast(message: "Failed to upload image")
-                    }
-                } catch {
-                    try? FileManager.default.removeItem(at: tempURL)
-                    ToastManager.shared.showToast(message: "Error uploading image: \(error.localizedDescription)")
-                }
+            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+                ToastManager.shared.showToast(message: "No content found in clipboard")
+                return
             }
+            do {
+                try imageData.write(to: tempURL)
+            } catch {
+                ToastManager.shared.showToast(message: "Error uploading image: \(error.localizedDescription)")
+                return
+            }
+            await dispatchClipboardUpload(serverURL: url, token: serverInstance.token, tempURL: tempURL, displayName: "image.jpg", thumbnail: image, successMessage: "Image uploaded successfully", failureMessage: "Failed to upload image")
             return
         }
 
@@ -130,22 +123,47 @@ struct UploadMenuButton: View {
            let tempURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("video.mp4") {
             do {
                 try videoData.write(to: tempURL)
-                let delegate = UploadProgressDelegate { _ in }
-                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
-                try? FileManager.default.removeItem(at: tempURL)
-                if response != nil {
-                    if let refresh = onUploadComplete { await refresh() }
-                    ToastManager.shared.showToast(message: "Video uploaded successfully")
-                } else {
-                    ToastManager.shared.showToast(message: "Failed to upload video")
-                }
             } catch {
-                try? FileManager.default.removeItem(at: tempURL)
                 ToastManager.shared.showToast(message: "Error uploading video: \(error.localizedDescription)")
+                return
             }
+            await dispatchClipboardUpload(serverURL: url, token: serverInstance.token, tempURL: tempURL, displayName: "video.mp4", successMessage: "Video uploaded successfully", failureMessage: "Failed to upload video")
             return
         }
 
         ToastManager.shared.showToast(message: "No content found in clipboard")
+    }
+
+    @MainActor
+    private func dispatchClipboardUpload(serverURL: URL, token: String, tempURL: URL, displayName: String, thumbnail: UIImage? = nil, successMessage: String, failureMessage: String) async {
+        if useAccessoryProgress {
+            let manager = uploadProgressManager
+            let completion = onUploadComplete
+            let id = manager.start(filename: displayName, thumbnail: thumbnail)
+            Task.detached {
+                let api = DFAPI(url: serverURL, token: token)
+                let delegate = UploadProgressDelegate { progress in
+                    Task { @MainActor in manager.update(id: id, progress: progress) }
+                }
+                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                try? FileManager.default.removeItem(at: tempURL)
+                await MainActor.run {
+                    manager.finish(id: id)
+                    ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                }
+                if response != nil, let completion { await completion() }
+            }
+        } else {
+            let api = DFAPI(url: serverURL, token: token)
+            let delegate = UploadProgressDelegate { _ in }
+            let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+            try? FileManager.default.removeItem(at: tempURL)
+            if response != nil {
+                if let refresh = onUploadComplete { await refresh() }
+                ToastManager.shared.showToast(message: successMessage)
+            } else {
+                ToastManager.shared.showToast(message: failureMessage)
+            }
+        }
     }
 }

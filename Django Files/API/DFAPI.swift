@@ -192,13 +192,15 @@ struct DFAPI {
                 taskDelegate: taskDelegate,
                 selectedServer: selectedServer
             )
-            return try decoder.decode(DFUploadResponse.self, from: responseBody)
+            let response = try decoder.decode(DFUploadResponse.self, from: responseBody)
+            RecentUploadTracker.shared.record(name: response.name)
+            return response
         } catch {
             print("Request failed \(error)")
             return nil
         }
     }
-    
+
     public func uploadFileStreamed(url: URL, fileName: String? = nil, privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate) async -> DjangoFilesUploadDelegate? {
         let boundary = UUID().uuidString
 
