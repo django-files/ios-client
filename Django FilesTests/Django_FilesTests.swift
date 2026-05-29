@@ -415,24 +415,22 @@ struct Django_FilesTests {
         #expect(result?.authMethods.first?.name == "local")
     }
 
-    @Test func testGetFilesPage1WithMock() async {
+    @Test func testGetFilesPage1WithMock() async throws {
         let api = DFAPI(url: URL(string: "http://localhost")!, token: "test", session: mockSession())
-        let result = await api.getFiles(page: 1)
-        #expect(result != nil)
-        #expect(result?.files.count == 2)
-        #expect(result?.files[0].name == "photo.jpg")
-        #expect(result?.files[0].mime == "image/jpeg")
-        #expect(result?.files[1].name == "notes.txt")
-        #expect(result?.files[1].private == true)
-        #expect(result?.next == nil)
-        #expect(result?.count == 2)
+        let result = try await api.getFiles(page: 1)
+        #expect(result.files.count == 2)
+        #expect(result.files[0].name == "photo.jpg")
+        #expect(result.files[0].mime == "image/jpeg")
+        #expect(result.files[1].name == "notes.txt")
+        #expect(result.files[1].private == true)
+        #expect(result.next == nil)
+        #expect(result.count == 2)
     }
 
-    @Test func testGetFilesPage2WithMockReturnsEmpty() async {
+    @Test func testGetFilesPage2WithMockReturnsEmpty() async throws {
         let api = DFAPI(url: URL(string: "http://localhost")!, token: "test", session: mockSession())
-        let result = await api.getFiles(page: 2)
-        #expect(result != nil)
-        #expect(result?.files.isEmpty == true)
-        #expect(result?.next == nil)
+        let result = try await api.getFiles(page: 2)
+        #expect(result.files.isEmpty)
+        #expect(result.next == nil)
     }
 }
