@@ -51,9 +51,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     if !shouldDisableFirebase {
         FirebaseApp.configure()
 
-        // Initialize Firebase Analytics based on user preference
+        // Initialize Firebase Analytics based on user preference.
+        // `DFAnalytics.setCollectionEnabled` forces off on simulator
+        // regardless of UserDefaults, keeping dev/QA traffic out of prod.
         let analyticsEnabled = UserDefaults.standard.bool(forKey: "firebaseAnalyticsEnabled")
-        Analytics.setAnalyticsCollectionEnabled(analyticsEnabled)
+        DFAnalytics.setCollectionEnabled(analyticsEnabled)
 
         // Initialize Crashlytics based on user preference
         let crashlyticsEnabled = UserDefaults.standard.bool(forKey: "crashlyticsEnabled")
@@ -74,6 +76,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct Django_FilesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var previewStateManager = PreviewStateManager()
     @StateObject private var streamStateManager = StreamStateManager()
     @StateObject private var albumStateManager = AlbumStateManager()
@@ -184,6 +187,11 @@ struct Django_FilesApp: App {
             .environmentObject(previewStateManager)
             .environmentObject(streamStateManager)
             .environmentObject(albumStateManager)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    DFAnalytics.logAppOpen()
+                }
+            }
             .onOpenURL { url in
                 DeepLinks.shared.handleDeepLink(
                     url,

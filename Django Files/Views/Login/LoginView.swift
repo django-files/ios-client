@@ -55,6 +55,7 @@ struct LoginView: View {
         guard authMethods.contains(where: { $0.name == "local" }) else {
             return
         }
+        DFAnalytics.logLoginMethodSelected(.local)
         if await dfapi.localLogin(
             username: username,
             password: password,
@@ -94,6 +95,7 @@ struct LoginView: View {
     private func handleOAuthLogin(url: String) {
         if URL(string: url) != nil {
             print("Valid OAuth URL, showing web view")
+            DFAnalytics.logLoginMethodSelected(.oauth)
             oauthSheetURL = OAuthURL(url: url)
         } else {
             print("Failed to create OAuth URL from: '\(url)'")

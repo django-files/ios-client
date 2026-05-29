@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import FirebaseAnalytics
 import FirebaseCrashlytics
 
 struct PrivacySettingsView: View {
@@ -26,7 +25,7 @@ struct PrivacySettingsView: View {
                             showAnalyticsAlert = true
                         } else {
                             firebaseAnalyticsEnabled = newValue
-                            Analytics.setAnalyticsCollectionEnabled(newValue)
+                            DFAnalytics.setCollectionEnabled(newValue)
                         }
                     }
                 )) {
@@ -41,7 +40,7 @@ struct PrivacySettingsView: View {
                     Button("Keep Enabled", role: .cancel) { firebaseAnalyticsEnabled = true }
                     Button("Disable", role: .destructive) {
                         firebaseAnalyticsEnabled = pendingAnalyticsValue
-                        Analytics.setAnalyticsCollectionEnabled(pendingAnalyticsValue)
+                        DFAnalytics.setCollectionEnabled(pendingAnalyticsValue)
                     }
                 } message: {
                     Text("Please consider leaving analytics enabled to help improve Django Files. We do not collect ANY personal information with analytics.")
