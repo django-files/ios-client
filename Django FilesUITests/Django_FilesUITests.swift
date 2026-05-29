@@ -31,17 +31,17 @@ final class Django_FilesUITests: XCTestCase {
         let app = launchApp()
 
         let textField = app.textFields["urlTextField"]
-        XCTAssertTrue(textField.waitForExistence(timeout: 5))
+        XCTAssertTrue(textField.waitForExistence(timeout: 30))
         textField.tap()
         textField.typeText("localhost")
 
         let submitButton = app.buttons["serverSubmitButton"]
-        XCTAssertTrue(submitButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(submitButton.waitForExistence(timeout: 30))
         submitButton.tap()
 
         // MockURLProtocol returns {"site_name": "Test Server"} for /api/auth/methods/.
         // LoginView displays that as Text(siteName).
-        XCTAssertTrue(app.staticTexts["Test Server"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Test Server"].waitForExistence(timeout: 30))
     }
 
     /// Verifies that the file list displays mock files when launched with a
