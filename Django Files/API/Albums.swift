@@ -72,23 +72,22 @@ struct CreateAlbumResponse: Decodable {
 
 extension DFAPI {
     // Fetch albums with pagination
-    func getAlbums(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> AlbumsResponse? {
+    func getAlbums(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> AlbumsResponse {
+        var parameters: [String: String] = [:]
+        if let filterUserID {
+            parameters["user"] = String(filterUserID)
+        }
+        let responseBody = try await makeAPIRequest(
+            path: getAPIPath(.albums) + "\(page)/",
+            parameters: parameters,
+            method: .get,
+            expectedResponse: .ok,
+            selectedServer: selectedServer
+        )
         do {
-            var parameters: [String: String] = [:]
-            if let filterUserID {
-                parameters["user"] = String(filterUserID)
-            }
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.albums) + "\(page)/",
-                parameters: parameters,
-                method: .get,
-                expectedResponse: .ok,
-                selectedServer: selectedServer
-            )
             return try decoder.decode(AlbumsResponse.self, from: responseBody)
         } catch {
-            print("Error fetching albums: \(error)")
-            return nil
+            throw DFAPIError.decoding(error)
         }
     }
     

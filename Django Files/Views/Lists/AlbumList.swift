@@ -29,103 +29,65 @@ struct AlbumListView: View {
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
 
+    @ViewBuilder
+    private var statusOverlay: some View {
+        if let errorMessage {
+            ListStatusView.error(message: errorMessage) { loadAlbums() }
+        } else if albums.isEmpty && !isLoading {
+            ListStatusView(
+                icon: "photo.stack.fill",
+                title: "No albums found",
+                message: "Create an album to get started"
+            )
+        } else if isLoading && albums.isEmpty {
+            LoadingView()
+                .frame(width: 100, height: 100)
+        }
+    }
+
     var body: some View {
         List {
-            if isLoading && albums.isEmpty {
-                HStack {
-                    Spacer()
-                    LoadingView()
-                        .frame(width: 100, height: 100)
-                    Spacer()
-                }
-            } else if let error = errorMessage {
-                HStack {
-                    Spacer()
-                    VStack {
-                        Spacer()
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 50))
-                            .foregroundStyle(.orange)
-                            .padding(.bottom)
-                        Text("Error loading albums")
-                            .font(.headline)
-                        Text(error)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        Button("Retry") {
-                            loadAlbums()
-                        }
-                        .padding(.top)
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                    Spacer()
-                }
-                .listRowSeparator(.hidden)
-            } else if albums.isEmpty {
-                HStack {
-                    Spacer()
-                    VStack {
-                        Spacer()
-                        Image(systemName: "photo.stack.fill")
-                            .font(.system(size: 50))
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom)
-                        Text("No albums found")
-                            .font(.headline)
-                        Text("Create an album to get started")
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding()
-                    Spacer()
-                }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } else {
-                ForEach(albums, id: \.id) { album in
-                    NavigationLink(value: album) {
-                        AlbumRowView(album: album, session: server.wrappedValue)
-                            .contextMenu {
-                                Button(action: {
-                                    UIPasteboard.general.string = album.url
-                                }) {
-                                    Label("Copy Link", systemImage: "link")
-                                }
-                                
-                                Button(role: .destructive, action: {
-                                    albumToDelete = album
-                                    showDeleteConfirmation = true
-                                }) {
-                                    Label("Delete Album", systemImage: "trash")
-                                }
+            ForEach(albums, id: \.id) { album in
+                NavigationLink(value: album) {
+                    AlbumRowView(album: album, session: server.wrappedValue)
+                        .contextMenu {
+                            Button(action: {
+                                UIPasteboard.general.string = album.url
+                            }) {
+                                Label("Copy Link", systemImage: "link")
                             }
-                    }
-                    .id(album.id)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button() {
-                            albumToDelete = album
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                    
-                    if hasNextPage && album.id == albums.last?.id {
-                        Color.clear
-                            .frame(height: 20)
-                            .onAppear {
-                                loadNextPage()
+
+                            Button(role: .destructive, action: {
+                                albumToDelete = album
+                                showDeleteConfirmation = true
+                            }) {
+                                Label("Delete Album", systemImage: "trash")
                             }
+                        }
+                }
+                .id(album.id)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button() {
+                        albumToDelete = album
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
                     }
+                    .tint(.red)
                 }
-                
-                if isLoading && hasNextPage {
-                    ProgressView()
-                        .frame(width: 50, height: 50)
+
+                if hasNextPage && album.id == albums.last?.id {
+                    Color.clear
+                        .frame(height: 20)
+                        .onAppear {
+                            loadNextPage()
+                        }
                 }
+            }
+
+            if isLoading && hasNextPage {
+                ProgressView()
+                    .frame(width: 50, height: 50)
             }
         }
         .listStyle(.plain)
@@ -134,6 +96,7 @@ struct AlbumListView: View {
                 await refreshAlbumsAsync()
             }
         }
+        .overlay { statusOverlay }
         .navigationTitle("Albums")
         .toolbar {
             if server.wrappedValue?.superUser ?? false {
@@ -266,32 +229,30 @@ struct AlbumListView: View {
     
     @MainActor
     private func fetchAlbums(page: Int, append: Bool = false) async {
-        guard let serverInstance = server.wrappedValue, 
+        guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
             errorMessage = "Invalid server URL"
             isLoading = false
             return
         }
-        
+
         let api = DFAPI(url: url, token: serverInstance.token)
-        
-        if let albumsResponse = await api.getAlbums(page: page, filterUserID: filterUserID, selectedServer: serverInstance) {
+
+        do {
+            let albumsResponse = try await api.getAlbums(page: page, filterUserID: filterUserID, selectedServer: serverInstance)
             if append {
                 albums.append(contentsOf: albumsResponse.albums)
             } else {
                 albums = albumsResponse.albums
             }
-            
             hasNextPage = albumsResponse.next != nil
             currentPage = page
-            isLoading = false
-        } else {
-            if !append {
-                albums = []
-            }
-            errorMessage = "Failed to load albums from server"
-            isLoading = false
+            errorMessage = nil
+        } catch {
+            if !append { albums = [] }
+            errorMessage = error.localizedDescription
         }
+        isLoading = false
     }
     
     @MainActor
@@ -397,7 +358,7 @@ struct AlbumThumbnailGrid: View {
     private func loadThumbnails() async {
         guard let session, let url = URL(string: session.url) else { return }
         let api = DFAPI(url: url, token: session.token)
-        guard let response = await api.getFiles(page: 1, album: albumID, selectedServer: session) else { return }
+        guard let response = try? await api.getFiles(page: 1, album: albumID, selectedServer: session) else { return }
         let urls = response.files
             .filter { $0.mime.hasPrefix("image/") }
             .prefix(4)

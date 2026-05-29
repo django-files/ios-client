@@ -320,7 +320,7 @@ struct FileMapView: View {
             var page = 1
 
             while !Task.isCancelled {
-                guard let response = await api.getFiles(page: page) else { break }
+                guard let response = try? await api.getFiles(page: page) else { break }
                 guard !Task.isCancelled else { break }
 
                 let pageIDs   = Set(response.files.map { $0.id })

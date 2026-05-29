@@ -26,26 +26,6 @@ struct ShortListView: View {
             if server.wrappedValue != nil {
                 NavigationStack {
                     List {
-                        if shorts.isEmpty && !isLoading {
-                            HStack {
-                                Spacer()
-                                VStack {
-                                    Spacer()
-                                    Image(systemName: "personalhotspot.slash")
-                                        .font(.system(size: 50))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.bottom)
-                                    Text("No shorts found")
-                                        .font(.headline)
-                                    Text("Create a short URL to get started")
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .padding()
-                                Spacer()
-                            }
-                            .listRowSeparator(.hidden)
-                        }
                         ForEach(shorts) { short in
                             ShortRow(short: short)
                                 .onTapGesture {
@@ -78,8 +58,14 @@ struct ShortListView: View {
                         await refreshShorts()
                     }
                     .overlay {
-                        if let error = error {
-                            errorView(message: error)
+                        if let error {
+                            ListStatusView.error(message: error) { loadInitialShorts() }
+                        } else if shorts.isEmpty && !isLoading {
+                            ListStatusView(
+                                icon: "personalhotspot.slash",
+                                title: "No shorts found",
+                                message: "Create a short URL to get started"
+                            )
                         }
                     }
                     .navigationTitle("Short URLs")
@@ -139,42 +125,8 @@ struct ShortListView: View {
         }
     }
     
-    private var loadingView: some View {
-        VStack {
-            ProgressView()
-            Text("Loading shorts...")
-                .foregroundColor(.secondary)
-                .padding(.top)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 60))
-                .foregroundColor(.orange)
-            
-            Text("Error")
-                .font(.headline)
-            
-            Text(message)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button("Try Again") {
-                loadInitialShorts()
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
-    }
-    
     private func loadInitialShorts() {
-        guard shorts.isEmpty && !isLoading else { return }
+        guard !isLoading else { return }
         isLoading = true
         error = nil
         currentPage = 1
@@ -221,7 +173,8 @@ struct ShortListView: View {
 
         let api = DFAPI(url: url, token: serverInstance.token)
 
-        if let response = await api.getShorts(page: page, filterUserID: filterUserID, selectedServer: serverInstance) {
+        do {
+            let response = try await api.getShorts(page: page, filterUserID: filterUserID, selectedServer: serverInstance)
             if append {
                 shorts.append(contentsOf: response.shorts)
             } else {
@@ -230,9 +183,9 @@ struct ShortListView: View {
             hasNextPage = response.next != nil
             currentPage = page
             error = nil
-        } else {
+        } catch {
             if !append { shorts = [] }
-            error = "Failed to load shorts. Please try again."
+            self.error = error.localizedDescription
         }
 
         isLoading = false
