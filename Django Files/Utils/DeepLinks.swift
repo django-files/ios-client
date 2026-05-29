@@ -297,19 +297,31 @@ class DeepLinks {
                 sessionManager.selectedSession = newSession
                 hasExistingSessions.wrappedValue = true
                 selectedTab.wrappedValue = .files
+                let serverVersion = await DFAPI(url: serverURL, token: newSession.token).getVersion()
                 DFAnalytics.logServerAdded(
                     authMethod: .application,
                     scheme: serverURL.scheme,
+                    serverVersion: serverVersion,
                     isFirstServer: wasFirstServer,
                     setAsDefault: setAsDefault
                 )
                 ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
             } else {
-                DFAnalytics.logServerAddFailed(reason: .authFailed, scheme: serverURL.scheme)
+                let serverVersion = await DFAPI(url: serverURL, token: "").getVersion()
+                DFAnalytics.logServerAddFailed(
+                    reason: .authFailed,
+                    scheme: serverURL.scheme,
+                    serverVersion: serverVersion
+                )
                 ToastManager.shared.showToast(message: "Failed to sign in. The link may have expired.")
             }
         } catch {
-            DFAnalytics.logServerAddFailed(reason: .authFailed, scheme: serverURL.scheme)
+            let serverVersion = await DFAPI(url: serverURL, token: "").getVersion()
+            DFAnalytics.logServerAddFailed(
+                reason: .authFailed,
+                scheme: serverURL.scheme,
+                serverVersion: serverVersion
+            )
             ToastManager.shared.showToast(message: "Problem signing into server \(error)")
             print("Error creating new session: \(error)")
         }
