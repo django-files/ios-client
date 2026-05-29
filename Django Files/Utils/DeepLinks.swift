@@ -21,6 +21,19 @@ class DeepLinks {
             return
         }
 
+        let kind: DFAnalytics.DeepLinkKind = {
+            switch components.host {
+            case "authorize": return .auth
+            case "serverlist": return .serverList
+            case "filelist": return .fileList
+            case "preview": return .preview
+            case "stream": return .stream
+            case "album": return .album
+            default: return .unknown
+            }
+        }()
+        DFAnalytics.logDeepLinkOpened(kind: kind)
+
         switch components.host {
         case "authorize":
             deepLinkAuth(components, context: context, sessionManager: sessionManager, hasExistingSessions: hasExistingSessions, showingServerConfirmation: showingServerConfirmation, pendingAuthURL: pendingAuthURL, pendingAuthSignature: pendingAuthSignature)
@@ -263,9 +276,12 @@ class DeepLinks {
 
         guard confirmed else { return }
 
+        DFAnalytics.logLoginMethodSelected(.application)
+
         do {
             let descriptor = FetchDescriptor<DjangoFilesSession>()
             let existingSessions = try context.fetch(descriptor)
+            let wasFirstServer = existingSessions.isEmpty
 
             if let newSession = await sessionManager.createAndAuthenticateSession(
                 url: serverURL,
@@ -281,11 +297,19 @@ class DeepLinks {
                 sessionManager.selectedSession = newSession
                 hasExistingSessions.wrappedValue = true
                 selectedTab.wrappedValue = .files
+                DFAnalytics.logServerAdded(
+                    authMethod: .application,
+                    scheme: serverURL.scheme,
+                    isFirstServer: wasFirstServer,
+                    setAsDefault: setAsDefault
+                )
                 ToastManager.shared.showToast(message: "Successfully logged into \(newSession.url)")
             } else {
+                DFAnalytics.logServerAddFailed(reason: .authFailed, scheme: serverURL.scheme)
                 ToastManager.shared.showToast(message: "Failed to sign in. The link may have expired.")
             }
         } catch {
+            DFAnalytics.logServerAddFailed(reason: .authFailed, scheme: serverURL.scheme)
             ToastManager.shared.showToast(message: "Problem signing into server \(error)")
             print("Error creating new session: \(error)")
         }

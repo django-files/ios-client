@@ -144,7 +144,7 @@ struct ContentPreview: View {
     
     // PDF Preview
     private var pdfPreview: some View {
-        PDFView(url: fileURL)
+        PDFView(url: fileURL, isContentScrolling: $isContentScrolling)
             .padding(.top, 45)
             .background(.black)
 

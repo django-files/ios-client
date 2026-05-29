@@ -244,26 +244,23 @@ struct ToastNotificationModifier: ViewModifier {
     
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .top) {
+            .overlay(alignment: .center) {
                 if isPresented {
-                    VStack {
-                        Text(message)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.primary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 14)
-                            .background {
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(.regularMaterial)
-                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 4)
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 16)
-                            .opacity(showToast ? 1 : 0)
-                            .offset(y: showToast ? 0 : -50)
-                    }
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showToast)
+                    Text(message)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background {
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.regularMaterial)
+                                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
+                        }
+                        .padding(.horizontal, 24)
+                        .opacity(showToast ? 1 : 0)
+                        .scaleEffect(showToast ? 1 : 0.9)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showToast)
                     .onAppear {
                         showToast = true
                         

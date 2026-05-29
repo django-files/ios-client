@@ -55,6 +55,7 @@ struct SessionEditor: View {
                 } else {
                     if items.contains(where: { $0.url == url?.absoluteString }) {
                         showDuplicateAlert = true
+                        DFAnalytics.logServerAddFailed(reason: .duplicate, scheme: url?.scheme)
                         return
                     }
                     // Create temporary session but don't save it yet
@@ -67,6 +68,7 @@ struct SessionEditor: View {
             } else {
                 isCheckingServer = false
                 serverError = "Could not connect to server or server is not a Django Files instance"
+                DFAnalytics.logServerAddFailed(reason: .serverCheckFailed, scheme: url?.scheme)
             }
         }
     }
@@ -154,6 +156,7 @@ struct SessionEditor: View {
                             }
                         } else {
                             badURL.toggle()
+                            DFAnalytics.logServerAddFailed(reason: .invalidURL, scheme: nil)
                         }
                     })
                     {
@@ -191,9 +194,21 @@ struct SessionEditor: View {
                         try? modelContext.save()
                         dismiss()
                     }
+                } else if let tempSession = tempSession, !tempSession.auth {
+                    DFAnalytics.logServerAddFailed(
+                        reason: .authFailed,
+                        scheme: URL(string: tempSession.url)?.scheme
+                    )
                 } else if let tempSession = tempSession, tempSession.auth {
+                    let wasFirstServer = items.isEmpty
                     modelContext.insert(tempSession)
                     try? modelContext.save()
+                    DFAnalytics.logServerAdded(
+                        authMethod: .interactive,
+                        scheme: URL(string: tempSession.url)?.scheme,
+                        isFirstServer: wasFirstServer,
+                        setAsDefault: tempSession.defaultSession
+                    )
                     onSessionCreated?(tempSession)
                     dismiss()
                 }

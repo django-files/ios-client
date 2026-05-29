@@ -289,8 +289,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
         
         viewModel.isShareEnabled = false
-        viewModel.isLoading = true
-        
+
         Task {
             if !doShorten {
                 await shareFile(viewModel: viewModel)
@@ -338,6 +337,9 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             viewModel.isLoading = false
             
             if response == nil{
+                viewModel.showProgress = false
+                viewModel.uploadProgress = 0
+                viewModel.isShareEnabled = true
                 self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
             }
             else{
@@ -347,7 +349,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             }
         }
     }
-    
+
     func shareLink(viewModel: ShareViewModel) async {
         let shortLink: String = viewModel.shortText.isEmpty ? randomString(length: 5) : viewModel.shortText
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
@@ -357,6 +359,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             viewModel.isLoading = false
             
             if response == nil{
+                viewModel.isShareEnabled = true
                 self.showMessageAndDismiss(message: "Bad server response.")
             }
             else{
