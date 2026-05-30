@@ -26,9 +26,47 @@ protocol FileListDelegate: AnyObject {
 class FileListManager: ObservableObject, FileListDelegate {
     @Published var files: [DFFile] = []
     var server: Binding<DjangoFilesSession?>
-    
+    private var fileDeleteObserver: NSObjectProtocol?
+    private var fileNewObserver: NSObjectProtocol?
+
     init(server: Binding<DjangoFilesSession?>) {
         self.server = server
+        fileDeleteObserver = NotificationCenter.default.addObserver(
+            forName: DFWebSocket.fileDeleteNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let id = notification.userInfo?["id"] as? Int else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                withAnimation {
+                    self.files.removeAll { $0.id == id }
+                }
+            }
+        }
+        fileNewObserver = NotificationCenter.default.addObserver(
+            forName: DFWebSocket.fileNewNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let file = notification.userInfo?["file"] as? DFFile else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.files.contains(where: { $0.id == file.id }) { return }
+                withAnimation {
+                    self.files.insert(file, at: 0)
+                }
+            }
+        }
+    }
+
+    deinit {
+        if let fileDeleteObserver {
+            NotificationCenter.default.removeObserver(fileDeleteObserver)
+        }
+        if let fileNewObserver {
+            NotificationCenter.default.removeObserver(fileNewObserver)
+        }
     }
     
     func deleteFiles(fileIDs: [Int], onSuccess: (() -> Void)?) async -> Bool {
@@ -584,7 +622,6 @@ struct FileListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     UploadMenuButton(
                         server: server,
-                        onUploadComplete: { await refreshFiles() },
                         showPurpleShadow: files.isEmpty
                     )
                 }

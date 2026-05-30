@@ -80,6 +80,7 @@ struct Django_FilesApp: App {
     @StateObject private var previewStateManager = PreviewStateManager()
     @StateObject private var streamStateManager = StreamStateManager()
     @StateObject private var albumStateManager = AlbumStateManager()
+    @StateObject private var uploadProgressManager = UploadProgressManager()
     @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -187,6 +188,7 @@ struct Django_FilesApp: App {
             .environmentObject(previewStateManager)
             .environmentObject(streamStateManager)
             .environmentObject(albumStateManager)
+            .environmentObject(uploadProgressManager)
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     DFAnalytics.logAppOpen()

@@ -11,6 +11,7 @@ import SwiftData
 struct TabViewWindow: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var previewStateManager: PreviewStateManager
+    @EnvironmentObject private var uploadProgressManager: UploadProgressManager
     @ObservedObject var sessionManager: SessionManager
     @Binding var selectedTab: Tab
     
@@ -69,6 +70,10 @@ struct TabViewWindow: View {
                         .tag(Tab.settings)
                 }
                 .tabBarMinimizeIfAvailable()
+                .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
+                .onChange(of: uploadProgressManager.isUploading) { _, isUploading in
+                    ToastManager.shared.bottomInset = isUploading ? 72 : 0
+                }
                 .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
                     if let session = newValue {
                         // Clear navigation paths when switching servers
@@ -169,6 +174,17 @@ private extension View {
     func tabBarMinimizeIfAvailable() -> some View {
         if #available(iOS 26.0, *) {
             self.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func uploadProgressAccessoryIfAvailable(isShowing: Bool) -> some View {
+        if #available(iOS 26.0, *), isShowing {
+            self.tabViewBottomAccessory {
+                UploadProgressAccessoryView()
+            }
         } else {
             self
         }

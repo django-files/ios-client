@@ -25,6 +25,7 @@ DEVICES=(
   "iPhone 17 Pro Max"
   "iPhone 17"
   "iPad Pro 11-inch (M5)"
+  "iPhone Air"
 )
 
 cd "$REPO_ROOT"
