@@ -271,32 +271,29 @@ extension DFFile {
 }
 
 extension DFAPI {
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil) async -> DFFilesResponse? {
-        do {
-            var parameters: [String: String] = [:]
-            if let album {
-                parameters["album"] = String(album)
-            }
-            if let filterUserID {
-                parameters["user"] = String(filterUserID)
-            }
-            if let filterMime, !filterMime.isEmpty {
-                parameters["mime"] = filterMime
-            }
-
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.files) + "\(page)/",
-                parameters: parameters,
-                method: .get,
-                selectedServer: selectedServer
-            )
-            return try decoder.decode(DFFilesResponse.self, from: responseBody)
-        } catch let DecodingError.keyNotFound(key, context) {
-            print("Missing key: \(key.stringValue) in context: \(context.debugDescription)")
-        } catch {
-            print("Request failed \(error)")
+    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil) async throws -> DFFilesResponse {
+        var parameters: [String: String] = [:]
+        if let album {
+            parameters["album"] = String(album)
         }
-        return nil
+        if let filterUserID {
+            parameters["user"] = String(filterUserID)
+        }
+        if let filterMime, !filterMime.isEmpty {
+            parameters["mime"] = filterMime
+        }
+
+        let responseBody = try await makeAPIRequest(
+            path: getAPIPath(.files) + "\(page)/",
+            parameters: parameters,
+            method: .get,
+            selectedServer: selectedServer
+        )
+        do {
+            return try decoder.decode(DFFilesResponse.self, from: responseBody)
+        } catch {
+            throw DFAPIError.decoding(error)
+        }
     }
     
     public func getFileDetails(fileID: Int, password: String? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFFile? {
@@ -380,7 +377,7 @@ extension DFAPI {
         var result: [DFFile] = []
         var page = 1
         while true {
-            guard let response = await getFiles(page: page, selectedServer: selectedServer) else { break }
+            guard let response = try? await getFiles(page: page, selectedServer: selectedServer) else { break }
             let geo = response.files.filter { $0.gpsCoordinate != nil }
             result.append(contentsOf: geo)
             onPage?(geo)

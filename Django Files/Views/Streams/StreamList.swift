@@ -34,27 +34,6 @@ struct StreamListView: View {
             if let session = server.wrappedValue, let serverURL = URL(string: session.url) {
                 NavigationStack {
                     List {
-                        if streams.isEmpty && !isLoading {
-                            HStack {
-                                Spacer()
-                                VStack {
-                                    Spacer()
-                                    Image(systemName: "video.slash")
-                                        .font(.system(size: 50))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.bottom)
-                                    Text("No streams found")
-                                        .font(.headline)
-                                    Text("Start a stream via OBS or another RTMP client")
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .padding()
-                                Spacer()
-                            }
-                            .listRowSeparator(.hidden)
-                        }
-
                         ForEach(filteredStreams) { stream in
                             NavigationLink {
                                 StreamView(
@@ -85,7 +64,15 @@ struct StreamListView: View {
                     .listStyle(.plain)
                     .refreshable { await refreshStreams() }
                     .overlay {
-                        if let error { errorView(message: error) }
+                        if let error {
+                            ListStatusView.error(message: error) { loadInitialStreams() }
+                        } else if streams.isEmpty && !isLoading {
+                            ListStatusView(
+                                icon: "video.slash",
+                                title: "No streams found",
+                                message: "Start a stream via OBS or another RTMP client"
+                            )
+                        }
                     }
                     .navigationTitle("Streams")
                     .toolbar {
@@ -151,29 +138,10 @@ struct StreamListView: View {
         }
     }
 
-    // MARK: - Error view
-
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 60))
-                .foregroundStyle(.orange)
-            Text("Error").font(.headline)
-            Text(message)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Button("Try Again") { loadInitialStreams() }
-                .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
-    }
-
     // MARK: - Data Loading
 
     private func loadInitialStreams() {
-        guard streams.isEmpty, !isLoading else { return }
+        guard !isLoading else { return }
         error = nil
         Task { await fetchStreams() }
     }
@@ -191,23 +159,25 @@ struct StreamListView: View {
     private func fetchStreams() async {
         guard let session = server.wrappedValue,
               let url = URL(string: session.url) else {
-            error = "Invalid session URL"; return
+            await MainActor.run { error = "Invalid session URL" }
+            return
         }
         await MainActor.run { isLoading = true }
 
         let api = DFAPI(url: url, token: session.token)
         let page = (streams.count / streamsPerPage) + 1
 
-        if let response = await api.getStreams(page: page, filterUserID: filterUserID, selectedServer: session) {
+        do {
+            let response = try await api.getStreams(page: page, filterUserID: filterUserID, selectedServer: session)
             await MainActor.run {
                 streams.append(contentsOf: response.streams)
                 hasMoreResults = response.next != nil
                 error = nil
                 isLoading = false
             }
-        } else {
+        } catch {
             await MainActor.run {
-                error = "Failed to load streams. Please try again."
+                self.error = error.localizedDescription
                 isLoading = false
             }
         }

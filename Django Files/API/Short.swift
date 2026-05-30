@@ -83,22 +83,21 @@ extension DFAPI {
         }
     }
     
-    public func getShorts(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async -> ShortsResponse? {
+    public func getShorts(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> ShortsResponse {
+        var parameters: [String: String] = [:]
+        if let filterUserID {
+            parameters["user"] = String(filterUserID)
+        }
+        let responseBody = try await makeAPIRequest(
+            path: getAPIPath(.shorts) + "\(page)/",
+            parameters: parameters,
+            method: .get,
+            selectedServer: selectedServer
+        )
         do {
-            var parameters: [String: String] = [:]
-            if let filterUserID {
-                parameters["user"] = String(filterUserID)
-            }
-            let responseBody = try await makeAPIRequest(
-                path: getAPIPath(.shorts) + "\(page)/",
-                parameters: parameters,
-                method: .get,
-                selectedServer: selectedServer
-            )
             return try decoder.decode(ShortsResponse.self, from: responseBody)
         } catch {
-            print("Error fetching shorts: \(error)")
-            return nil
+            throw DFAPIError.decoding(error)
         }
     }
 
