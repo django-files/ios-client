@@ -155,7 +155,7 @@ struct DFAPI {
     public func uploadFile(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async -> DFUploadResponse? {
         let boundary = UUID().uuidString
         let filename = fileName ?? (url.absoluteString as NSString).lastPathComponent
-        
+
         var data = Data()
         data.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
         data.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
@@ -193,7 +193,6 @@ struct DFAPI {
                 selectedServer: selectedServer
             )
             let response = try decoder.decode(DFUploadResponse.self, from: responseBody)
-            RecentUploadTracker.shared.record(name: response.name)
             return response
         } catch {
             print("Request failed \(error)")
@@ -215,7 +214,7 @@ struct DFAPI {
             if stripGps {
                 headers[HTTPField.Name("strip-gps")!] = "true"
             }
-            let delegate = DjangoFilesUploadDelegate(fileURL: url, boundary: boundary, originalDelegate: taskDelegate)
+            let delegate = DjangoFilesUploadDelegate(fileURL: url, boundary: boundary, originalDelegate: taskDelegate, fileName: fileName)
             let task = try makeAPIRequestStreamed(path: getAPIPath(.upload), parameters: [:], method: .post, expectedResponse: .ok, headerFields: headers, taskDelegate: delegate)
             task.resume()
             return delegate
@@ -571,7 +570,7 @@ class DjangoFilesUploadDelegate: NSObject, StreamDelegate, URLSessionDelegate, U
         }
         
         do{
-            response = try JSONDecoder().decode(DFUploadResponse.self, from: didReceive)
+            self.response = try JSONDecoder().decode(DFUploadResponse.self, from: didReceive)
         }
         catch{
             response = nil

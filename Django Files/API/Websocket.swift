@@ -29,7 +29,6 @@ struct DFWebSocketMessage: Codable {
     let old_name: String?
     let objects: [DFWebSocketObject]?
     let isLive: Bool?
-    let updateFields: [String]?
 
     enum CodingKeys: String, CodingKey {
         case event, message, delay, id, name, user, expr, password, objects
@@ -37,7 +36,6 @@ struct DFWebSocketMessage: Codable {
         case `private`
         case old_name
         case isLive = "is_live"
-        case updateFields = "update_fields"
     }
 }
 
@@ -202,12 +200,45 @@ class DFWebSocket: NSObject {
     }
     
     private static let toastNotification = Notification.Name("DFWebSocketToastNotification")
+    static let fileDeleteNotification = Notification.Name("DFWebSocketFileDeleteNotification")
+    static let fileNewNotification = Notification.Name("DFWebSocketFileNewNotification")
+
+    private static let fileEventDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
 
     private func postToast(_ message: String) {
         NotificationCenter.default.post(
             name: Self.toastNotification,
             object: nil,
             userInfo: ["message": message]
+        )
+    }
+
+    /// Post a coalescing toast. Bursts of events sharing `groupKey` (e.g. a
+    /// batch delete fan-out from the server) collapse into a single toast whose
+    /// text is regenerated from `pluralFormat` with `{count}` substituted in.
+    private func postGroupedToast(
+        groupKey: String,
+        singleMessage: String,
+        pluralFormat: String,
+        systemImage: String? = nil
+    ) {
+        var info: [String: Any] = [
+            "groupKey": groupKey,
+            "singleMessage": singleMessage,
+            "pluralFormat": pluralFormat,
+        ]
+        if let systemImage {
+            info["systemImage"] = systemImage
+        }
+        NotificationCenter.default.post(
+            name: Self.toastNotification,
+            object: nil,
+            userInfo: info
         )
     }
 
@@ -229,27 +260,42 @@ class DFWebSocket: NSObject {
             postToast(message.message ?? "New notification")
 
         case "file-new":
-            let name = message.name ?? "Untitled.file"
-            if !RecentUploadTracker.shared.consume(name: name) {
-                postToast("New file \(name) uploaded.")
+            // Broadcast is scoped to user-{user_id}, so this is always our own account; no toast.
+            if let file = try? Self.fileEventDecoder.decode(DFFile.self, from: data) {
+                NotificationCenter.default.post(
+                    name: Self.fileNewNotification,
+                    object: nil,
+                    userInfo: ["file": file]
+                )
             }
 
         case "file-delete":
-            postToast("File \(message.name ?? "Untitled.file") deleted.")
-
-        case "file-update":
-            // post_save fires for every save (including initial upload), so only
-            // toast when the name field actually changed and we have a new name.
-            let nameChanged = message.updateFields?.contains("name") ?? false
-            if nameChanged, let newName = message.name, !newName.isEmpty {
-                postToast("Renamed to \(newName).")
+            postGroupedToast(
+                groupKey: "ws.file-delete",
+                singleMessage: "File \(message.name ?? "Untitled.file") deleted.",
+                pluralFormat: "{count} files deleted."
+            )
+            if let id = message.id {
+                NotificationCenter.default.post(
+                    name: Self.fileDeleteNotification,
+                    object: nil,
+                    userInfo: ["id": id]
+                )
             }
 
         case "album-new":
-            postToast("Album \(message.name ?? "Untitled.file") created.")
+            postGroupedToast(
+                groupKey: "ws.album-new",
+                singleMessage: "Album \(message.name ?? "Untitled.file") created.",
+                pluralFormat: "{count} albums created."
+            )
 
         case "album-delete":
-            postToast("Album (\(message.name ?? "Untitled.file")) deleted.")
+            postGroupedToast(
+                groupKey: "ws.album-delete",
+                singleMessage: "Album (\(message.name ?? "Untitled.file")) deleted.",
+                pluralFormat: "{count} albums deleted."
+            )
 
         case "stream-status":
             let streamName = message.name ?? "Stream"

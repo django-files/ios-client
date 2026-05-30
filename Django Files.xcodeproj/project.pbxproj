@@ -121,7 +121,6 @@
 				API/Users.swift,
 				API/Websocket.swift,
 				Models/DjangoFilesSession.swift,
-				Utils/RecentUploadTracker.swift,
 			);
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 		};

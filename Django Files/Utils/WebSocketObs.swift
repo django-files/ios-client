@@ -37,13 +37,18 @@ class WebSocketToastObserver: DFWebSocketDelegate {
     }
     
     @objc private func handleWebSocketToast(notification: Notification) {
-        print("WebSocketToastObserver: Received notification with info: \(String(describing: notification.userInfo))")
-        if let message = notification.userInfo?["message"] as? String {
-            // Use the existing ToastManager to display the message
-            DispatchQueue.main.async {
-                print("WebSocketToastObserver: Showing toast with message: \(message)")
-                ToastManager.shared.showToast(message: message)
-            }
+        let info = notification.userInfo ?? [:]
+        if let groupKey = info["groupKey"] as? String,
+           let singular = info["singleMessage"] as? String,
+           let pluralFormat = info["pluralFormat"] as? String {
+            ToastManager.shared.showToast(
+                groupKey: groupKey,
+                systemImage: info["systemImage"] as? String,
+                singular: singular,
+                pluralFormat: pluralFormat
+            )
+        } else if let message = info["message"] as? String {
+            ToastManager.shared.showToast(message: message)
         }
     }
     
