@@ -566,7 +566,7 @@ struct FileUploadView: View {
 
     private func loadAlbums() async {
         let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        if let response = await api.getAlbums() {
+        if let response = try? await api.getAlbums() {
             albums = response.albums
         }
     }

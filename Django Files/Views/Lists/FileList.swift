@@ -423,47 +423,6 @@ struct FileListView: View {
                 gridContent
             } else {
                 List {
-            if files.count == 0 && !isLoading {
-                HStack {
-                    Spacer()
-                    VStack {
-                        Spacer()
-                        if let errorMessage = errorMessage {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 50))
-                                .foregroundStyle(.orange)
-                                .padding(.bottom)
-                            Text("Error loading files")
-                                .font(.headline)
-                            Text(errorMessage)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                            Button("Retry") {
-                                Task {
-                                    await refreshFiles()
-                                }
-                            }
-                            .padding(.top)
-                            .buttonStyle(.borderedProminent)
-                        } else {
-                            Image(systemName: "document.on.document.fill")
-                                .font(.system(size: 50))
-                                .foregroundStyle(.secondary)
-                                .padding(.bottom)
-                            Text("No files found")
-                                .font(.headline)
-                            Text("Upload a file to get started")
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .padding()
-                    Spacer()
-                }
-                .listRowSeparator(.hidden)
-            }
-
             ForEach(filteredFiles) { file in
                 Button {
                     selectedFile = file
@@ -536,6 +495,21 @@ struct FileListView: View {
                     Task {
                         await refreshFiles()
                     }
+                }
+            }
+        }
+        .overlay {
+            if !showingMap && files.isEmpty {
+                if let errorMessage {
+                    ListStatusView.error(message: errorMessage) {
+                        Task { await refreshFiles() }
+                    }
+                } else if !isLoading {
+                    ListStatusView(
+                        icon: "document.on.document.fill",
+                        title: "No files found",
+                        message: "Upload a file to get started"
+                    )
                 }
             }
         }
@@ -826,40 +800,34 @@ struct FileListView: View {
             let errorMsg = "Invalid server URL"
             errorMessage = errorMsg
             isLoading = false
-            // Show toast message for the error
             ToastManager.shared.showToast(message: errorMsg)
             return
         }
-        
+
         let api = DFAPI(url: url, token: serverInstance.token)
-        
+
         do {
-            if let filesResponse = await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: nil) {
-                if append {
-                    // Only append new files that aren't already in the list
-                    let newFiles = filesResponse.files.filter { newFile in
-                        !files.contains { $0.id == newFile.id }
-                    }
-                    files.append(contentsOf: newFiles)
-                } else {
-                    files = filesResponse.files
+            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: nil)
+            if append {
+                // Only append new files that aren't already in the list
+                let newFiles = filesResponse.files.filter { newFile in
+                    !files.contains { $0.id == newFile.id }
                 }
-                
-                hasNextPage = filesResponse.next != nil
-                currentPage = page
-                isLoading = false
-                // Clear any previous error message on success
-                errorMessage = nil
+                files.append(contentsOf: newFiles)
             } else {
-                if !append {
-                    files = []
-                }
-                let errorMsg = "Failed to load files from server"
-                errorMessage = errorMsg
-                isLoading = false
-                // Show toast message for the error
-                ToastManager.shared.showToast(message: errorMsg)
+                files = filesResponse.files
             }
+
+            hasNextPage = filesResponse.next != nil
+            currentPage = page
+            isLoading = false
+            errorMessage = nil
+        } catch {
+            if !append { files = [] }
+            let errorMsg = error.localizedDescription
+            errorMessage = errorMsg
+            isLoading = false
+            ToastManager.shared.showToast(message: errorMsg)
         }
     }
     

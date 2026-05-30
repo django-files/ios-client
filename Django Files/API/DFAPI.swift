@@ -80,22 +80,25 @@ struct DFAPI {
         selectedServer.auth = isAuthenticated
     }
 
-    private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async {
+    private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async -> DFAPIError {
         print("Server response status code: \(status)")
+
+        // Check for 401 Unauthorized and update session auth status
+        if status.code == 401, let server = selectedServer {
+            await updateSessionAuth(server, false)
+        }
+
+        guard let data = data else { return .httpStatus(status.code) }
         do {
-            guard let data = data else { return }
             let e = try decoder.decode(DFErrorResponse.self, from: data)
             print("\(e.error): \(e.message)")
-            
-            // Check for 401 Unauthorized and update session auth status
-            if status.code == 401, let server = selectedServer {
-                await updateSessionAuth(server, false)
-            }
+            return .server(status: status.code, error: e.error, message: e.message)
         } catch {
             print("Invalid error response.")
+            return .httpStatus(status.code)
         }
     }
-    
+
     internal func makeAPIRequest(body: Data, path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data
     {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
@@ -106,17 +109,22 @@ struct DFAPI {
             request.headerFields[kvp.key] = kvp.value
         }
         let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
-        let (responseBody, response) = try await activeSession.upload(for: request, from: body)
-        
+        let responseBody: Data
+        let response: HTTPResponse
+        do {
+            (responseBody, response) = try await activeSession.upload(for: request, from: body)
+        } catch let urlError as URLError {
+            throw DFAPIError.transport(urlError)
+        }
+
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
-            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
-            throw URLError(.badServerResponse)
+            throw await handleError(response.status, data: responseBody, selectedServer: selectedServer)
         }
-        
+
         return responseBody
     }
-    
+
     internal func makeAPIRequest(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionTaskDelegate? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> Data {
         var request = HTTPRequest(method: method, url: encodeParametersIntoURL(path: path, parameters: parameters))
         request.headerFields[.referer] = url.absoluteString
@@ -125,16 +133,21 @@ struct DFAPI {
         for kvp in headerFields {
             request.headerFields[kvp.key] = kvp.value
         }
-        
+
         let activeSession = taskDelegate.map { URLSession(configuration: .ephemeral, delegate: $0, delegateQueue: nil) } ?? apiSession
-        let (responseBody, response) = try await activeSession.upload(for: request, from: Data())
-        
+        let responseBody: Data
+        let response: HTTPResponse
+        do {
+            (responseBody, response) = try await activeSession.upload(for: request, from: Data())
+        } catch let urlError as URLError {
+            throw DFAPIError.transport(urlError)
+        }
+
         // Handle non-2xx responses
         if response.status.code < 200 || response.status.code >= 300 {
-            await handleError(response.status, data: responseBody, selectedServer: selectedServer)
-            throw URLError(.badServerResponse)
+            throw await handleError(response.status, data: responseBody, selectedServer: selectedServer)
         }
-        
+
         return responseBody
     }
     private func makeAPIRequestStreamed(path: String, parameters: [String:String], method: HTTPRequest.Method = .get, expectedResponse: HTTPResponse.Status = .ok, headerFields: [HTTPField.Name:String] = [:], taskDelegate: URLSessionStreamDelegate) throws -> URLSessionUploadTask{
