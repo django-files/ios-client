@@ -36,6 +36,9 @@ private struct MapCluster: Identifiable, @unchecked Sendable {
 struct FileMapView: View {
     let server: Binding<DjangoFilesSession?>
     var inlineMode: Bool = false
+    var albumID: Int? = nil
+    var externalFileCount: Binding<Int>? = nil
+    var externalIsLoading: Binding<Bool>? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -54,12 +57,17 @@ struct FileMapView: View {
     @State private var clusterPreviewIndex                = 0
     @State private var loadTask:    Task<Void, Never>?    = nil
     @State private var clusterTask: Task<Void, Never>?    = nil
+    @State private var didAutoZoom                        = false
 
 
     // MARK: Helpers
 
     private var serverKey: String? {
-        server.wrappedValue.flatMap { URL(string: $0.url) }?.absoluteString
+        guard let base = server.wrappedValue.flatMap({ URL(string: $0.url) })?.absoluteString else {
+            return nil
+        }
+        if let albumID { return "\(base)#album=\(albumID)" }
+        return base
     }
 
     private var serverURL: URL? {
@@ -137,6 +145,28 @@ struct FileMapView: View {
                 else { return }
                 self.clusters = newClusters
             }
+        }
+    }
+
+    private func autoZoomToGeoFiles() {
+        guard !didAutoZoom else { return }
+        let pins = Array(coordCache.values)
+        guard !pins.isEmpty else { return }
+
+        let lats = pins.map { $0.lat }
+        let lons = pins.map { $0.lon }
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return }
+
+        didAutoZoom = true
+        let span = MKCoordinateSpan(
+            latitudeDelta:  max((maxLat - minLat) * 1.5, 0.01),
+            longitudeDelta: max((maxLon - minLon) * 1.5, 0.01))
+        withAnimation {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude:  (minLat + maxLat) / 2,
+                                              longitude: (minLon + maxLon) / 2),
+                span: span))
         }
     }
 
@@ -238,6 +268,33 @@ struct FileMapView: View {
             .onChange(of: server.wrappedValue?.url) { _, _ in
                 loadGPSFiles()
             }
+            .onChange(of: geoFiles.count) { _, new in
+                externalFileCount?.wrappedValue = new
+            }
+            .onChange(of: isLoading) { _, new in
+                externalIsLoading?.wrappedValue = new
+            }
+    }
+
+    @ToolbarContentBuilder
+    private var statusToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            if isLoading || !geoFiles.isEmpty {
+                HStack(spacing: 6) {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text("\(geoFiles.count) \(geoFiles.count == 1 ? "file" : "files")")
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .animation(.default, value: isLoading)
+                .animation(.default, value: geoFiles.count)
+            }
+        }
     }
 
     var body: some View {
@@ -253,16 +310,7 @@ struct FileMapView: View {
                                 Image(systemName: "xmark")
                             }
                         }
-                        ToolbarItem(placement: .topBarTrailing) {
-                            if !geoFiles.isEmpty {
-                                HStack(spacing: 6) {
-                                    if isLoading { ProgressView().scaleEffect(0.7) }
-                                    Text("\(geoFiles.count) files")
-                                }
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 8)
-                            }
-                        }
+                        statusToolbar
                     }
                     .toolbarBackground(.hidden, for: .navigationBar)
             }
@@ -298,12 +346,14 @@ struct FileMapView: View {
     //     we're up to date and stop early. Otherwise add new geo files and continue.
     private func loadGPSFiles() {
         guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else { return }
-        let key   = url.absoluteString
+              let url = URL(string: serverInstance.url),
+              let key = serverKey else { return }
         let token = serverInstance.token
+        let album = albumID
 
         loadTask?.cancel()
         clusterTask?.cancel()
+        didAutoZoom = false
 
         loadTask = Task { @MainActor in
             isLoading = true
@@ -320,7 +370,7 @@ struct FileMapView: View {
             var page = 1
 
             while !Task.isCancelled {
-                guard let response = try? await api.getFiles(page: page) else { break }
+                guard let response = try? await api.getFiles(page: page, album: album) else { break }
                 guard !Task.isCancelled else { break }
 
                 let pageIDs   = Set(response.files.map { $0.id })
@@ -350,6 +400,7 @@ struct FileMapView: View {
             guard !Task.isCancelled else { return }
             store.markFullySynced(key)
             updateClusters()
+            autoZoomToGeoFiles()
         }
     }
 

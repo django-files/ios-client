@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Foundation
+import Combine
 
 protocol FileListDelegate: AnyObject {
     @MainActor
@@ -24,13 +25,32 @@ protocol FileListDelegate: AnyObject {
 
 @MainActor
 class FileListManager: ObservableObject, FileListDelegate {
+    // Survives view-identity resets (e.g. when iOS 26's bottom-accessory
+    // modifier toggles on/off and re-mounts the tab content) so the file list
+    // doesn't paint empty for a frame before refetching.
+    private static var cache: [String: [DFFile]] = [:]
+
     @Published var files: [DFFile] = []
     var server: Binding<DjangoFilesSession?>
+    private let cacheKey: String
     private var fileDeleteObserver: NSObjectProtocol?
     private var fileNewObserver: NSObjectProtocol?
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(server: Binding<DjangoFilesSession?>) {
+    init(server: Binding<DjangoFilesSession?>, albumID: Int?) {
         self.server = server
+        let serverURL = server.wrappedValue?.url ?? ""
+        let scope = albumID.map(String.init) ?? "root"
+        self.cacheKey = "\(serverURL)|\(scope)"
+        self.files = Self.cache[self.cacheKey] ?? []
+
+        $files
+            .sink { [weak self] newFiles in
+                guard let self else { return }
+                Self.cache[self.cacheKey] = newFiles
+            }
+            .store(in: &cancellables)
+
         fileDeleteObserver = NotificationCenter.default.addObserver(
             forName: DFWebSocket.fileDeleteNotification,
             object: nil,
@@ -245,12 +265,15 @@ struct FileListView: View {
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
+    @State private var mapFileCount: Int = 0
+    @State private var mapIsLoading: Bool = false
+
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
         self.albumID = albumID
         self.navigationPath = navigationPath
         self.albumName = albumName
-        _fileListManager = StateObject(wrappedValue: FileListManager(server: server))
+        _fileListManager = StateObject(wrappedValue: FileListManager(server: server, albumID: albumID))
         if let currentUserID = server.wrappedValue?.userID {
             _filterUserID = State(initialValue: currentUserID)
         }
@@ -418,7 +441,13 @@ struct FileListView: View {
     var body: some View {
         Group {
             if showingMap {
-                FileMapView(server: server, inlineMode: true)
+                FileMapView(
+                    server: server,
+                    inlineMode: true,
+                    albumID: albumID,
+                    externalFileCount: $mapFileCount,
+                    externalIsLoading: $mapIsLoading
+                )
             } else if isGridView {
                 gridContent
             } else {
@@ -540,7 +569,16 @@ struct FileListView: View {
             }
         }
         .navigationTitle(showingMap ? "" : getTitle(server: server, albumName: albumName))
+        .navigationBarTitleDisplayMode(showingMap ? .inline : .automatic)
         .toolbar {
+            if showingMap, let albumTitle = resolvedAlbum?.name ?? albumName {
+                ToolbarItem(placement: .principal) {
+                    Text(albumTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
+                }
+            }
             ToolbarItem(placement: canUpload ? .navigationBarLeading : .navigationBarTrailing) {
                 Menu {
                     Picker("View", selection: viewModeBinding) {
@@ -617,6 +655,24 @@ struct FileListView: View {
                 .accessibilityIdentifier("fileListViewOptionsMenu")
             }
 
+
+            if showingMap && (mapIsLoading || mapFileCount > 0) {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 6) {
+                        if mapIsLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("\(mapFileCount) \(mapFileCount == 1 ? "file" : "files")")
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .animation(.default, value: mapIsLoading)
+                    .animation(.default, value: mapFileCount)
+                }
+            }
 
             if canUpload {
                 ToolbarItem(placement: .navigationBarTrailing) {

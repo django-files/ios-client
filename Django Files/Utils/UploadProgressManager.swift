@@ -19,6 +19,8 @@ final class UploadProgressManager: ObservableObject {
     @Published private(set) var completedCount: Int = 0
     @Published private(set) var totalCount: Int = 0
 
+    private var activeTasks: [Task<Void, Never>] = []
+
     var isUploading: Bool { !uploads.isEmpty }
 
     var currentUpload: Upload? { uploads.first }
@@ -58,6 +60,21 @@ final class UploadProgressManager: ObservableObject {
         guard uploads.contains(where: { $0.id == id }) else { return }
         uploads.removeAll { $0.id == id }
         completedCount += 1
+        if uploads.isEmpty {
+            activeTasks.removeAll()
+        }
+    }
+
+    func register(task: Task<Void, Never>) {
+        activeTasks.append(task)
+    }
+
+    func cancelAll() {
+        for task in activeTasks { task.cancel() }
+        activeTasks.removeAll()
+        uploads.removeAll()
+        completedCount = 0
+        totalCount = 0
     }
 }
 
@@ -66,6 +83,16 @@ struct UploadProgressAccessoryView: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            Button {
+                manager.cancelAll()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel upload")
+
             iconView
                 .frame(width: 32, height: 32)
 

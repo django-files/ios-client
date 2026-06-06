@@ -14,20 +14,18 @@ class WebSocketToastObserver: DFWebSocketDelegate {
     
     private init() {
         print("WebSocketToastObserver initialized")
-        
-        // Register for WebSocket toast notifications
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleWebSocketToast),
             name: Notification.Name("DFWebSocketToastNotification"),
             object: nil
         )
-        
-        // Register for WebSocket connection requests
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConnectionRequest),
-            name: Notification.Name("DFWebSocketConnectionRequest"),
+            name: DFWebSocket.connectionRequestNotification,
             object: nil
         )
     }
@@ -53,17 +51,16 @@ class WebSocketToastObserver: DFWebSocketDelegate {
     }
     
     @objc private func handleConnectionRequest(notification: Notification) {
-        print("WebSocketToastObserver: Received connection request")
-        if let api = notification.userInfo?["api"] as? DFAPI {
-            connectToWebSocket(api: api)
-        }
+        guard let ws = notification.userInfo?["webSocket"] as? DFWebSocket else { return }
+        attach(to: ws)
     }
-    
-    // Connect directly to the WebSocket service
-    func connectToWebSocket(api: DFAPI) {
-        print("WebSocketToastObserver: Connecting to WebSocket")
-        webSocket = api.createWebSocket()
-        webSocket?.delegate = self
+
+    /// Adopt an existing `DFWebSocket` as the observer's delegate. The caller
+    /// retains ownership of the socket's lifecycle — we only listen.
+    func attach(to webSocket: DFWebSocket) {
+        print("WebSocketToastObserver: Attaching to WebSocket")
+        self.webSocket = webSocket
+        webSocket.delegate = self
     }
     
     // MARK: - DFWebSocketDelegate methods
@@ -85,18 +82,5 @@ class WebSocketToastObserver: DFWebSocketDelegate {
                 ToastManager.shared.showToast(message: data.message ?? "New notification")
             }
         }
-    }
-}
-
-// Extension to set up the observer in the app
-extension UIApplication {
-    static func setupWebSocketToastObserver() {
-        print("Setting up WebSocketToastObserver")
-        _ = WebSocketToastObserver.shared
-    }
-    
-    static func connectWebSocketObserver(api: DFAPI) {
-        print("Connecting WebSocketToastObserver to API")
-        WebSocketToastObserver.shared.connectToWebSocket(api: api)
     }
 }

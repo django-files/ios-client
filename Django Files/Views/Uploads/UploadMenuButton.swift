@@ -7,7 +7,6 @@ import SwiftUI
 
 struct UploadMenuButton: View {
     let server: Binding<DjangoFilesSession?>
-    var onUploadComplete: (() async -> Void)? = nil
     var showPurpleShadow: Bool = false
 
     @EnvironmentObject private var uploadProgressManager: UploadProgressManager
@@ -59,7 +58,7 @@ struct UploadMenuButton: View {
         .shadow(color: .purple, radius: showPurpleShadow ? 3 : 0)
         .sheet(item: $uploadSource) { source in
             if let serverInstance = server.wrappedValue {
-                FileUploadView(source: source, server: serverInstance, onUploadComplete: onUploadComplete)
+                FileUploadView(source: source, server: serverInstance)
             }
         }
         .sheet(isPresented: $showingShortCreator) {
@@ -138,9 +137,8 @@ struct UploadMenuButton: View {
     private func dispatchClipboardUpload(serverURL: URL, token: String, tempURL: URL, displayName: String, thumbnail: UIImage? = nil, successMessage: String, failureMessage: String) async {
         if useAccessoryProgress {
             let manager = uploadProgressManager
-            let completion = onUploadComplete
             let id = manager.start(filename: displayName, thumbnail: thumbnail)
-            Task.detached {
+            let task = Task.detached {
                 let api = DFAPI(url: serverURL, token: token)
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
@@ -149,21 +147,18 @@ struct UploadMenuButton: View {
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run {
                     manager.finish(id: id)
-                    ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                    if !Task.isCancelled {
+                        ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                    }
                 }
-                if response != nil, let completion { await completion() }
             }
+            manager.register(task: task)
         } else {
             let api = DFAPI(url: serverURL, token: token)
             let delegate = UploadProgressDelegate { _ in }
             let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
             try? FileManager.default.removeItem(at: tempURL)
-            if response != nil {
-                if let refresh = onUploadComplete { await refresh() }
-                ToastManager.shared.showToast(message: successMessage)
-            } else {
-                ToastManager.shared.showToast(message: failureMessage)
-            }
+            ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
         }
     }
 }
