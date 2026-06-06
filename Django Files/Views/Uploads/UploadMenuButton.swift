@@ -140,7 +140,7 @@ struct UploadMenuButton: View {
             let manager = uploadProgressManager
             let completion = onUploadComplete
             let id = manager.start(filename: displayName, thumbnail: thumbnail)
-            Task.detached {
+            let task = Task.detached {
                 let api = DFAPI(url: serverURL, token: token)
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
@@ -149,10 +149,14 @@ struct UploadMenuButton: View {
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run {
                     manager.finish(id: id)
-                    ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                    if !Task.isCancelled {
+                        ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                    }
                 }
+                if Task.isCancelled { return }
                 if response != nil, let completion { await completion() }
             }
+            manager.register(task: task)
         } else {
             let api = DFAPI(url: serverURL, token: token)
             let delegate = UploadProgressDelegate { _ in }

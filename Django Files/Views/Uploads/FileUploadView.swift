@@ -408,7 +408,7 @@ struct FileUploadView: View {
         let completion = onUploadComplete
 
         let id = manager.start(filename: displayName, thumbnail: thumbnail)
-        Task.detached {
+        let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
             let delegate = UploadProgressDelegate { progress in
                 Task { @MainActor in manager.update(id: id, progress: progress) }
@@ -423,8 +423,10 @@ struct FileUploadView: View {
             )
             if deleteAfter { try? FileManager.default.removeItem(at: tempURL) }
             await MainActor.run { manager.finish(id: id) }
+            if Task.isCancelled { return }
             if let completion { await completion() }
         }
+        manager.register(task: task)
     }
 
     @MainActor
@@ -442,9 +444,10 @@ struct FileUploadView: View {
             manager.start(filename: "photo_\(index).jpg")
         }
 
-        Task.detached {
+        let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
             for (index, item) in items.enumerated() {
+                if Task.isCancelled { break }
                 let id = ids[index]
                 guard let data = try? await item.loadTransferable(type: Data.self) else {
                     await MainActor.run { manager.finish(id: id) }
@@ -472,8 +475,10 @@ struct FileUploadView: View {
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run { manager.finish(id: id) }
             }
+            if Task.isCancelled { return }
             if let completion { await completion() }
         }
+        manager.register(task: task)
     }
 
     @MainActor
@@ -489,9 +494,10 @@ struct FileUploadView: View {
 
         let ids: [UUID] = urls.map { manager.start(filename: $0.lastPathComponent) }
 
-        Task.detached {
+        let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
             for (index, url) in urls.enumerated() {
+                if Task.isCancelled { break }
                 let id = ids[index]
                 if let thumb = Self.thumbnailForFileURL(url) {
                     await MainActor.run { manager.setThumbnail(id: id, image: thumb) }
@@ -509,8 +515,10 @@ struct FileUploadView: View {
                 )
                 await MainActor.run { manager.finish(id: id) }
             }
+            if Task.isCancelled { return }
             if let completion { await completion() }
         }
+        manager.register(task: task)
     }
 
     @MainActor
@@ -526,7 +534,7 @@ struct FileUploadView: View {
 
         let id = manager.start(filename: "ios_photo.jpg", thumbnail: image)
 
-        Task.detached {
+        let task = Task.detached {
             guard let data = image.jpegData(compressionQuality: 0.8) else {
                 await MainActor.run { manager.finish(id: id) }
                 if let completion { await completion() }
@@ -554,8 +562,10 @@ struct FileUploadView: View {
             )
             try? FileManager.default.removeItem(at: tempURL)
             await MainActor.run { manager.finish(id: id) }
+            if Task.isCancelled { return }
             if let completion { await completion() }
         }
+        manager.register(task: task)
     }
 
     nonisolated private static func thumbnailForFileURL(_ url: URL) -> UIImage? {
