@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Foundation
+import Combine
 
 protocol FileListDelegate: AnyObject {
     @MainActor
@@ -24,13 +25,32 @@ protocol FileListDelegate: AnyObject {
 
 @MainActor
 class FileListManager: ObservableObject, FileListDelegate {
+    // Survives view-identity resets (e.g. when iOS 26's bottom-accessory
+    // modifier toggles on/off and re-mounts the tab content) so the file list
+    // doesn't paint empty for a frame before refetching.
+    private static var cache: [String: [DFFile]] = [:]
+
     @Published var files: [DFFile] = []
     var server: Binding<DjangoFilesSession?>
+    private let cacheKey: String
     private var fileDeleteObserver: NSObjectProtocol?
     private var fileNewObserver: NSObjectProtocol?
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(server: Binding<DjangoFilesSession?>) {
+    init(server: Binding<DjangoFilesSession?>, albumID: Int?) {
         self.server = server
+        let serverURL = server.wrappedValue?.url ?? ""
+        let scope = albumID.map(String.init) ?? "root"
+        self.cacheKey = "\(serverURL)|\(scope)"
+        self.files = Self.cache[self.cacheKey] ?? []
+
+        $files
+            .sink { [weak self] newFiles in
+                guard let self else { return }
+                Self.cache[self.cacheKey] = newFiles
+            }
+            .store(in: &cancellables)
+
         fileDeleteObserver = NotificationCenter.default.addObserver(
             forName: DFWebSocket.fileDeleteNotification,
             object: nil,
@@ -253,7 +273,7 @@ struct FileListView: View {
         self.albumID = albumID
         self.navigationPath = navigationPath
         self.albumName = albumName
-        _fileListManager = StateObject(wrappedValue: FileListManager(server: server))
+        _fileListManager = StateObject(wrappedValue: FileListManager(server: server, albumID: albumID))
         if let currentUserID = server.wrappedValue?.userID {
             _filterUserID = State(initialValue: currentUserID)
         }

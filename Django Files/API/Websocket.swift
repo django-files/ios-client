@@ -202,6 +202,7 @@ class DFWebSocket: NSObject {
     private static let toastNotification = Notification.Name("DFWebSocketToastNotification")
     static let fileDeleteNotification = Notification.Name("DFWebSocketFileDeleteNotification")
     static let fileNewNotification = Notification.Name("DFWebSocketFileNewNotification")
+    static let connectionRequestNotification = Notification.Name("DFWebSocketConnectionRequest")
 
     private static let fileEventDecoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -364,19 +365,22 @@ extension DFWebSocket: URLSessionWebSocketDelegate {
 extension DFAPI {
     // Create and connect to a WebSocket, also setting up WebSocketToastObserver
     public func connectToWebSocket() -> DFWebSocket {
+        // Close any existing socket from a prior session so we don't leak a
+        // connection (and double-deliver events) when the user switches servers.
+        DFAPI.sharedWebSocket?.disconnect()
+
         let webSocket = self.createWebSocket()
-        
-        // Instead of directly accessing WebSocketToastObserver, post a notification
-        // that the observer will pick up
-        NotificationCenter.default.post(
-            name: Notification.Name("DFWebSocketConnectionRequest"),
-            object: nil,
-            userInfo: ["api": self]
-        )
-        
-        // Store as the shared instance
         DFAPI.sharedWebSocket = webSocket
-        
+
+        // Hand the live socket to WebSocketToastObserver so it attaches as
+        // delegate. Passing `self` (the api) instead would cause the observer
+        // to open a second connection and every event would fire twice.
+        NotificationCenter.default.post(
+            name: DFWebSocket.connectionRequestNotification,
+            object: nil,
+            userInfo: ["webSocket": webSocket]
+        )
+
         return webSocket
     }
     

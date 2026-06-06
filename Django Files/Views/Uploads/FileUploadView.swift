@@ -45,7 +45,6 @@ enum UploadSource: String, CaseIterable, Identifiable {
 struct FileUploadView: View {
     let source: UploadSource
     let server: DjangoFilesSession
-    var onUploadComplete: (() async -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var uploadProgressManager: UploadProgressManager
@@ -259,7 +258,6 @@ struct FileUploadView: View {
         )
         try? FileManager.default.removeItem(at: tempURL)
         isUploading = false
-        await onUploadComplete?()
         dismiss()
     }
 
@@ -285,7 +283,6 @@ struct FileUploadView: View {
             try? FileManager.default.removeItem(at: tempURL)
         }
         isUploading = false
-        await onUploadComplete?()
         dismiss()
     }
 
@@ -308,7 +305,6 @@ struct FileUploadView: View {
             )
         }
         isUploading = false
-        await onUploadComplete?()
         dismiss()
     }
 
@@ -327,7 +323,6 @@ struct FileUploadView: View {
         )
         try? FileManager.default.removeItem(at: url)
         isUploading = false
-        await onUploadComplete?()
         dismiss()
     }
 
@@ -405,7 +400,6 @@ struct FileUploadView: View {
         let exif = stripExif
         let gps = stripGps
         let manager = uploadProgressManager
-        let completion = onUploadComplete
 
         let id = manager.start(filename: displayName, thumbnail: thumbnail)
         let task = Task.detached {
@@ -423,8 +417,6 @@ struct FileUploadView: View {
             )
             if deleteAfter { try? FileManager.default.removeItem(at: tempURL) }
             await MainActor.run { manager.finish(id: id) }
-            if Task.isCancelled { return }
-            if let completion { await completion() }
         }
         manager.register(task: task)
     }
@@ -438,7 +430,6 @@ struct FileUploadView: View {
         let exif = stripExif
         let gps = stripGps
         let manager = uploadProgressManager
-        let completion = onUploadComplete
 
         let ids: [UUID] = (0..<items.count).map { index in
             manager.start(filename: "photo_\(index).jpg")
@@ -475,8 +466,6 @@ struct FileUploadView: View {
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run { manager.finish(id: id) }
             }
-            if Task.isCancelled { return }
-            if let completion { await completion() }
         }
         manager.register(task: task)
     }
@@ -490,7 +479,6 @@ struct FileUploadView: View {
         let exif = stripExif
         let gps = stripGps
         let manager = uploadProgressManager
-        let completion = onUploadComplete
 
         let ids: [UUID] = urls.map { manager.start(filename: $0.lastPathComponent) }
 
@@ -515,8 +503,6 @@ struct FileUploadView: View {
                 )
                 await MainActor.run { manager.finish(id: id) }
             }
-            if Task.isCancelled { return }
-            if let completion { await completion() }
         }
         manager.register(task: task)
     }
@@ -530,14 +516,12 @@ struct FileUploadView: View {
         let exif = stripExif
         let gps = stripGps
         let manager = uploadProgressManager
-        let completion = onUploadComplete
 
         let id = manager.start(filename: "ios_photo.jpg", thumbnail: image)
 
         let task = Task.detached {
             guard let data = image.jpegData(compressionQuality: 0.8) else {
                 await MainActor.run { manager.finish(id: id) }
-                if let completion { await completion() }
                 return
             }
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ios_photo.jpg")
@@ -545,7 +529,6 @@ struct FileUploadView: View {
                 try data.write(to: tempURL)
             } catch {
                 await MainActor.run { manager.finish(id: id) }
-                if let completion { await completion() }
                 return
             }
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
@@ -562,8 +545,6 @@ struct FileUploadView: View {
             )
             try? FileManager.default.removeItem(at: tempURL)
             await MainActor.run { manager.finish(id: id) }
-            if Task.isCancelled { return }
-            if let completion { await completion() }
         }
         manager.register(task: task)
     }
