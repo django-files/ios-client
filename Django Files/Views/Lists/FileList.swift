@@ -886,7 +886,9 @@ struct FileListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: nil, ordering: sessionManager.supportsOrdering ? sortOption : nil)
+            // Superuser with no user selected means "all users"; backend expects user=0 for that case
+            let effectiveFilterUserID = filterUserID ?? (serverInstance.superUser ? 0 : nil)
+            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterMime: nil, ordering: sessionManager.supportsOrdering ? sortOption : nil)
             if append {
                 // Only append new files that aren't already in the list
                 let newFiles = filesResponse.files.filter { newFile in
