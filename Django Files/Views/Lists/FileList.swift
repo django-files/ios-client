@@ -1064,12 +1064,12 @@ enum FileSortOption: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .newestFirst:  "arrow.down.calendar"
-        case .oldestFirst:  "arrow.up.calendar"
-        case .nameAZ:       "textformat.abc"
-        case .nameZA:       "textformat.abc"
-        case .largestFirst: "arrow.up.square"
-        case .smallestFirst:"arrow.down.square"
+        case .newestFirst:  "calendar.badge.clock"
+        case .oldestFirst:  "calendar"
+        case .nameAZ:       "a.square.fill"
+        case .nameZA:       "z.square.fill"
+        case .largestFirst: "arrow.up.square.fill"
+        case .smallestFirst:"arrow.down.square.fill"
         }
     }
 }

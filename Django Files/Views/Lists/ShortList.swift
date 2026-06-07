@@ -232,12 +232,12 @@ enum ShortSortOption: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .newestFirst:  "arrow.down.calendar"
-        case .oldestFirst:  "arrow.up.calendar"
-        case .nameAZ:       "textformat.abc"
-        case .nameZA:       "textformat.abc"
-        case .mostViews:    "eye"
-        case .fewestViews:  "eye.slash"
+        case .newestFirst:  "calendar.badge.clock"
+        case .oldestFirst:  "calendar"
+        case .nameAZ:       "a.square.fill"
+        case .nameZA:       "z.square.fill"
+        case .mostViews:    "eye.fill"
+        case .fewestViews:  "eye"
         }
     }
 }

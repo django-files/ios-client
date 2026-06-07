@@ -315,12 +315,12 @@ enum AlbumSortOption: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .newestFirst:  "arrow.down.calendar"
-        case .oldestFirst:  "arrow.up.calendar"
-        case .nameAZ:       "textformat.abc"
-        case .nameZA:       "textformat.abc"
-        case .mostFiles:    "photo.stack"
-        case .fewestFiles:  "photo"
+        case .newestFirst:  "calendar.badge.clock"
+        case .oldestFirst:  "calendar"
+        case .nameAZ:       "a.square.fill"
+        case .nameZA:       "z.square.fill"
+        case .mostFiles:    "square.stack.fill"
+        case .fewestFiles:  "square.stack"
         }
     }
 }
