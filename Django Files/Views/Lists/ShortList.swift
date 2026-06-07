@@ -18,8 +18,11 @@ struct ShortListView: View {
     @State private var error: String? = nil
     @State private var filterUserID: Int? = nil
     @State private var users: [DFUser] = []
+    @AppStorage("shortListSortOption") private var sortOption: String = "-created"
+    @EnvironmentObject private var sessionManager: SessionManager
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
+    private var hasActiveOptions: Bool { isFilteringUsers || (sessionManager.supportsOrdering && sortOption != "-created") }
     
     var body: some View {
         ZStack{
@@ -70,10 +73,23 @@ struct ShortListView: View {
                     }
                     .navigationTitle("Short URLs")
                     .toolbar {
-                        if server.wrappedValue?.superUser ?? false {
+                        if sessionManager.supportsOrdering || (server.wrappedValue?.superUser ?? false) {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Menu {
-                                    Section("Filters") {
+                                    if sessionManager.supportsOrdering {
+                                        Menu {
+                                            Picker("", selection: $sortOption) {
+                                                ForEach(ShortSortOption.allCases, id: \.rawValue) { option in
+                                                    Label(option.label, systemImage: option.icon).tag(option.rawValue)
+                                                }
+                                            }
+                                            .pickerStyle(.inline)
+                                        } label: {
+                                            Label("Sort", systemImage: "arrow.up.arrow.down")
+                                                .symbolVariant(sortOption != "-created" ? .fill : .none)
+                                        }
+                                    }
+                                    if server.wrappedValue?.superUser ?? false {
                                         Menu {
                                             Picker("", selection: Binding(
                                                 get: { filterUserID },
@@ -97,7 +113,7 @@ struct ShortListView: View {
                                     }
                                 } label: {
                                     Image(systemName: "line.3.horizontal.decrease")
-                                        .foregroundStyle(isFilteringUsers ? Color.accentColor : Color.primary)
+                                        .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                                 }
                             }
                         }
@@ -110,6 +126,9 @@ struct ShortListView: View {
             } else {
                 Label("No server selected.", systemImage: "exclamationmark.triangle")
             }
+        }
+        .onChange(of: sortOption) { _, _ in
+            Task { await refreshShorts() }
         }
         .onAppear {
             if filterUserID == nil { filterUserID = server.wrappedValue?.userID }
@@ -174,7 +193,7 @@ struct ShortListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let response = try await api.getShorts(page: page, filterUserID: filterUserID, selectedServer: serverInstance)
+            let response = try await api.getShorts(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, selectedServer: serverInstance)
             if append {
                 shorts.append(contentsOf: response.shorts)
             } else {
@@ -189,6 +208,37 @@ struct ShortListView: View {
         }
 
         isLoading = false
+    }
+}
+
+enum ShortSortOption: String, CaseIterable {
+    case newestFirst = "-created"
+    case oldestFirst = "created"
+    case nameAZ = "name"
+    case nameZA = "-name"
+    case mostViews = "-views"
+    case fewestViews = "views"
+
+    var label: String {
+        switch self {
+        case .newestFirst:  "Newest First"
+        case .oldestFirst:  "Oldest First"
+        case .nameAZ:       "Name A–Z"
+        case .nameZA:       "Name Z–A"
+        case .mostViews:    "Most Views"
+        case .fewestViews:  "Fewest Views"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .newestFirst:  "calendar.badge.clock"
+        case .oldestFirst:  "calendar"
+        case .nameAZ:       "a.square.fill"
+        case .nameZA:       "z.square.fill"
+        case .mostViews:    "eye.fill"
+        case .fewestViews:  "eye"
+        }
     }
 }
 

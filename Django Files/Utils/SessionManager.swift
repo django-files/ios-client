@@ -46,6 +46,11 @@ class SessionManager: ObservableObject {
         cachedVersion = await DFAPI(url: url, token: session.token).getVersion()
     }
 
+    var supportsOrdering: Bool {
+        guard let version = cachedVersion else { return false }
+        return version.compare("0.17.2", options: .numeric) != .orderedAscending
+    }
+
     func loadLastSelectedSession(from sessions: [DjangoFilesSession]) {
         if selectedSession != nil { return }
 

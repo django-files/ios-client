@@ -83,10 +83,13 @@ extension DFAPI {
         }
     }
     
-    public func getShorts(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> ShortsResponse {
+    public func getShorts(page: Int = 1, filterUserID: Int? = nil, ordering: String? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> ShortsResponse {
         var parameters: [String: String] = [:]
         if let filterUserID {
             parameters["user"] = String(filterUserID)
+        }
+        if let ordering, !ordering.isEmpty {
+            parameters["ordering"] = ordering
         }
         let responseBody = try await makeAPIRequest(
             path: getAPIPath(.shorts) + "\(page)/",
