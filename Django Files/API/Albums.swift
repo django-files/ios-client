@@ -72,10 +72,13 @@ struct CreateAlbumResponse: Decodable {
 
 extension DFAPI {
     // Fetch albums with pagination
-    func getAlbums(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> AlbumsResponse {
+    func getAlbums(page: Int = 1, filterUserID: Int? = nil, ordering: String? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> AlbumsResponse {
         var parameters: [String: String] = [:]
         if let filterUserID {
             parameters["user"] = String(filterUserID)
+        }
+        if let ordering, !ordering.isEmpty {
+            parameters["ordering"] = ordering
         }
         let responseBody = try await makeAPIRequest(
             path: getAPIPath(.albums) + "\(page)/",

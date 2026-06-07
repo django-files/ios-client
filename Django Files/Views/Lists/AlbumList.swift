@@ -14,6 +14,7 @@ struct AlbumListView: View {
     let server: Binding<DjangoFilesSession?>
 
     @EnvironmentObject private var albumStateManager: AlbumStateManager
+    @EnvironmentObject private var sessionManager: SessionManager
 
     @State private var albums: [DFAlbum] = []
     @State private var currentPage = 1
@@ -26,8 +27,10 @@ struct AlbumListView: View {
     @State private var albumToDelete: DFAlbum? = nil
     @State private var filterUserID: Int? = nil
     @State private var users: [DFUser] = []
+    @AppStorage("albumListSortOption") private var sortOption: String = "-created"
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
+    private var hasActiveOptions: Bool { isFilteringUsers || (sessionManager.supportsOrdering && sortOption != "-created") }
 
     @ViewBuilder
     private var statusOverlay: some View {
@@ -99,10 +102,23 @@ struct AlbumListView: View {
         .overlay { statusOverlay }
         .navigationTitle("Albums")
         .toolbar {
-            if server.wrappedValue?.superUser ?? false {
+            if sessionManager.supportsOrdering || (server.wrappedValue?.superUser ?? false) {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
-                        Section("Filters") {
+                        if sessionManager.supportsOrdering {
+                            Menu {
+                                Picker("", selection: $sortOption) {
+                                    ForEach(AlbumSortOption.allCases, id: \.rawValue) { option in
+                                        Label(option.label, systemImage: option.icon).tag(option.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.inline)
+                            } label: {
+                                Label("Sort", systemImage: "arrow.up.arrow.down")
+                                    .symbolVariant(sortOption != "-created" ? .fill : .none)
+                            }
+                        }
+                        if server.wrappedValue?.superUser ?? false {
                             Menu {
                                 Picker("", selection: Binding(
                                     get: { filterUserID },
@@ -126,7 +142,7 @@ struct AlbumListView: View {
                         }
                     } label: {
                         Image(systemName: "line.3.horizontal.decrease")
-                            .foregroundStyle(isFilteringUsers ? Color.accentColor : Color.primary)
+                            .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                     }
                 }
             }
@@ -145,6 +161,9 @@ struct AlbumListView: View {
         }
         .onChange(of: albumStateManager.deepLinkNavigationAlbumID) { _, _ in
             navigateToPendingDeepLink()
+        }
+        .onChange(of: sortOption) { _, _ in
+            Task { await refreshAlbumsAsync() }
         }
         .confirmationDialog("Are you sure?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
@@ -239,7 +258,7 @@ struct AlbumListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let albumsResponse = try await api.getAlbums(page: page, filterUserID: filterUserID, selectedServer: serverInstance)
+            let albumsResponse = try await api.getAlbums(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, selectedServer: serverInstance)
             if append {
                 albums.append(contentsOf: albumsResponse.albums)
             } else {
@@ -272,6 +291,37 @@ struct AlbumListView: View {
         }
         
         albumToDelete = nil
+    }
+}
+
+enum AlbumSortOption: String, CaseIterable {
+    case newestFirst = "-created"
+    case oldestFirst = "created"
+    case nameAZ = "name"
+    case nameZA = "-name"
+    case mostFiles = "-files"
+    case fewestFiles = "files"
+
+    var label: String {
+        switch self {
+        case .newestFirst:  "Newest First"
+        case .oldestFirst:  "Oldest First"
+        case .nameAZ:       "Name A–Z"
+        case .nameZA:       "Name Z–A"
+        case .mostFiles:    "Most Files"
+        case .fewestFiles:  "Fewest Files"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .newestFirst:  "arrow.down.calendar"
+        case .oldestFirst:  "arrow.up.calendar"
+        case .nameAZ:       "textformat.abc"
+        case .nameZA:       "textformat.abc"
+        case .mostFiles:    "photo.stack"
+        case .fewestFiles:  "photo"
+        }
     }
 }
 

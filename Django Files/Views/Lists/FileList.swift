@@ -226,6 +226,7 @@ struct FileListView: View {
     
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var previewStateManager: PreviewStateManager
+    @EnvironmentObject private var sessionManager: SessionManager
     @StateObject private var fileListManager: FileListManager
     
     @State private var currentPage = 1
@@ -264,6 +265,8 @@ struct FileListView: View {
     @AppStorage("fileListShowingMap") private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
+
+    @AppStorage("fileListSortOption") private var sortOption: String = "-created"
 
     @State private var mapFileCount: Int = 0
     @State private var mapIsLoading: Bool = false
@@ -338,7 +341,9 @@ struct FileListView: View {
 
 
     private var hasActiveFilters: Bool {
-        !selectedMimeTypes.isEmpty || filterUserID != server.wrappedValue?.userID
+        !selectedMimeTypes.isEmpty
+            || filterUserID != server.wrappedValue?.userID
+            || (sessionManager.supportsOrdering && sortOption != "-created")
     }
 
     private var viewModeIcon: String {
@@ -445,6 +450,8 @@ struct FileListView: View {
                     server: server,
                     inlineMode: true,
                     albumID: albumID,
+                    selectedMimeTypes: selectedMimeTypes,
+                    filterUserID: filterUserID,
                     externalFileCount: $mapFileCount,
                     externalIsLoading: $mapIsLoading
                 )
@@ -600,6 +607,19 @@ struct FileListView: View {
                     Divider()
 
                     Section("Filters") {
+                    if sessionManager.supportsOrdering {
+                        Menu {
+                            Picker("", selection: $sortOption) {
+                                ForEach(FileSortOption.allCases, id: \.rawValue) { option in
+                                    Label(option.label, systemImage: option.icon).tag(option.rawValue)
+                                }
+                            }
+                            .pickerStyle(.inline)
+                        } label: {
+                            Label("Sort", systemImage: "arrow.up.arrow.down")
+                                .symbolVariant(sortOption != "-created" ? .fill : .none)
+                        }
+                    }
                     Menu {
                         ForEach(MimeTypeFilter.allCases.filter { $0 != .all }, id: \.rawValue) { filter in
                             Toggle(isOn: Binding(
@@ -728,6 +748,9 @@ struct FileListView: View {
             if newValue != nil {
                 checkForDeepLinkTarget()
             }
+        }
+        .onChange(of: sortOption) { _, _ in
+            Task { await refreshFiles() }
         }
     }
     
@@ -863,7 +886,7 @@ struct FileListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: nil)
+            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: filterUserID, filterMime: nil, ordering: sessionManager.supportsOrdering ? sortOption : nil)
             if append {
                 // Only append new files that aren't already in the list
                 let newFiles = filesResponse.files.filter { newFile in
@@ -1017,6 +1040,37 @@ struct FileGridItemView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+enum FileSortOption: String, CaseIterable {
+    case newestFirst = "-created"
+    case oldestFirst = "created"
+    case nameAZ = "name"
+    case nameZA = "-name"
+    case largestFirst = "-size"
+    case smallestFirst = "size"
+
+    var label: String {
+        switch self {
+        case .newestFirst:  "Newest First"
+        case .oldestFirst:  "Oldest First"
+        case .nameAZ:       "Name A–Z"
+        case .nameZA:       "Name Z–A"
+        case .largestFirst: "Largest First"
+        case .smallestFirst:"Smallest First"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .newestFirst:  "arrow.down.calendar"
+        case .oldestFirst:  "arrow.up.calendar"
+        case .nameAZ:       "textformat.abc"
+        case .nameZA:       "textformat.abc"
+        case .largestFirst: "arrow.up.square"
+        case .smallestFirst:"arrow.down.square"
+        }
     }
 }
 

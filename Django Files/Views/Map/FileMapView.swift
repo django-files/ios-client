@@ -37,6 +37,8 @@ struct FileMapView: View {
     let server: Binding<DjangoFilesSession?>
     var inlineMode: Bool = false
     var albumID: Int? = nil
+    var selectedMimeTypes: Set<MimeTypeFilter> = []
+    var filterUserID: Int? = nil
     var externalFileCount: Binding<Int>? = nil
     var externalIsLoading: Binding<Bool>? = nil
 
@@ -66,8 +68,13 @@ struct FileMapView: View {
         guard let base = server.wrappedValue.flatMap({ URL(string: $0.url) })?.absoluteString else {
             return nil
         }
-        if let albumID { return "\(base)#album=\(albumID)" }
-        return base
+        var key = base
+        if let albumID { key += "#album=\(albumID)" }
+        // Distinct caches per user-filter selection: superusers can switch
+        // between their own files and other users' files, and entries must
+        // not bleed between those selections.
+        key += "#user=\(filterUserID.map(String.init) ?? "all")"
+        return key
     }
 
     private var serverURL: URL? {
@@ -82,12 +89,21 @@ struct FileMapView: View {
         return c?.url
     }
 
+    private var filteredGeoFiles: [DFFile] {
+        guard !selectedMimeTypes.isEmpty else { return geoFiles }
+        return geoFiles.filter { file in
+            selectedMimeTypes.contains { file.mime.hasPrefix($0.rawValue) }
+        }
+    }
+
     // MARK: Clustering
 
     private func updateClusters() {
-        let pins    = Array(coordCache.values)
-        let ids     = geoFiles.map { $0.id }
-        let files   = geoFiles
+        let displayed = filteredGeoFiles
+        let displayedIDs = Set(displayed.map { $0.id })
+        let pins    = coordCache.values.filter { displayedIDs.contains($0.id) }
+        let ids     = displayed.map { $0.id }
+        let files   = displayed
         let spanLat = mapSpan.latitudeDelta
         let spanLon = mapSpan.longitudeDelta
 
@@ -231,6 +247,31 @@ struct FileMapView: View {
 
     // MARK: Body
 
+    @ViewBuilder
+    private var emptyStateOverlay: some View {
+        let displayedCount = filteredGeoFiles.count
+        if isLoading && displayedCount == 0 {
+            ProgressView()
+                .controlSize(.large)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.ultraThinMaterial)
+        } else if !isLoading && displayedCount == 0 {
+            if !selectedMimeTypes.isEmpty && !geoFiles.isEmpty {
+                ContentUnavailableView(
+                    "No Matching Files",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    description: Text("No GPS files match the current filter.")
+                )
+            } else {
+                ContentUnavailableView(
+                    "No GPS Files",
+                    systemImage: "location.slash.fill",
+                    description: Text("Upload photos with location data to see them here.")
+                )
+            }
+        }
+    }
+
     private var mapCoreView: some View {
         Map(position: $cameraPosition, content: mapContent)
             .mapStyle(.standard)
@@ -244,20 +285,7 @@ struct FileMapView: View {
                 mapSpan = ctx.region.span
                 updateClusters()
             }
-            .overlay {
-                if isLoading && geoFiles.isEmpty {
-                    ProgressView()
-                        .controlSize(.large)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.ultraThinMaterial)
-                } else if !isLoading && geoFiles.isEmpty {
-                    ContentUnavailableView(
-                        "No GPS Files",
-                        systemImage: "location.slash.fill",
-                        description: Text("Upload photos with location data to see them here.")
-                    )
-                }
-            }
+            .overlay { emptyStateOverlay }
             .fullScreenCover(isPresented: $showingPreview, content: fullPreview)
             .fullScreenCover(isPresented: $showingClusterPreview, content: clusterPreviewContent)
             .onAppear(perform: loadGPSFiles)
@@ -268,8 +296,14 @@ struct FileMapView: View {
             .onChange(of: server.wrappedValue?.url) { _, _ in
                 loadGPSFiles()
             }
-            .onChange(of: geoFiles.count) { _, new in
+            .onChange(of: filterUserID) { _, _ in
+                loadGPSFiles()
+            }
+            .onChange(of: filteredGeoFiles.count) { _, new in
                 externalFileCount?.wrappedValue = new
+            }
+            .onChange(of: selectedMimeTypes) { _, _ in
+                updateClusters()
             }
             .onChange(of: isLoading) { _, new in
                 externalIsLoading?.wrappedValue = new
@@ -279,20 +313,21 @@ struct FileMapView: View {
     @ToolbarContentBuilder
     private var statusToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            if isLoading || !geoFiles.isEmpty {
+            let displayedCount = filteredGeoFiles.count
+            if isLoading || displayedCount > 0 {
                 HStack(spacing: 6) {
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text("\(geoFiles.count) \(geoFiles.count == 1 ? "file" : "files")")
+                    Text("\(displayedCount) \(displayedCount == 1 ? "file" : "files")")
                         .monospacedDigit()
                         .contentTransition(.numericText())
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .animation(.default, value: isLoading)
-                .animation(.default, value: geoFiles.count)
+                .animation(.default, value: displayedCount)
             }
         }
     }
@@ -350,10 +385,17 @@ struct FileMapView: View {
               let key = serverKey else { return }
         let token = serverInstance.token
         let album = albumID
+        let userFilter = filterUserID
 
         loadTask?.cancel()
         clusterTask?.cancel()
         didAutoZoom = false
+        // Drop entries from any prior server/user selection — applyEntries only
+        // upserts, so without this purge, files from the previous cache key
+        // would linger after a server switch or user-filter change.
+        geoFiles.removeAll()
+        coordCache.removeAll()
+        clusters.removeAll()
 
         loadTask = Task { @MainActor in
             isLoading = true
@@ -370,7 +412,11 @@ struct FileMapView: View {
             var page = 1
 
             while !Task.isCancelled {
-                guard let response = try? await api.getFiles(page: page, album: album) else { break }
+                guard let response = try? await api.getFiles(page: page,
+                                                             album: album,
+                                                             selectedServer: serverInstance,
+                                                             filterUserID: userFilter,
+                                                             filterMime: nil) else { break }
                 guard !Task.isCancelled else { break }
 
                 let pageIDs   = Set(response.files.map { $0.id })

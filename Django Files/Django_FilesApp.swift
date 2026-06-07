@@ -189,6 +189,7 @@ struct Django_FilesApp: App {
             .environmentObject(streamStateManager)
             .environmentObject(albumStateManager)
             .environmentObject(uploadProgressManager)
+            .environmentObject(sessionManager)
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     DFAnalytics.logAppOpen()
