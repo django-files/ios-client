@@ -10,8 +10,11 @@ import MapKit
 
 struct PreviewFileInfo: View {
     let file: DFFile
+    let server: DjangoFilesSession?
 
     @State private var showMap = false
+    @State private var resolvedAlbums: [DFAlbum] = []
+    @State private var isLoadingAlbums = false
     
     // Helper function to format EXIF date string
     private func formatExifDate(_ dateString: String) -> String {
@@ -107,7 +110,7 @@ struct PreviewFileInfo: View {
                     .frame(width: 15, height: 15)
                 Text("\(file.formattedDate())")
             }
-            
+
             // Photo Information Section
             if let dateTime = file.exif?["DateTimeOriginal"]?.value as? String {
                 HStack {
@@ -262,6 +265,41 @@ struct PreviewFileInfo: View {
                 }
             }
 
+            // Albums Section
+            if !file.albums.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Albums", systemImage: "photo.stack")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if isLoadingAlbums {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(resolvedAlbums) { album in
+                                    HStack(spacing: 4) {
+                                        if album.private {
+                                            Image(systemName: "lock.fill")
+                                                .font(.caption2)
+                                        }
+                                        Text(album.name)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(.tint.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(.tint)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+            }
+
             if !file.info.isEmpty {
                 Text(file.info)
                     .font(.caption)
@@ -270,6 +308,27 @@ struct PreviewFileInfo: View {
         }
         .padding(40)
         }
+        }
+        .onAppear { loadAlbums() }
+    }
+
+    private func loadAlbums() {
+        guard !file.albums.isEmpty,
+              let serverInstance = server,
+              let url = URL(string: serverInstance.url) else { return }
+        isLoadingAlbums = true
+        Task {
+            let api = DFAPI(url: url, token: serverInstance.token)
+            var loaded: [DFAlbum] = []
+            for id in file.albums {
+                if let album = await api.getAlbum(albumId: id, selectedServer: serverInstance) {
+                    loaded.append(album)
+                }
+            }
+            await MainActor.run {
+                resolvedAlbums = loaded
+                isLoadingAlbums = false
+            }
         }
     }
 }

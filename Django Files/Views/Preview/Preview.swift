@@ -484,7 +484,9 @@ struct FilePreviewView: View {
     @State private var fileToRename: DFFile? = nil
     
     @State private var showingShareSheet = false
-    
+    @State private var showingAlbumPicker = false
+    @State private var fileForAlbumPicker: DFFile? = nil
+
     @State private var isOverlayVisible = true
     @State private var isContentScrolling = false
     
@@ -642,13 +644,27 @@ struct FilePreviewView: View {
             }
             .sheet(isPresented: $showFileInfo) {
                 if let details = selectedFileDetails {
-                    PreviewFileInfo(file: details)
-                        .presentationDetents([.medium])
+                    PreviewFileInfo(file: details, server: server.wrappedValue)
+                        .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
                 } else {
-                    PreviewFileInfo(file: file)
-                        .presentationDetents([.medium])
+                    PreviewFileInfo(file: file, server: server.wrappedValue)
+                        .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
+                }
+            }
+            .sheet(isPresented: $showingAlbumPicker) {
+                if let target = fileForAlbumPicker {
+                    AlbumPickerSheet(file: target, server: server.wrappedValue) { newAlbumIDs in
+                        if let idx = allFiles.firstIndex(where: { $0.id == target.id }) {
+                            allFiles[idx].albums = newAlbumIDs
+                        }
+                        if file.id == target.id {
+                            file.albums = newAlbumIDs
+                        }
+                    }
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                 }
             }
             .toolbar {
@@ -969,6 +985,10 @@ struct FilePreviewView: View {
                 passwordText.wrappedValue = fileToPassword?.password ?? ""
                 showingPasswordDialog = true
             },
+            manageAlbums: {
+                fileForAlbumPicker = file
+                showingAlbumPicker = true
+            },
             renameFile: {
                 fileToRename = file
                 fileNameText.wrappedValue = fileToRename?.name ?? ""
@@ -981,7 +1001,7 @@ struct FilePreviewView: View {
             }
         )
     }
-    
+
     private func fileShareMenu(for file: DFFile) -> FileShareMenu {
         FileShareMenu(
             onCopyShareLink: {

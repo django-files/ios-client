@@ -196,6 +196,16 @@ class FileListManager: ObservableObject, FileListDelegate {
         return status
     }
 
+    func updateFileAlbums(fileID: Int, albumIDs: [Int]) {
+        withAnimation {
+            if let index = files.firstIndex(where: { $0.id == fileID }) {
+                var updated = files
+                updated[index].albums = albumIDs
+                files = updated
+            }
+        }
+    }
+
     func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
@@ -255,6 +265,8 @@ struct FileListView: View {
     
     @State private var showingShareSheet = false
     @State private var deepLinkTargetFileID: Int? = nil
+    @State private var showingAlbumPicker = false
+    @State private var fileForAlbumPicker: DFFile? = nil
     
     @State private var redirectURLs: [String: String] = [:]
     
@@ -731,6 +743,15 @@ struct FileListView: View {
                 }
             )
         )
+        .sheet(isPresented: $showingAlbumPicker) {
+            if let file = fileForAlbumPicker {
+                AlbumPickerSheet(file: file, server: server.wrappedValue) { newAlbumIDs in
+                    fileListManager.updateFileAlbums(fileID: file.id, albumIDs: newAlbumIDs)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
         .onAppear {
             loadFiles()
             fetchAlbumIfNeeded()
@@ -827,6 +848,10 @@ struct FileListView: View {
                 fileToPassword = file
                 passwordText.wrappedValue = fileToPassword?.password ?? ""
                 showingPasswordDialog = true
+            },
+            manageAlbums: {
+                fileForAlbumPicker = file
+                showingAlbumPicker = true
             },
             renameFile: {
                 fileToRename = file
