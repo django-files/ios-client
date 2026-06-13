@@ -172,10 +172,10 @@ struct FileUploadView: View {
         case .photoLibrary:
             PhotosPicker(
                 selection: $selectedItems,
-                matching: .images,
+                matching: .any(of: [.images, .videos]),
                 photoLibrary: .shared()
             ) {
-                Label("Choose Photos", systemImage: "photo.on.rectangle")
+                Label("Choose Photos & Videos", systemImage: "photo.on.rectangle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -267,20 +267,27 @@ struct FileUploadView: View {
         let api = DFAPI(url: URL(string: server.url)!, token: server.token)
         let total = Double(items.count)
         for (index, item) in items.enumerated() {
-            guard let data = try? await item.loadTransferable(type: Data.self),
-                  let tempURL = saveTemporaryFile(data: data, filename: "photo_\(index).jpg") else { continue }
+            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .audiovisualContent) }
+            let tempURL: URL?
+            if isVideo {
+                tempURL = try? await item.loadTransferable(type: VideoTransferable.self).map { $0.url }
+            } else {
+                tempURL = try? await item.loadTransferable(type: Data.self)
+                    .flatMap { saveTemporaryFile(data: $0, filename: "photo_\(index).jpg") }
+            }
+            guard let url = tempURL else { continue }
             let delegate = UploadProgressDelegate { progress in
                 uploadProgress = (Double(index) + progress) / total
             }
             _ = await api.uploadFile(
-                url: tempURL,
+                url: url,
                 albums: albumIdParam,
                 privateUpload: uploadPrivate,
                 stripExif: stripExif,
                 stripGps: stripGps,
                 taskDelegate: delegate
             )
-            try? FileManager.default.removeItem(at: tempURL)
+            try? FileManager.default.removeItem(at: url)
         }
         isUploading = false
         dismiss()
@@ -431,8 +438,9 @@ struct FileUploadView: View {
         let gps = stripGps
         let manager = uploadProgressManager
 
-        let ids: [UUID] = (0..<items.count).map { index in
-            manager.start(filename: "photo_\(index).jpg")
+        let ids: [UUID] = items.enumerated().map { (index, item) in
+            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .audiovisualContent) }
+            return manager.start(filename: isVideo ? "video_\(index)" : "photo_\(index).jpg")
         }
 
         let task = Task.detached {
@@ -440,15 +448,28 @@ struct FileUploadView: View {
             for (index, item) in items.enumerated() {
                 if Task.isCancelled { break }
                 let id = ids[index]
-                guard let data = try? await item.loadTransferable(type: Data.self) else {
-                    await MainActor.run { manager.finish(id: id) }
-                    continue
+                let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .audiovisualContent) }
+
+                let uploadURL: URL?
+                if isVideo {
+                    uploadURL = try? await item.loadTransferable(type: VideoTransferable.self).map { $0.url }
+                } else {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else {
+                        await MainActor.run { manager.finish(id: id) }
+                        continue
+                    }
+                    if let image = UIImage(data: data) {
+                        await MainActor.run { manager.setThumbnail(id: id, image: image) }
+                    }
+                    let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("photo_\(index).jpg")
+                    do { try data.write(to: fileURL) } catch {
+                        await MainActor.run { manager.finish(id: id) }
+                        continue
+                    }
+                    uploadURL = fileURL
                 }
-                if let image = UIImage(data: data) {
-                    await MainActor.run { manager.setThumbnail(id: id, image: image) }
-                }
-                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("photo_\(index).jpg")
-                do { try data.write(to: tempURL) } catch {
+
+                guard let url = uploadURL else {
                     await MainActor.run { manager.finish(id: id) }
                     continue
                 }
@@ -456,14 +477,14 @@ struct FileUploadView: View {
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
                 _ = await api.uploadFile(
-                    url: tempURL,
+                    url: url,
                     albums: albums,
                     privateUpload: priv,
                     stripExif: exif,
                     stripGps: gps,
                     taskDelegate: delegate
                 )
-                try? FileManager.default.removeItem(at: tempURL)
+                try? FileManager.default.removeItem(at: url)
                 await MainActor.run { manager.finish(id: id) }
             }
         }
@@ -627,6 +648,24 @@ private struct AlbumPickerView: View {
             if isSelected {
                 Image(systemName: "checkmark").foregroundStyle(.tint)
             }
+        }
+    }
+}
+
+struct VideoTransferable: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent(received.file.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return VideoTransferable(url: dest)
         }
     }
 }
