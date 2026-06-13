@@ -61,6 +61,18 @@ struct AlbumListView: View {
                                 Label("Copy Link", systemImage: "link")
                             }
 
+                            let isOwner = (server.wrappedValue?.userID != nil && album.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                            if isOwner {
+                                Button(action: {
+                                    Task { await toggleAlbumPrivacy(album) }
+                                }) {
+                                    Label(
+                                        album.private ? "Make Public" : "Make Private",
+                                        systemImage: album.private ? "lock.open" : "lock"
+                                    )
+                                }
+                            }
+
                             Button(role: .destructive, action: {
                                 albumToDelete = album
                                 showDeleteConfirmation = true
@@ -297,6 +309,22 @@ struct AlbumListView: View {
         isLoading = false
     }
     
+    @MainActor
+    private func toggleAlbumPrivacy(_ album: DFAlbum) async {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else { return }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        if let newValue = await api.toggleAlbumPrivate(albumId: album.id, newValue: !album.private, selectedServer: serverInstance) {
+            withAnimation {
+                if let index = albums.firstIndex(where: { $0.id == album.id }) {
+                    albums[index].private = newValue
+                }
+            }
+        } else {
+            ToastManager.shared.showToast(message: "Failed to update album privacy")
+        }
+    }
+
     @MainActor
     private func deleteAlbum(_ album: DFAlbum) async {
         guard let serverInstance = server.wrappedValue else { return }

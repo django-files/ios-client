@@ -46,6 +46,26 @@ struct StreamListView: View {
                                 )
                             } label: {
                                 StreamRow(stream: stream)
+                                    .contextMenu {
+                                        if stream.isOwner || session.superUser {
+                                            Button(action: {
+                                                Task { await toggleStreamPrivacy(stream) }
+                                            }) {
+                                                Label(
+                                                    stream.isPublic ? "Make Private" : "Make Public",
+                                                    systemImage: stream.isPublic ? "lock" : "lock.open"
+                                                )
+                                            }
+
+                                            Divider()
+
+                                            Button(role: .destructive, action: {
+                                                streamPendingDelete = stream
+                                            }) {
+                                                Label("Delete Stream", systemImage: "trash")
+                                            }
+                                        }
+                                    }
                             }
                             .onAppear {
                                 if stream.id == streams.last?.id && hasMoreResults {
@@ -180,6 +200,24 @@ struct StreamListView: View {
         }
     }
 
+    // MARK: - Toggle Privacy
+
+    @MainActor
+    private func toggleStreamPrivacy(_ stream: DFStream) async {
+        guard let session = server.wrappedValue,
+              let url = URL(string: session.url) else { return }
+        let api = DFAPI(url: url, token: session.token)
+        if let newValue = await api.toggleStreamPublic(name: stream.name, newValue: !stream.isPublic, selectedServer: session) {
+            withAnimation {
+                if let index = streams.firstIndex(where: { $0.name == stream.name }) {
+                    streams[index].isPublic = newValue
+                }
+            }
+        } else {
+            ToastManager.shared.showToast(message: "Failed to update stream privacy")
+        }
+    }
+
     // MARK: - Delete
 
     @MainActor
@@ -279,19 +317,19 @@ struct StreamRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
+                    Label("\(stream.uniqueViews)", systemImage: "eye")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     if !stream.isPublic {
-                        Label("Private", systemImage: "lock.fill")
+                        Image(systemName: "lock.fill")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     if let pw = stream.password, !pw.isEmpty {
-                        Label("Password", systemImage: "key.fill")
+                        Image(systemName: "key.fill")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    Label("\(stream.uniqueViews)", systemImage: "eye")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
