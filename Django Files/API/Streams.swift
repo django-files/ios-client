@@ -15,7 +15,7 @@ struct DFStream: Codable, Identifiable {
     let startedAt: Date?
     let endedAt: Date?
     let uniqueViews: Int
-    let isPublic: Bool
+    var isPublic: Bool
     let password: String?
     let viewerLimit: Int
     let liveChat: Bool
@@ -582,6 +582,28 @@ extension DFAPI {
             return try decoder.decode(DFStreamViewersResponse.self, from: responseBody).count
         } catch {
             print("getStreamViewerCount failed: \(error)")
+            return nil
+        }
+    }
+
+    public func toggleStreamPublic(name: String, newValue: Bool, selectedServer: DjangoFilesSession? = nil) async -> Bool? {
+        do {
+            let body: [String: Bool] = ["public": newValue]
+            let json = try JSONEncoder().encode(body)
+            let path = "/api/stream/\(name)/"
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: path,
+                parameters: [:],
+                method: .patch,
+                expectedResponse: .ok,
+                headerFields: [.contentType: "application/json"],
+                selectedServer: selectedServer
+            )
+            let stream = try decoder.decode(DFStream.self, from: responseBody)
+            return stream.isPublic
+        } catch {
+            print("Error toggling stream public: \(error)")
             return nil
         }
     }

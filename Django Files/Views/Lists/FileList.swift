@@ -206,6 +206,37 @@ class FileListManager: ObservableObject, FileListDelegate {
         }
     }
 
+    func updateFilesAlbums(updates: [Int: [Int]]) {
+        withAnimation {
+            var updated = files
+            for (fileID, albumIDs) in updates {
+                if let index = updated.firstIndex(where: { $0.id == fileID }) {
+                    updated[index].albums = albumIDs
+                }
+            }
+            files = updated
+        }
+    }
+
+    func setFilesPrivate(fileIDs: [Int], isPrivate: Bool) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else { return false }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: fileIDs, changes: ["private": isPrivate], selectedServer: serverInstance)
+        if status {
+            withAnimation {
+                var updated = files
+                for id in fileIDs {
+                    if let index = updated.firstIndex(where: { $0.id == id }) {
+                        updated[index].private = isPrivate
+                    }
+                }
+                files = updated
+            }
+        }
+        return status
+    }
+
     func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
@@ -267,6 +298,10 @@ struct FileListView: View {
     @State private var deepLinkTargetFileID: Int? = nil
     @State private var showingAlbumPicker = false
     @State private var fileForAlbumPicker: DFFile? = nil
+
+    @State private var isSelectMode: Bool = false
+    @State private var selectedFileIDs: Set<Int> = []
+    @State private var showingBulkAlbumPicker: Bool = false
     
     @State private var redirectURLs: [String: String] = [:]
     
@@ -415,19 +450,36 @@ struct FileListView: View {
         ScrollView {
             LazyVGrid(columns: gridColumns, spacing: 2) {
                 ForEach(filteredFiles) { file in
+                    let isSelected = selectedFileIDs.contains(file.id)
                     Button {
-                        selectedFile = file
-                        showingPreview = true
+                        if isSelectMode {
+                            toggleSelection(file: file)
+                        } else {
+                            selectedFile = file
+                            showingPreview = true
+                        }
                     } label: {
                         FileGridItemView(
                             file: file,
                             serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                         )
                         .contentShape(Rectangle())
+                        .overlay(alignment: .topLeading) {
+                            if isSelectMode {
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(isSelected ? Color.accentColor : .white)
+                                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                    .padding(6)
+                            }
+                        }
+                        .opacity(isSelectMode && !isSelected ? 0.6 : 1.0)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
-                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        if !isSelectMode {
+                            fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                        }
                     }
                     .onAppear {
                         if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
@@ -472,51 +524,68 @@ struct FileListView: View {
             } else {
                 List {
             ForEach(filteredFiles) { file in
+                let isSelected = selectedFileIDs.contains(file.id)
                 Button {
-                    selectedFile = file
-                    showingPreview = true
+                    if isSelectMode {
+                        toggleSelection(file: file)
+                    } else {
+                        selectedFile = file
+                        showingPreview = true
+                    }
                 } label: {
-                    if let realIndex = fileListManager.files.firstIndex(where: { $0.id == file.id }) {
-                        if file.mime.starts(with: "image/") {
-                            FileRowView(
-                                file: $fileListManager.files[realIndex],
-                                serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
-                            )
-                            .contextMenu {
-                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                            } preview: {
-                                CachedAsyncImage(url: thumbnailURL(file: file)) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    ProgressView()
+                    HStack(spacing: 10) {
+                        if isSelectMode {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 22))
+                                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                                .animation(.easeInOut(duration: 0.15), value: isSelected)
+                        }
+                        if let realIndex = fileListManager.files.firstIndex(where: { $0.id == file.id }) {
+                            if file.mime.starts(with: "image/") && !isSelectMode {
+                                FileRowView(
+                                    file: $fileListManager.files[realIndex],
+                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                )
+                                .contextMenu {
+                                    fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                } preview: {
+                                    CachedAsyncImage(url: thumbnailURL(file: file)) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    } placeholder: {
+                                        ProgressView()
+                                    }
+                                    .frame(width: 512, height: 512)
+                                    .cornerRadius(8)
                                 }
-                                .frame(width: 512, height: 512)
-                                .cornerRadius(8)
-                            }
-                        } else {
-                            FileRowView(
-                                file: $fileListManager.files[realIndex],
-                                serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
-                            )
-                            .contextMenu {
-                                fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            } else {
+                                FileRowView(
+                                    file: $fileListManager.files[realIndex],
+                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                )
+                                .contextMenu {
+                                    if !isSelectMode {
+                                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    let fileIsOwned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-                    if fileIsOwned {
-                        Button {
-                            fileIDsToDelete = [file.id]
-                            fileNameToDelete = file.name
-                            showingDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                    if !isSelectMode {
+                        let fileIsOwned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                        if fileIsOwned {
+                            Button {
+                                fileIDsToDelete = [file.id]
+                                fileNameToDelete = file.name
+                                showingDeleteConfirmation = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            .tint(.red)
                         }
-                        .tint(.red)
                     }
                 }
 
@@ -544,6 +613,11 @@ struct FileListView: View {
                         await refreshFiles()
                     }
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isSelectMode {
+                bulkActionBar
             }
         }
         .overlay {
@@ -680,6 +754,17 @@ struct FileListView: View {
                         }
                     }
                     }
+
+                    if !showingMap {
+                        Divider()
+                        Button {
+                            isSelectMode = true
+                            selectedFileIDs = []
+                        } label: {
+                            Label("Bulk Select", systemImage: "checklist")
+                        }
+                        .disabled(filteredFiles.isEmpty)
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
@@ -706,7 +791,16 @@ struct FileListView: View {
                 }
             }
 
-            if canUpload {
+            if isSelectMode {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        isSelectMode = false
+                        selectedFileIDs = []
+                    }
+                }
+            }
+
+            if canUpload && !isSelectMode {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     UploadMenuButton(
                         server: server,
@@ -730,7 +824,12 @@ struct FileListView: View {
                 fileNameText: $fileNameText,
                 fileToRename: $fileToRename,
                 onDelete: { fileIDs in
-                    await deleteFiles(fileIDs: fileIDs)
+                    let success = await deleteFiles(fileIDs: fileIDs)
+                    if success && isSelectMode {
+                        selectedFileIDs.subtract(fileIDs)
+                        if selectedFileIDs.isEmpty { isSelectMode = false }
+                    }
+                    return success
                 },
                 onSetExpiration: { file, expr in
                     await setFileExpiration(file: file, expr: expr)
@@ -751,6 +850,16 @@ struct FileListView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
+        }
+        .sheet(isPresented: $showingBulkAlbumPicker) {
+            BulkAlbumPickerSheet(
+                files: selectedFiles,
+                server: server.wrappedValue
+            ) { updates in
+                fileListManager.updateFilesAlbums(updates: updates)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .onAppear {
             loadFiles()
@@ -775,6 +884,108 @@ struct FileListView: View {
         }
     }
     
+    private func toggleSelection(file: DFFile) {
+        let owned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+        guard owned else { return }
+        if selectedFileIDs.contains(file.id) {
+            selectedFileIDs.remove(file.id)
+        } else {
+            selectedFileIDs.insert(file.id)
+        }
+    }
+
+    private var ownedSelectedIDs: [Int] {
+        filteredFiles
+            .filter { selectedFileIDs.contains($0.id) }
+            .filter { file in
+                (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+            }
+            .map(\.id)
+    }
+
+    private var selectedFiles: [DFFile] {
+        filteredFiles.filter { selectedFileIDs.contains($0.id) }
+    }
+
+    @ViewBuilder
+    private var bulkActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                let allOwned = filteredFiles.filter { file in
+                    (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+                }
+                let allOwnedSelected = !allOwned.isEmpty && allOwned.allSatisfy { selectedFileIDs.contains($0.id) }
+
+                Button {
+                    if allOwnedSelected {
+                        selectedFileIDs = []
+                    } else {
+                        selectedFileIDs = Set(allOwned.map(\.id))
+                    }
+                } label: {
+                    Text(allOwnedSelected ? "Deselect All" : "Select All")
+                        .font(.subheadline)
+                }
+
+                Spacer()
+
+                if !selectedFileIDs.isEmpty {
+                    Text("\(selectedFileIDs.count) selected")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 20) {
+                    Menu {
+                        Button {
+                            Task { await fileListManager.setFilesPrivate(fileIDs: Array(selectedFileIDs), isPrivate: true) }
+                        } label: {
+                            Label("Make Private", systemImage: "lock.fill")
+                        }
+                        Button {
+                            Task { await fileListManager.setFilesPrivate(fileIDs: Array(selectedFileIDs), isPrivate: false) }
+                        } label: {
+                            Label("Make Public", systemImage: "lock.open.fill")
+                        }
+                    } label: {
+                        Label("Privacy", systemImage: "lock")
+                            .font(.subheadline)
+                    }
+                    .disabled(selectedFileIDs.isEmpty)
+
+                    Button {
+                        showingBulkAlbumPicker = true
+                    } label: {
+                        Label("Albums", systemImage: "photo.stack")
+                            .font(.subheadline)
+                    }
+                    .disabled(selectedFileIDs.isEmpty)
+
+                    Button(role: .destructive) {
+                        let ids = ownedSelectedIDs
+                        guard !ids.isEmpty else { return }
+                        fileIDsToDelete = ids
+                        fileNameToDelete = ids.count == 1
+                            ? (filteredFiles.first(where: { $0.id == ids[0] })?.name ?? "")
+                            : "\(ids.count) files"
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                            .font(.subheadline)
+                    }
+                    .disabled(ownedSelectedIDs.isEmpty)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.bar)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
         let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)

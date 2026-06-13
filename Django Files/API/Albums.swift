@@ -147,6 +147,29 @@ extension DFAPI {
         }
     }
 
+    // Set the private flag on an album; returns the new value, or nil on failure
+    func toggleAlbumPrivate(albumId: Int, newValue: Bool, selectedServer: DjangoFilesSession? = nil) async -> Bool? {
+        do {
+            let body: [String: Bool] = ["private": newValue]
+            let json = try JSONEncoder().encode(body)
+            let path = "\(getAPIPath(.album))\(albumId)"
+            let responseBody = try await makeAPIRequest(
+                body: json,
+                path: path,
+                parameters: [:],
+                method: .patch,
+                expectedResponse: .ok,
+                headerFields: [.contentType: "application/json"],
+                selectedServer: selectedServer
+            )
+            let album = try decoder.decode(DFAlbum.self, from: responseBody)
+            return album.private
+        } catch {
+            print("Error toggling album private: \(error)")
+            return nil
+        }
+    }
+
     // Delete an album by ID
     func deleteAlbum(albumId: Int, selectedServer: DjangoFilesSession? = nil) async -> Bool {
         do {
