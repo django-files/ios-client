@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import Combine
 
 struct ShortListView: View {
     let server: Binding<DjangoFilesSession?>

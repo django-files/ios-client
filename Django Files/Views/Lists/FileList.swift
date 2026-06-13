@@ -1077,26 +1077,32 @@ enum FileSortOption: String, CaseIterable {
     case nameZA = "-name"
     case largestFirst = "-size"
     case smallestFirst = "size"
+    case exifDateNewest = "-exif_date"
+    case exifDateOldest = "exif_date"
 
     var label: String {
         switch self {
-        case .newestFirst:  "Newest First"
-        case .oldestFirst:  "Oldest First"
-        case .nameAZ:       "Name A–Z"
-        case .nameZA:       "Name Z–A"
-        case .largestFirst: "Largest First"
-        case .smallestFirst:"Smallest First"
+        case .newestFirst:    "Newest First"
+        case .oldestFirst:    "Oldest First"
+        case .nameAZ:         "Name A–Z"
+        case .nameZA:         "Name Z–A"
+        case .largestFirst:   "Largest First"
+        case .smallestFirst:  "Smallest First"
+        case .exifDateNewest: "Photo Date (Newest)"
+        case .exifDateOldest: "Photo Date (Oldest)"
         }
     }
 
     var icon: String {
         switch self {
-        case .newestFirst:  "calendar.badge.clock"
-        case .oldestFirst:  "calendar"
-        case .nameAZ:       "a.square.fill"
-        case .nameZA:       "z.square.fill"
-        case .largestFirst: "arrow.up.square.fill"
-        case .smallestFirst:"arrow.down.square.fill"
+        case .newestFirst:    "calendar.badge.clock"
+        case .oldestFirst:    "calendar"
+        case .nameAZ:         "a.square.fill"
+        case .nameZA:         "z.square.fill"
+        case .largestFirst:   "arrow.up.square.fill"
+        case .smallestFirst:  "arrow.down.square.fill"
+        case .exifDateNewest: "camera.fill"
+        case .exifDateOldest: "camera"
         }
     }
 }

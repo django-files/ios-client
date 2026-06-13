@@ -182,6 +182,11 @@ struct SettingsView: View {
                         Text(versionInfo)
                             .foregroundColor(.secondary)
                     }
+                    NavigationLink {
+                        AboutView(serverVersion: sessionManager.cachedVersion)
+                    } label: {
+                        Label("More Info", systemImage: "info.circle")
+                    }
                 }
             }
             .navigationTitle("Settings")

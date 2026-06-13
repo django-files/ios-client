@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Foundation
+import Combine
 
 struct AlbumListView: View {
     let navigationPath: Binding<NavigationPath>
@@ -178,6 +179,28 @@ struct AlbumListView: View {
             }
         } message: {
             Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.albumUpdateNotification)) { notification in
+            guard let id = notification.userInfo?["id"] as? Int,
+                  let idx = albums.firstIndex(where: { $0.id == id }) else { return }
+            withAnimation {
+                if let p  = notification.userInfo?["private"]  as? Bool   { albums[idx].private  = p }
+                if let n  = notification.userInfo?["name"]     as? String  { albums[idx].name     = n }
+                if let pw = notification.userInfo?["password"] as? String  { albums[idx].password = pw }
+                if let e  = notification.userInfo?["expr"]     as? String  { albums[idx].expr     = e }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.albumNewNotification)) { notification in
+            if let album = notification.userInfo?["album"] as? DFAlbum {
+                guard !albums.contains(where: { $0.id == album.id }) else { return }
+                withAnimation { albums.insert(album, at: 0) }
+            } else {
+                Task { await refreshAlbumsAsync() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.albumDeleteNotification)) { notification in
+            guard let id = notification.userInfo?["id"] as? Int else { return }
+            withAnimation { albums.removeAll { $0.id == id } }
         }
         .onAppear {
             if filterUserID == nil { filterUserID = server.wrappedValue?.userID }

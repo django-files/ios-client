@@ -36,6 +36,7 @@ struct DFAPI {
         case shorts = "shorts/"
         case delete_file = "files/delete/"
         case delete_short = "shorts/delete/"
+        case delete_stream = "streams/delete/"
         case edit_file = "files/edit/"
         case file = "file/"
         case raw = "raw/"
