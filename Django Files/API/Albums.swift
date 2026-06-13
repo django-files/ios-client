@@ -11,13 +11,13 @@ import Foundation
 struct DFAlbum: Identifiable, Decodable, Hashable {
     let id: Int
     let user: Int?
-    let name: String
-    let password: String?
-    let `private`: Bool
+    var name: String
+    var password: String?
+    var `private`: Bool
     let info: String?
-    let view: Int
-    let maxv: Int?
-    let expr: String?
+    var view: Int
+    var maxv: Int?
+    var expr: String?
     let date: String
     let url: String
 

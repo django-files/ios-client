@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct StreamListView: View {
     let server: Binding<DjangoFilesSession?>
@@ -15,6 +16,7 @@ struct StreamListView: View {
     @State private var filterUserID: Int? = nil
     @State private var users: [DFUser] = []
     @State private var liveFilter: LiveFilter = .all
+    @State private var streamPendingDelete: DFStream? = nil
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
     private var hasActiveFilters: Bool { isFilteringUsers || liveFilter != .all }
@@ -48,6 +50,15 @@ struct StreamListView: View {
                             .onAppear {
                                 if stream.id == streams.last?.id && hasMoreResults {
                                     loadMoreStreams()
+                                }
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if stream.isOwner || session.superUser {
+                                    Button(role: .destructive) {
+                                        streamPendingDelete = stream
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -124,6 +135,20 @@ struct StreamListView: View {
                 Label("No server selected.", systemImage: "exclamationmark.triangle")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.streamStatusNotification)) { notification in
+            guard let name = notification.userInfo?["name"] as? String,
+                  let isLive = notification.userInfo?["isLive"] as? Bool else { return }
+            if let idx = streams.firstIndex(where: { $0.name == name }) {
+                withAnimation { streams[idx].isLive = isLive }
+            } else if isLive {
+                // New stream went live but isn't in the list yet — fetch it
+                Task { await refreshStreams() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.streamDeleteNotification)) { notification in
+            guard let name = notification.userInfo?["name"] as? String else { return }
+            withAnimation { streams.removeAll { $0.name == name } }
+        }
         .onAppear {
             if filterUserID == nil { filterUserID = server.wrappedValue?.userID }
             if streams.isEmpty { loadInitialStreams() }
@@ -134,6 +159,36 @@ struct StreamListView: View {
                         users = await api.getAllUsers(selectedServer: session)
                     }
                 }
+            }
+        }
+        .alert("Delete Stream", isPresented: Binding(
+            get: { streamPendingDelete != nil },
+            set: { if !$0 { streamPendingDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                guard let stream = streamPendingDelete,
+                      let session = server.wrappedValue,
+                      let url = URL(string: session.url) else { return }
+                streamPendingDelete = nil
+                Task { await deleteStream(stream, session: session, serverURL: url) }
+            }
+            Button("Cancel", role: .cancel) { streamPendingDelete = nil }
+        } message: {
+            if let stream = streamPendingDelete {
+                Text("Are you sure you want to delete \"\(stream.title.isEmpty ? stream.name : stream.title)\"? This cannot be undone.")
+            }
+        }
+    }
+
+    // MARK: - Delete
+
+    @MainActor
+    private func deleteStream(_ stream: DFStream, session: DjangoFilesSession, serverURL: URL) async {
+        let api = DFAPI(url: serverURL, token: session.token)
+        let success = await api.deleteStream(name: stream.name, selectedServer: session)
+        if success {
+            withAnimation {
+                streams.removeAll { $0.name == stream.name }
             }
         }
     }

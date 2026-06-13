@@ -11,7 +11,7 @@ struct DFStream: Codable, Identifiable {
     let name: String
     let title: String
     let description: String
-    let isLive: Bool
+    var isLive: Bool
     let startedAt: Date?
     let endedAt: Date?
     let uniqueViews: Int
@@ -583,6 +583,23 @@ extension DFAPI {
         } catch {
             print("getStreamViewerCount failed: \(error)")
             return nil
+        }
+    }
+
+    public func deleteStream(name: String, selectedServer: DjangoFilesSession? = nil) async -> Bool {
+        do {
+            let body = try JSONSerialization.data(withJSONObject: ["names": [name]])
+            _ = try await makeAPIRequest(
+                body: body,
+                path: getAPIPath(.delete_stream),
+                parameters: [:],
+                method: .delete,
+                selectedServer: selectedServer
+            )
+            return true
+        } catch {
+            print("Stream delete failed: \(error)")
+            return false
         }
     }
 

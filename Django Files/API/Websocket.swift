@@ -202,6 +202,11 @@ class DFWebSocket: NSObject {
     private static let toastNotification = Notification.Name("DFWebSocketToastNotification")
     static let fileDeleteNotification = Notification.Name("DFWebSocketFileDeleteNotification")
     static let fileNewNotification = Notification.Name("DFWebSocketFileNewNotification")
+    static let albumNewNotification = Notification.Name("DFWebSocketAlbumNewNotification")
+    static let albumDeleteNotification = Notification.Name("DFWebSocketAlbumDeleteNotification")
+    static let streamStatusNotification = Notification.Name("DFWebSocketStreamStatusNotification")
+    static let albumUpdateNotification = Notification.Name("DFWebSocketAlbumUpdateNotification")
+    static let streamDeleteNotification = Notification.Name("DFWebSocketStreamDeleteNotification")
     static let connectionRequestNotification = Notification.Name("DFWebSocketConnectionRequest")
 
     private static let fileEventDecoder: JSONDecoder = {
@@ -210,6 +215,8 @@ class DFWebSocket: NSObject {
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
     }()
+
+    private static let albumEventDecoder = JSONDecoder()
 
     private func postToast(_ message: String) {
         NotificationCenter.default.post(
@@ -287,20 +294,68 @@ class DFWebSocket: NSObject {
         case "album-new":
             postGroupedToast(
                 groupKey: "ws.album-new",
-                singleMessage: "Album \(message.name ?? "Untitled.file") created.",
+                singleMessage: "Album \(message.name ?? "Untitled") created.",
                 pluralFormat: "{count} albums created."
             )
+            if let album = try? Self.albumEventDecoder.decode(DFAlbum.self, from: data) {
+                NotificationCenter.default.post(
+                    name: Self.albumNewNotification,
+                    object: nil,
+                    userInfo: ["album": album]
+                )
+            } else {
+                NotificationCenter.default.post(name: Self.albumNewNotification, object: nil)
+            }
+
+        case "album-update":
+            // The payload lacks `url` so a full DFAlbum decode fails.
+            // Use the already-decoded message envelope for a partial field update.
+            if let id = message.id {
+                var info: [String: Any] = ["id": id]
+                if let p = message.private  { info["private"]  = p }
+                if let n = message.name     { info["name"]     = n }
+                if let pw = message.password { info["password"] = pw }
+                if let e = message.expr     { info["expr"]     = e }
+                NotificationCenter.default.post(
+                    name: Self.albumUpdateNotification,
+                    object: nil,
+                    userInfo: info
+                )
+            }
 
         case "album-delete":
             postGroupedToast(
                 groupKey: "ws.album-delete",
-                singleMessage: "Album (\(message.name ?? "Untitled.file")) deleted.",
+                singleMessage: "Album \(message.name ?? "Untitled") deleted.",
                 pluralFormat: "{count} albums deleted."
             )
+            if let id = message.id {
+                NotificationCenter.default.post(
+                    name: Self.albumDeleteNotification,
+                    object: nil,
+                    userInfo: ["id": id]
+                )
+            }
 
         case "stream-status":
             let streamName = message.name ?? "Stream"
             postToast(message.isLive == true ? "\(streamName) is now live." : "\(streamName) has ended.")
+            if let name = message.name, let isLive = message.isLive {
+                NotificationCenter.default.post(
+                    name: Self.streamStatusNotification,
+                    object: nil,
+                    userInfo: ["name": name, "isLive": isLive]
+                )
+            }
+
+        case "stream-delete":
+            if let name = message.name {
+                NotificationCenter.default.post(
+                    name: Self.streamDeleteNotification,
+                    object: nil,
+                    userInfo: ["name": name]
+                )
+            }
 
         default:
             print("WebSocket: Unhandled event: \(message.event)")
