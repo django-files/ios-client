@@ -73,6 +73,12 @@ struct FileContextMenuButtons: View {
                     Label("Set Password", systemImage: "key")
                 }
 
+                Button {
+                    manageAlbums()
+                } label: {
+                    Label("Manage Albums", systemImage: "photo.stack")
+                }
+
                 Divider()
 
                 Button {

@@ -19,11 +19,12 @@
                     $attachment,
                     (
                         ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.image&quot;
+                        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.movie&quot;
                         || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.url&quot;
                         || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO &quot;public.data&quot;
                     )
-                ).@count == 1
-            ).@count == 1</string>
+                ).@count >= 1
+            ).@count >= 1</string>
 		</dict>
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
