@@ -313,7 +313,12 @@ struct FileListView: View {
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
 
-    @AppStorage("fileListSortOption") private var sortOption: String = "-created"
+    @AppStorage("fileListSortField") private var sortField: String = "created"
+    @AppStorage("fileListSortAscending") private var sortAscending: Bool = false
+
+    private var sortOption: String {
+        sortAscending ? sortField : "-\(sortField)"
+    }
 
     @State private var mapFileCount: Int = 0
     @State private var mapIsLoading: Bool = false
@@ -335,10 +340,12 @@ struct FileListView: View {
     }
 
     private var filteredFiles: [DFFile] {
-        guard !selectedMimeTypes.isEmpty else { return fileListManager.files }
-        return fileListManager.files.filter { file in
-            selectedMimeTypes.contains { file.mime.hasPrefix($0.rawValue) }
-        }
+        fileListManager.files
+    }
+
+    private var filterTypeParam: String? {
+        guard !selectedMimeTypes.isEmpty else { return nil }
+        return selectedMimeTypes.map(\.rawValue).sorted().joined(separator: ",")
     }
 
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
@@ -390,7 +397,7 @@ struct FileListView: View {
     private var hasActiveFilters: Bool {
         !selectedMimeTypes.isEmpty
             || filterUserID != server.wrappedValue?.userID
-            || (sessionManager.supportsOrdering && sortOption != "-created")
+            || (sessionManager.supportsOrdering && (sortField != "created" || sortAscending))
     }
 
     private var viewModeIcon: String {
@@ -695,18 +702,33 @@ struct FileListView: View {
                     Section("Filters") {
                     if sessionManager.supportsOrdering {
                         Menu {
-                            Picker("", selection: $sortOption) {
-                                ForEach(FileSortOption.allCases, id: \.rawValue) { option in
-                                    Label(option.label, systemImage: option.icon).tag(option.rawValue)
+                            Picker("Sort by", selection: $sortField) {
+                                ForEach(FileSortField.allCases, id: \.rawValue) { field in
+                                    Label(field.label, systemImage: field.icon).tag(field.rawValue)
                                 }
+                            }
+                            .pickerStyle(.inline)
+
+                            Divider()
+
+                            Picker("Direction", selection: $sortAscending) {
+                                Label("Ascending", systemImage: "arrow.up").tag(true)
+                                Label("Descending", systemImage: "arrow.down").tag(false)
                             }
                             .pickerStyle(.inline)
                         } label: {
                             Label("Sort", systemImage: "arrow.up.arrow.down")
-                                .symbolVariant(sortOption != "-created" ? .fill : .none)
+                                .symbolVariant((sortField != "created" || sortAscending) ? .fill : .none)
                         }
                     }
                     Menu {
+                        Toggle(isOn: Binding(
+                            get: { selectedMimeTypes.isEmpty },
+                            set: { isAll in if isAll { selectedMimeTypes.removeAll() } }
+                        )) {
+                            Label("All", systemImage: "doc.on.doc")
+                        }
+                        Divider()
                         ForEach(MimeTypeFilter.allCases.filter { $0 != .all }, id: \.rawValue) { filter in
                             Toggle(isOn: Binding(
                                 get: { selectedMimeTypes.contains(filter) },
@@ -716,14 +738,6 @@ struct FileListView: View {
                                 }
                             )) {
                                 Label(filter.label, systemImage: filter.icon)
-                            }
-                        }
-                        if !selectedMimeTypes.isEmpty {
-                            Divider()
-                            Button(role: .destructive) {
-                                selectedMimeTypes.removeAll()
-                            } label: {
-                                Label("Clear", systemImage: "xmark")
                             }
                         }
                     } label: {
@@ -879,7 +893,13 @@ struct FileListView: View {
                 checkForDeepLinkTarget()
             }
         }
-        .onChange(of: sortOption) { _, _ in
+        .onChange(of: sortField) { _, _ in
+            Task { await refreshFiles() }
+        }
+        .onChange(of: sortAscending) { _, _ in
+            Task { await refreshFiles() }
+        }
+        .onChange(of: selectedMimeTypes) { _, _ in
             Task { await refreshFiles() }
         }
     }
@@ -1124,7 +1144,7 @@ struct FileListView: View {
         do {
             // Superuser with no user selected means "all users"; backend expects user=0 for that case
             let effectiveFilterUserID = filterUserID ?? (serverInstance.superUser ? 0 : nil)
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterMime: nil, ordering: sessionManager.supportsOrdering ? sortOption : nil)
+            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil)
             if append {
                 // Only append new files that aren't already in the list
                 let newFiles = filesResponse.files.filter { newFile in
@@ -1281,71 +1301,66 @@ struct FileGridItemView: View {
     }
 }
 
-enum FileSortOption: String, CaseIterable {
-    case newestFirst = "-created"
-    case oldestFirst = "created"
-    case nameAZ = "name"
-    case nameZA = "-name"
-    case largestFirst = "-size"
-    case smallestFirst = "size"
-    case exifDateNewest = "-exif_date"
-    case exifDateOldest = "exif_date"
+enum FileSortField: String, CaseIterable {
+    case dateUploaded = "created"
+    case name = "name"
+    case size = "size"
+    case dateCaptured = "exif_date"
 
     var label: String {
         switch self {
-        case .newestFirst:    "Newest First"
-        case .oldestFirst:    "Oldest First"
-        case .nameAZ:         "Name A–Z"
-        case .nameZA:         "Name Z–A"
-        case .largestFirst:   "Largest First"
-        case .smallestFirst:  "Smallest First"
-        case .exifDateNewest: "Photo Date (Newest)"
-        case .exifDateOldest: "Photo Date (Oldest)"
+        case .dateUploaded: "Upload Date"
+        case .name:         "Name"
+        case .size:         "Size"
+        case .dateCaptured: "Taken"
         }
     }
 
     var icon: String {
         switch self {
-        case .newestFirst:    "calendar.badge.clock"
-        case .oldestFirst:    "calendar"
-        case .nameAZ:         "a.square.fill"
-        case .nameZA:         "z.square.fill"
-        case .largestFirst:   "arrow.up.square.fill"
-        case .smallestFirst:  "arrow.down.square.fill"
-        case .exifDateNewest: "camera.fill"
-        case .exifDateOldest: "camera"
+        case .dateUploaded: "calendar.badge.clock"
+        case .name:         "character.cursor.ibeam"
+        case .size:         "internaldrive"
+        case .dateCaptured: "camera"
         }
     }
 }
 
 enum MimeTypeFilter: String, CaseIterable {
-    case all = ""
-    case image = "image/"
-    case video = "video/"
-    case audio = "audio/"
-    case text = "text/"
-    case document = "application/"
+    case all        = "all"
+    case image      = "image"
+    case video      = "video"
+    case audio      = "audio"
+    case text       = "text"
+    case document   = "document"
+    case archive    = "archive"
+    case executable = "executable"
 
     var label: String {
         switch self {
-        case .all: "All Files"
-        case .image: "Images"
-        case .video: "Videos"
-        case .audio: "Audio"
-        case .text: "Text"
-        case .document: "Documents"
+        case .all:        "All"
+        case .image:      "Images"
+        case .video:      "Videos"
+        case .audio:      "Audio"
+        case .text:       "Text / Code"
+        case .document:   "Documents"
+        case .archive:    "Archives"
+        case .executable: "Executables"
         }
     }
 
     var icon: String {
         switch self {
-        case .all:      "doc.on.doc"
-        case .image:    "photo"
-        case .video:    "play.rectangle"
-        case .audio:    "waveform"
-        case .text:     "doc.plaintext"
-        case .document: "doc.richtext"
+        case .all:        "doc.on.doc"
+        case .image:      "photo"
+        case .video:      "play.rectangle"
+        case .audio:      "waveform"
+        case .text:       "doc.plaintext"
+        case .document:   "doc.richtext"
+        case .archive:    "archivebox"
+        case .executable: "cpu"
         }
     }
+
 }
 
