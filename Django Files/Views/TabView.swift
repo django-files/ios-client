@@ -17,10 +17,8 @@ struct TabViewWindow: View {
     
     @State private var showingServerSelector = false
     @Query private var sessions: [DjangoFilesSession]
-    @State private var needsRefresh = false
     @State private var serverChangeRefreshTrigger = UUID()
-    @State private var serverNeedsAuth: DjangoFilesSession?
-    
+
     @State private var showLoginSheet = false
     @State private var filesNavigationPath = NavigationPath()
     @State private var albumsNavigationPath = NavigationPath()
@@ -164,7 +162,6 @@ struct TabViewWindow: View {
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         
         // Connect to WebSocket
-        print("TabViewWindow: Connecting to WebSocket for session \(session.url)")
         _ = api.connectToWebSocket()
     }
 }
@@ -202,13 +199,10 @@ struct ServerSelector: View {
     @State private var editSession: DjangoFilesSession?
     @State private var authSession: DjangoFilesSession?
     
-    @State private var navigationPath = NavigationPath()
-    
     @Query private var items: [DjangoFilesSession]
-    
+
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            List(selection: $selectedSession) {
+        List(selection: $selectedSession) {
                 ForEach(items, id: \.self) { item in
                     HStack(spacing: 0) {
                         Label("", systemImage: item.defaultSession ? "star.fill" : "")
@@ -286,9 +280,6 @@ struct ServerSelector: View {
                 }
             }
             .navigationTitle("Server List")
-        }
-
-
     }
     
     

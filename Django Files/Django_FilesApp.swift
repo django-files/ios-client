@@ -104,7 +104,6 @@ struct Django_FilesApp: App {
     @State private var pendingAuthSignature: String? = nil
 
     init() {
-        // print("📱 Setting up WebSocketToastObserver")
         let _ = WebSocketToastObserver.shared
 
         // Handle reset arguments
