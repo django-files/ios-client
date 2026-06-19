@@ -81,6 +81,7 @@ struct Django_FilesApp: App {
     @StateObject private var streamStateManager = StreamStateManager()
     @StateObject private var albumStateManager = AlbumStateManager()
     @StateObject private var uploadProgressManager = UploadProgressManager()
+    @StateObject private var biometricLockManager = BiometricLockManager()
     @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -190,9 +191,22 @@ struct Django_FilesApp: App {
             .environmentObject(albumStateManager)
             .environmentObject(uploadProgressManager)
             .environmentObject(sessionManager)
+            .environmentObject(biometricLockManager)
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     DFAnalytics.logAppOpen()
+                    biometricLockManager.checkAndLockIfNeeded()
+                    if biometricLockManager.isLocked {
+                        Task { await biometricLockManager.authenticate() }
+                    }
+                } else if newPhase == .background {
+                    biometricLockManager.recordBackgrounded()
+                }
+            }
+            .overlay {
+                if biometricLockManager.isLocked {
+                    BiometricLockView()
+                        .environmentObject(biometricLockManager)
                 }
             }
             .onOpenURL { url in

@@ -234,6 +234,7 @@ struct ServerSelector: View {
                                     authSession = item
                                 } else {
                                     selectedSession = item
+                                    dismiss()
                                 }
                             }
                     }
@@ -243,6 +244,7 @@ struct ServerSelector: View {
                 if !session.auth {
                     LoginView(selectedServer: session, onLoginSuccess:{
                         selectedSession = session
+                        dismiss()
                     })
                 }
             }

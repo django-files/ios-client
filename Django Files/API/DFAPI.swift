@@ -46,6 +46,7 @@ struct DFAPI {
         case user = "user/"
         case users = "users/"
         case version = "version/"
+        case auth_session = "auth/session/"
     }
     
     let url: URL
@@ -81,12 +82,27 @@ struct DFAPI {
         selectedServer.auth = isAuthenticated
     }
 
+    // Verify token is still valid by hitting a neutral endpoint with only Bearer auth.
+    // Called without selectedServer to prevent recursion through handleError.
+    private func verifyToken() async -> Bool {
+        do {
+            _ = try await makeAPIRequest(path: getAPIPath(.user), parameters: [:], method: .get)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func handleError(_ status: HTTPResponse.Status, data: Data?, selectedServer: DjangoFilesSession? = nil) async -> DFAPIError {
         print("Server response status code: \(status)")
 
-        // Check for 401 Unauthorized and update session auth status
+        // On 401, verify the token is actually invalid before invalidating the session.
+        // Cookie expiry in WebViews can cause spurious 401s even when the Bearer token is valid.
         if status.code == 401, let server = selectedServer {
-            await updateSessionAuth(server, false)
+            let tokenValid = await verifyToken()
+            if !tokenValid {
+                await updateSessionAuth(server, false)
+            }
         }
 
         guard let data = data else { return .httpStatus(status.code) }
@@ -263,16 +279,6 @@ struct DFAPI {
     }
 
     @MainActor
-    private func updateSessionCookies(_ selectedServer: DjangoFilesSession, _ cookies: [HTTPCookie]) {
-        selectedServer.cookies = cookies
-    }
-
-    @MainActor
-    private func updateSessionToken(_ selectedServer: DjangoFilesSession, _ token: String) {
-        selectedServer.token = token
-    }
-
-    @MainActor
     private func handleAuthResponse(response: HTTPURLResponse, url: URL, selectedServer: DjangoFilesSession, token: String) {
         // Extract cookies from response
         if let headerFields = response.allHeaderFields as? [String: String] {
@@ -286,6 +292,29 @@ struct DFAPI {
         
         // Update the token in the server object
         selectedServer.token = token
+    }
+
+    // Exchanges the current Bearer token for a fresh Django session cookie.
+    // Returns false if the endpoint is unavailable (old backend) or returns any non-200 status.
+    public func refreshWebSession(selectedServer: DjangoFilesSession) async -> Bool {
+        var urlRequest = URLRequest(url: encodeParametersIntoURL(path: getAPIPath(.auth_session), parameters: [:]))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(token, forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")
+
+        let configuration = URLSessionConfiguration.default
+        let urlSession = URLSession(configuration: configuration)
+        do {
+            let (_, response) = try await urlSession.data(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return false
+            }
+            await handleAuthResponse(response: httpResponse, url: urlRequest.url!, selectedServer: selectedServer, token: token)
+            return true
+        } catch {
+            print("Session refresh failed: \(error)")
+            return false
+        }
     }
 
     public func localLogin(username: String, password: String, selectedServer: DjangoFilesSession) async -> Bool {

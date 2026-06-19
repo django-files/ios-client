@@ -2,11 +2,9 @@ import SwiftUI
 
 struct FileContextMenuButtons: View {
 
-    var isPreviewing: Bool = false
     var isPrivate: Bool = false
     var isOwner: Bool = true
 
-    var onPreview: () -> Void = {}
     var onCopyShareLink: () -> Void = {}
     var onCopyRawLink: () -> Void = {}
     var openRawBrowser: () -> Void = {}
@@ -20,14 +18,6 @@ struct FileContextMenuButtons: View {
 
     var body: some View {
         Group {
-            if !isPreviewing {
-                Button {
-                    onPreview()
-                } label: {
-                    Label("Open Preview", systemImage: "arrow.up.forward.app")
-                }
-
-            }
             Button {
                 onCopyShareLink()
                 notifyClipboard()
@@ -41,12 +31,11 @@ struct FileContextMenuButtons: View {
             } label: {
                 Label("Copy Raw Link", systemImage: "link.circle")
             }
-//            }
 
             Button {
                 openRawBrowser()
             } label: {
-                Label("Open Raw in Browser", systemImage: "globe")
+                Label("Open Raw", systemImage: "globe")
             }
 
             if isOwner {

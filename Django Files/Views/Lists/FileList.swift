@@ -485,7 +485,7 @@ struct FileListView: View {
                     .buttonStyle(.plain)
                     .contextMenu {
                         if !isSelectMode {
-                            fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                         }
                     }
                     .onAppear {
@@ -554,7 +554,7 @@ struct FileListView: View {
                                     serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
                                 )
                                 .contextMenu {
-                                    fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                    fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                 } preview: {
                                     CachedAsyncImage(url: thumbnailURL(file: file)) { image in
                                         image
@@ -573,7 +573,7 @@ struct FileListView: View {
                                 )
                                 .contextMenu {
                                     if !isSelectMode {
-                                        fileContextMenu(for: file, isPreviewing: false, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                        fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                     }
                                 }
                             }
@@ -1006,17 +1006,12 @@ struct FileListView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
+    private func fileContextMenu(for file: DFFile, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
         let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
         return FileContextMenuButtons(
-            isPreviewing: isPreviewing,
             isPrivate: isPrivate,
             isOwner: isOwner,
-            onPreview: {
-                selectedFile = file
-                showingPreview = true
-            },
             onCopyShareLink: {
                 UIPasteboard.general.string = file.url
             },

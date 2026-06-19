@@ -7,6 +7,7 @@ import SwiftUI
 import FirebaseCrashlytics
 
 struct PrivacySettingsView: View {
+    @EnvironmentObject private var lockManager: BiometricLockManager
     @AppStorage("firebaseAnalyticsEnabled") private var firebaseAnalyticsEnabled = true
     @AppStorage("crashlyticsEnabled") private var crashlyticsEnabled = true
     @State private var showAnalyticsAlert = false
@@ -16,6 +17,43 @@ struct PrivacySettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { lockManager.isEnabled },
+                    set: { newValue in
+                        Task {
+                            if newValue {
+                                let success = await lockManager.enable()
+                                if !success {
+                                    // Auth failed or unavailable — leave toggle off
+                                }
+                            } else {
+                                lockManager.disable()
+                            }
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading) {
+                        Text("Require Face ID / Touch ID")
+                        Text("Lock the app when it goes to the background")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if lockManager.isEnabled {
+                    Picker("Lock After", selection: $lockManager.lockTimeout) {
+                        Text("Immediately").tag(0)
+                        Text("1 minute").tag(60)
+                        Text("5 minutes").tag(300)
+                        Text("15 minutes").tag(900)
+                        Text("1 hour").tag(3600)
+                    }
+                }
+            } header: {
+                Text("Security")
+            }
+
             Section {
                 Toggle(isOn: Binding(
                     get: { firebaseAnalyticsEnabled },
@@ -86,5 +124,6 @@ struct PrivacySettingsView: View {
 #Preview {
     NavigationStack {
         PrivacySettingsView()
+            .environmentObject(BiometricLockManager())
     }
 }
