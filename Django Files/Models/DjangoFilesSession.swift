@@ -43,10 +43,6 @@ public final class DjangoFilesSession: Equatable {
         self.token = token
     }
     
-    func checkSession() -> Bool {
-        return true
-    }
-    
     public static func == (lhs: DjangoFilesSession, rhs: DjangoFilesSession) -> Bool{
         return lhs.url == rhs.url
     }

@@ -106,11 +106,43 @@ class AuthController: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
     
     public func applyCookies(from session: DjangoFilesSession) {
         if URL(string: session.url) != nil {} else { return }
-        
+
         // Apply cookies to the WebView's data store
         let dataStore = webView.configuration.websiteDataStore
         for cookie in session.cookies {
             dataStore.httpCookieStore.setCookie(cookie)
+        }
+    }
+
+    // Removes stale cookies for the session's domain, injects fresh ones, then reloads.
+    // Uses HTTPCookieStorage.shared as the authoritative source — URLSession.default always
+    // writes there on login, so this works even if session.cookies is empty.
+    public func refreshCookiesAndReload(from session: DjangoFilesSession) {
+        guard let sessionURL = URL(string: session.url), let host = sessionURL.host else {
+            reset()
+            return
+        }
+        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+        cookieStore.getAllCookies { existing in
+            let stale = existing.filter {
+                $0.domain.hasSuffix(host) || host.hasSuffix($0.domain.trimmingCharacters(in: ["."])  )
+            }
+            let deleteGroup = DispatchGroup()
+            for cookie in stale {
+                deleteGroup.enter()
+                cookieStore.delete(cookie) { deleteGroup.leave() }
+            }
+            deleteGroup.notify(queue: .main) {
+                let fresh = HTTPCookieStorage.shared.cookies(for: sessionURL) ?? []
+                guard !fresh.isEmpty else { self.reset(); return }
+                var remaining = fresh.count
+                for cookie in fresh {
+                    cookieStore.setCookie(cookie) {
+                        remaining -= 1
+                        if remaining == 0 { self.reset() }
+                    }
+                }
+            }
         }
     }
     

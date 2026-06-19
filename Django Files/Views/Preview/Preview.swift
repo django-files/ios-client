@@ -23,10 +23,9 @@ struct ContentPreview: View {
     @State private var error: Error?
     @State private var imageScale: CGFloat = 1.0
     @State private var lastImageScale: CGFloat = 1.0
-    @State private var isPreviewing: Bool = false
     @State private var fileDetails: DFFile?
     @State private var videoPlayRequested = false
-    
+
     var body: some View {
         Group {
             contentView
@@ -35,11 +34,9 @@ struct ContentPreview: View {
 //            print("📱 ContentPreview: View appeared - URL: \(fileURL)")
             loadContent()
             loadFileDetails()
-            isPreviewing = true
         }
         .onDisappear {
 //            print("👋 ContentPreview: View disappeared")
-            isPreviewing = false
         }
     }
 
@@ -727,7 +724,7 @@ struct FilePreviewView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if !isDeepLinkPreview {
                         Menu {
-                            fileContextMenu(for: file, isPreviewing: true, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                         } label: {
                             Image(systemName: "ellipsis")
                                 .foregroundColor(Color.white)
@@ -915,14 +912,10 @@ struct FilePreviewView: View {
         }
     }
     
-    private func fileContextMenu(for file: DFFile, isPreviewing: Bool, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
+    private func fileContextMenu(for file: DFFile, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         return FileContextMenuButtons(
-            isPreviewing: isPreviewing,
             isPrivate: isPrivate,
             isOwner: isOwner,
-            onPreview: {
-                // No-op since we're already previewing
-            },
             onCopyShareLink: {
                 UIPasteboard.general.string = file.url
             },
