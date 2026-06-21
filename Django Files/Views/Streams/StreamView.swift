@@ -173,6 +173,13 @@ struct StreamView: View {
     @State private var streamStartedAt: Date?
     @State private var streamEndedAt: Date?
 
+    // HLS signed-cookie refresh — `/api/stream/hls-token/<name>/` mints the
+    // `hls_sig`/`hls_exp` cookies nginx requires. We refresh at roughly half
+    // the cookie's remaining TTL so long viewing sessions don't get dropped.
+    @State private var hlsRefreshTimer: Timer?
+    private static let hlsRefreshFallback: TimeInterval = 30 * 60
+    private static let hlsRefreshFloor: TimeInterval = 60
+
     // Chat
     @StateObject private var chatManager: StreamChatManager
     @State private var inputText: String = ""
@@ -871,7 +878,8 @@ struct StreamView: View {
             streamEndedAt = s.endedAt
         }
 
-        setupHLSPlayer()
+        isVideoLoading = true
+        Task { await primeHLSCookiesAndPlay() }
         chatManager.connect()
         startViewerCountPolling()
         resetControlsTimer()
@@ -890,20 +898,59 @@ struct StreamView: View {
         viewerRefreshTimer = nil
         controlsFadeTimer?.invalidate()
         controlsFadeTimer = nil
+        hlsRefreshTimer?.invalidate()
+        hlsRefreshTimer = nil
     }
 
     // MARK: - HLS Setup
 
+    /// Fetches HLS signed cookies, then constructs the player. Always sets up
+    /// the player even if the cookie call failed — older backends serve `/hls/`
+    /// unsigned (the call 404s with `.unsupported`), and on a supported backend
+    /// the AVPlayer error path will surface "Stream offline" exactly as before.
+    private func primeHLSCookiesAndPlay() async {
+        let api = DFAPI(url: serverURL, token: token)
+        let result = await api.refreshHLSCookies(name: streamName, password: password)
+        await MainActor.run {
+            setupHLSPlayer()
+            scheduleHLSRefresh(result: result)
+        }
+    }
+
+    private func scheduleHLSRefresh(result: DFAPI.HLSCookieResult) {
+        hlsRefreshTimer?.invalidate()
+        let delay: TimeInterval
+        switch result {
+        case .unsupported:
+            // Old backend with unsigned `/hls/` — nothing to refresh, ever.
+            return
+        case .ok(let exp):
+            let remaining = max(0, Double(exp) - Date().timeIntervalSince1970)
+            delay = min(Self.hlsRefreshFallback, max(Self.hlsRefreshFloor, remaining / 2))
+        case .failure:
+            delay = Self.hlsRefreshFallback
+        }
+        hlsRefreshTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            Task {
+                let api = DFAPI(url: serverURL, token: token)
+                let next = await api.refreshHLSCookies(name: streamName, password: password)
+                await MainActor.run { scheduleHLSRefresh(result: next) }
+            }
+        }
+    }
+
     private func setupHLSPlayer() {
         let base = serverURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var urlString = "\(base)/hls/\(streamName).m3u8"
-        if let pw = password, !pw.isEmpty,
-           let encoded = pw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            urlString += "?password=\(encoded)"
-        }
+        let urlString = "\(base)/hls/\(streamName).m3u8"
         guard let hlsURL = URL(string: urlString) else { return }
         isVideoLoading = true
-        let item = AVPlayerItem(url: hlsURL)
+        // Pass the matching cookies explicitly. `AVURLAsset` consults
+        // `HTTPCookieStorage.shared` by default, but being explicit avoids
+        // surprises on iOS versions where the asset's network stack uses a
+        // different cookie scope.
+        let cookies = HTTPCookieStorage.shared.cookies(for: hlsURL) ?? []
+        let asset = AVURLAsset(url: hlsURL, options: ["AVURLAssetHTTPCookiesKey": cookies])
+        let item = AVPlayerItem(asset: asset)
         let newPlayer = AVPlayer(playerItem: item)
         // Keep the default (true): AVPlayer buffers before playing and auto-recovers
         // brief network stalls by buffering more. Setting false causes a tight
