@@ -21,7 +21,7 @@ struct DFAPI {
     private static let API_PATH = "/api/"
     
     // Custom User Agent for API requests
-    private static let customUserAgent = "DjangoFiles iOS \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")(\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"))"
+    internal static let customUserAgent = "DjangoFiles iOS \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")(\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"))"
 
     // Add a shared WebSocket instance
     internal static var sharedWebSocket: DFWebSocket?

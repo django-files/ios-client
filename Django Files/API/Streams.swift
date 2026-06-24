@@ -640,6 +640,91 @@ extension DFAPI {
             return nil
         }
     }
+
+    // MARK: - HLS Signed Cookies
+    //
+    // The backend gates `/hls/*.m3u8` and `/hls/*.ts` behind nginx `secure_link`
+    // cookies (`hls_sig`, `hls_exp`). This endpoint validates the public/private
+    // and password gates server-side, then sets the cookies in the response.
+    //
+    // We deliberately use a `URLSession` backed by `HTTPCookieStorage.shared` so
+    // the cookies persist into the storage that `AVURLAsset` consults when
+    // fetching the manifest and segments. The class-default `apiSession` is
+    // `.ephemeral`, which would silently drop them.
+    //
+    // Auth/password rules (must match django-files):
+    //   - Public stream, no password: anonymous works (no Authorization header).
+    //   - Public stream, password set: pass `?password=…`.
+    //   - Private stream: send `Authorization: <token>` (bare token; the backend
+    //     also accepts `Bearer <token>`).
+    //   - Private + password: both.
+    //
+    // Backwards compatibility: older django-files versions don't expose this
+    // endpoint and serve `/hls/` without any signature check. A 404 here means
+    // "old backend, no cookies needed" — callers should fall through to the
+    // unsigned HLS fetch and skip the refresh loop. Other failures (network,
+    // 401/403) are reported separately so callers can keep retrying.
+    public enum HLSCookieResult {
+        case ok(exp: Int)
+        case unsupported     // endpoint missing — older backend, no signing required
+        case passwordRequired // 403 with `detail: password required` — caller should prompt
+        case failure         // other network error or auth mismatch
+    }
+
+    public func refreshHLSCookies(name: String, password: String? = nil) async -> HLSCookieResult {
+        guard var components = URLComponents(
+            url: url.appendingPathComponent("api/stream/hls-token/\(name)/"),
+            resolvingAgainstBaseURL: false
+        ) else { return .failure }
+        if let pw = password, !pw.isEmpty {
+            components.queryItems = [URLQueryItem(name: "password", value: pw)]
+        }
+        guard let endpoint = components.url else { return .failure }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")
+        if !token.isEmpty {
+            request.setValue(token, forHTTPHeaderField: "Authorization")
+        }
+
+        let config = URLSessionConfiguration.default
+        config.httpCookieStorage = HTTPCookieStorage.shared
+        config.httpCookieAcceptPolicy = .always
+        config.httpShouldSetCookies = true
+        let session = URLSession(configuration: config)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return .failure }
+            if http.statusCode == 404 {
+                return .unsupported
+            }
+            if http.statusCode == 403 {
+                struct HLSTokenError: Decodable { let detail: String? }
+                let detail = (try? JSONDecoder().decode(HLSTokenError.self, from: data))?.detail ?? ""
+                if detail.localizedCaseInsensitiveContains("password") {
+                    return .passwordRequired
+                }
+                return .failure
+            }
+            guard (200..<300).contains(http.statusCode) else { return .failure }
+            // URLSession should have stored the cookies already, but parse from
+            // the response headers as a belt-and-suspenders so we don't depend
+            // on configuration ordering across iOS versions.
+            if let headers = http.allHeaderFields as? [String: String] {
+                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: endpoint)
+                cookies.forEach { HTTPCookieStorage.shared.setCookie($0) }
+            }
+            struct HLSTokenResponse: Decodable { let exp: Int }
+            let exp = try JSONDecoder().decode(HLSTokenResponse.self, from: data).exp
+            return .ok(exp: exp)
+        } catch {
+            print("refreshHLSCookies failed: \(error)")
+            return .failure
+        }
+    }
 }
 
 // MARK: - Slash Commands

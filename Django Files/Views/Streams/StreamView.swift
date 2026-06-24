@@ -155,7 +155,12 @@ struct StreamView: View {
     let streamName: String
     let token: String
     let initialStream: DFStream?
-    var password: String? = nil
+
+    // Mutable password — seeded from the deep-link/init param, updated by the
+    // in-app prompt when the backend reports `password required` / mismatch.
+    @State private var currentPassword: String?
+    @State private var showPasswordPrompt: Bool = false
+    @State private var passwordInput: String = ""
 
     // HLS player
     @State private var player: AVPlayer?
@@ -172,6 +177,13 @@ struct StreamView: View {
     @State private var viewerRefreshTimer: Timer?
     @State private var streamStartedAt: Date?
     @State private var streamEndedAt: Date?
+
+    // HLS signed-cookie refresh — `/api/stream/hls-token/<name>/` mints the
+    // `hls_sig`/`hls_exp` cookies nginx requires. We refresh at roughly half
+    // the cookie's remaining TTL so long viewing sessions don't get dropped.
+    @State private var hlsRefreshTimer: Timer?
+    private static let hlsRefreshFallback: TimeInterval = 30 * 60
+    private static let hlsRefreshFloor: TimeInterval = 60
 
     // Chat
     @StateObject private var chatManager: StreamChatManager
@@ -217,7 +229,7 @@ struct StreamView: View {
         self.streamName = streamName
         self.token = token
         self.initialStream = initialStream
-        self.password = password
+        _currentPassword = State(initialValue: password)
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL, token: token,
             streamName: streamName, isOwner: initialStream?.isOwner ?? false,
@@ -242,6 +254,17 @@ struct StreamView: View {
         }
         .sheet(isPresented: $showViewersList) { viewersSheet }
         .sheet(isPresented: $showingShareSheet) { ShareSheet(url: streamShareURL) }
+        .alert("Password Required", isPresented: $showPasswordPrompt) {
+            SecureField("Password", text: $passwordInput)
+                .textContentType(.password)
+            Button("Unlock") { submitPassword() }
+            Button("Cancel", role: .cancel) {
+                passwordInput = ""
+                isVideoLoading = false
+            }
+        } message: {
+            Text("This stream is password-protected.")
+        }
         // Use item: so the CaptureMode value is captured directly in the closure,
         // avoiding the stale-state bug with isPresented + a separate state variable.
         .fullScreenCover(item: $broadcastMode) { captureMode in
@@ -871,7 +894,8 @@ struct StreamView: View {
             streamEndedAt = s.endedAt
         }
 
-        setupHLSPlayer()
+        isVideoLoading = true
+        Task { await primeHLSCookiesAndPlay() }
         chatManager.connect()
         startViewerCountPolling()
         resetControlsTimer()
@@ -890,20 +914,93 @@ struct StreamView: View {
         viewerRefreshTimer = nil
         controlsFadeTimer?.invalidate()
         controlsFadeTimer = nil
+        hlsRefreshTimer?.invalidate()
+        hlsRefreshTimer = nil
     }
 
     // MARK: - HLS Setup
 
+    /// Fetches HLS signed cookies, then constructs the player. Always sets up
+    /// the player even if the cookie call failed — older backends serve `/hls/`
+    /// unsigned (the call 404s with `.unsupported`), and on a supported backend
+    /// the AVPlayer error path will surface "Stream offline" exactly as before.
+    private func primeHLSCookiesAndPlay() async {
+        let api = DFAPI(url: serverURL, token: token)
+        let suppliedPassword = currentPassword
+        let result = await api.refreshHLSCookies(name: streamName, password: suppliedPassword)
+        await MainActor.run {
+            // If the deep link supplied a wrong password, treat it like a retry
+            // so the user sees a toast explaining why they're being re-prompted.
+            handleHLSResult(result, isRetry: !(suppliedPassword?.isEmpty ?? true))
+        }
+    }
+
+    /// Centralizes UI side-effects of an HLS-token call: starts/refreshes the
+    /// player on success, prompts the viewer on a password failure, and (when
+    /// the failure follows an explicit submission) surfaces a toast.
+    private func handleHLSResult(_ result: DFAPI.HLSCookieResult, isRetry: Bool) {
+        switch result {
+        case .passwordRequired:
+            if isRetry {
+                ToastManager.shared.showToast(message: "Incorrect password")
+            }
+            passwordInput = ""
+            showPasswordPrompt = true
+            isVideoLoading = false
+        case .ok, .unsupported, .failure:
+            if player == nil { setupHLSPlayer() }
+            scheduleHLSRefresh(result: result)
+        }
+    }
+
+    private func submitPassword() {
+        let entered = passwordInput
+        passwordInput = ""
+        showPasswordPrompt = false
+        guard !entered.isEmpty else { return }
+        currentPassword = entered
+        isVideoLoading = true
+        Task {
+            let api = DFAPI(url: serverURL, token: token)
+            let result = await api.refreshHLSCookies(name: streamName, password: entered)
+            await MainActor.run { handleHLSResult(result, isRetry: true) }
+        }
+    }
+
+    private func scheduleHLSRefresh(result: DFAPI.HLSCookieResult) {
+        hlsRefreshTimer?.invalidate()
+        let delay: TimeInterval
+        switch result {
+        case .unsupported:
+            // Old backend with unsigned `/hls/` — nothing to refresh, ever.
+            return
+        case .ok(let exp):
+            let remaining = max(0, Double(exp) - Date().timeIntervalSince1970)
+            delay = min(Self.hlsRefreshFallback, max(Self.hlsRefreshFloor, remaining / 2))
+        case .failure, .passwordRequired:
+            delay = Self.hlsRefreshFallback
+        }
+        hlsRefreshTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            Task {
+                let api = DFAPI(url: serverURL, token: token)
+                let next = await api.refreshHLSCookies(name: streamName, password: currentPassword)
+                await MainActor.run { handleHLSResult(next, isRetry: false) }
+            }
+        }
+    }
+
     private func setupHLSPlayer() {
         let base = serverURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var urlString = "\(base)/hls/\(streamName).m3u8"
-        if let pw = password, !pw.isEmpty,
-           let encoded = pw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            urlString += "?password=\(encoded)"
-        }
+        let urlString = "\(base)/hls/\(streamName).m3u8"
         guard let hlsURL = URL(string: urlString) else { return }
         isVideoLoading = true
-        let item = AVPlayerItem(url: hlsURL)
+        // Pass the matching cookies explicitly. `AVURLAsset` consults
+        // `HTTPCookieStorage.shared` by default, but being explicit avoids
+        // surprises on iOS versions where the asset's network stack uses a
+        // different cookie scope.
+        let cookies = HTTPCookieStorage.shared.cookies(for: hlsURL) ?? []
+        let asset = AVURLAsset(url: hlsURL, options: ["AVURLAssetHTTPCookiesKey": cookies])
+        let item = AVPlayerItem(asset: asset)
         let newPlayer = AVPlayer(playerItem: item)
         // Keep the default (true): AVPlayer buffers before playing and auto-recovers
         // brief network stalls by buffering more. Setting false causes a tight
