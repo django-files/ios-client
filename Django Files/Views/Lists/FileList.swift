@@ -312,6 +312,7 @@ struct FileListView: View {
     @AppStorage("fileListShowingMap") private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
+    @State private var gestureScale: CGFloat = 1.0
 
     @AppStorage("fileListSortField") private var sortField: String = "created"
     @AppStorage("fileListSortAscending") private var sortAscending: Bool = false
@@ -468,7 +469,8 @@ struct FileListView: View {
                     } label: {
                         FileGridItemView(
                             file: file,
-                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!,
+                            showDetails: gridColumnCount <= 5
                         )
                         .contentShape(Rectangle())
                         .overlay(alignment: .topLeading) {
@@ -495,6 +497,7 @@ struct FileListView: View {
                     }
                 }
             }
+            .scaleEffect(x: gestureScale, y: gestureScale, anchor: .top)
 
             if isLoading && hasNextPage {
                 HStack {
@@ -506,12 +509,25 @@ struct FileListView: View {
                 .padding(.vertical, 8)
             }
         }
+        .clipped()
         .refreshable {
             Task {
                 await refreshFiles()
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    gestureScale = max(0.4, min(3.0, value.magnification))
+                }
+                .onEnded { value in
+                    let newCount = max(1, min(10, Int((CGFloat(gridColumnCount) / value.magnification).rounded())))
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        gridColumnCount = newCount
+                        gestureScale = 1.0
+                    }
+                }
+        )
     }
 
     var body: some View {
@@ -1222,6 +1238,7 @@ struct FileListView: View {
 struct FileGridItemView: View {
     let file: DFFile
     let serverURL: URL
+    var showDetails: Bool = true
 
     private var isMedia: Bool {
         file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/")
@@ -1256,13 +1273,15 @@ struct FileGridItemView: View {
                     } else {
                         Color(.systemGray5)
                             .overlay {
-                                Image(systemName: getIcon())
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(.secondary)
+                                if showDetails {
+                                    Image(systemName: getIcon())
+                                        .font(.system(size: 30))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                     }
 
-                    if !isMedia {
+                    if !isMedia && showDetails {
                         Text(file.name)
                             .font(.caption2)
                             .lineLimit(2)
@@ -1278,7 +1297,7 @@ struct FileGridItemView: View {
                 .clipped()
             }
             .overlay(alignment: .bottomTrailing) {
-                if file.private || file.password != "" || file.expr != "" {
+                if showDetails && (file.private || file.password != "" || file.expr != "") {
                     HStack(spacing: 2) {
                         if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
                         if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }

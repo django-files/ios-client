@@ -176,12 +176,6 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text("About")) {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text(versionInfo)
-                            .foregroundColor(.secondary)
-                    }
                     NavigationLink {
                         AboutView(serverVersion: sessionManager.cachedVersion)
                     } label: {
