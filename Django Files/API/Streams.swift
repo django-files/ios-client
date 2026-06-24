@@ -666,8 +666,9 @@ extension DFAPI {
     // 401/403) are reported separately so callers can keep retrying.
     public enum HLSCookieResult {
         case ok(exp: Int)
-        case unsupported  // endpoint missing — older backend, no signing required
-        case failure      // network error or auth/password mismatch on a supported backend
+        case unsupported     // endpoint missing — older backend, no signing required
+        case passwordRequired // 403 with `detail: password required` — caller should prompt
+        case failure         // other network error or auth mismatch
     }
 
     public func refreshHLSCookies(name: String, password: String? = nil) async -> HLSCookieResult {
@@ -699,6 +700,14 @@ extension DFAPI {
             guard let http = response as? HTTPURLResponse else { return .failure }
             if http.statusCode == 404 {
                 return .unsupported
+            }
+            if http.statusCode == 403 {
+                struct HLSTokenError: Decodable { let detail: String? }
+                let detail = (try? JSONDecoder().decode(HLSTokenError.self, from: data))?.detail ?? ""
+                if detail.localizedCaseInsensitiveContains("password") {
+                    return .passwordRequired
+                }
+                return .failure
             }
             guard (200..<300).contains(http.statusCode) else { return .failure }
             // URLSession should have stored the cookies already, but parse from

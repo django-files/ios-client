@@ -155,7 +155,12 @@ struct StreamView: View {
     let streamName: String
     let token: String
     let initialStream: DFStream?
-    var password: String? = nil
+
+    // Mutable password — seeded from the deep-link/init param, updated by the
+    // in-app prompt when the backend reports `password required` / mismatch.
+    @State private var currentPassword: String?
+    @State private var showPasswordPrompt: Bool = false
+    @State private var passwordInput: String = ""
 
     // HLS player
     @State private var player: AVPlayer?
@@ -224,7 +229,7 @@ struct StreamView: View {
         self.streamName = streamName
         self.token = token
         self.initialStream = initialStream
-        self.password = password
+        _currentPassword = State(initialValue: password)
         _chatManager = StateObject(wrappedValue: StreamChatManager(
             serverURL: serverURL, token: token,
             streamName: streamName, isOwner: initialStream?.isOwner ?? false,
@@ -249,6 +254,17 @@ struct StreamView: View {
         }
         .sheet(isPresented: $showViewersList) { viewersSheet }
         .sheet(isPresented: $showingShareSheet) { ShareSheet(url: streamShareURL) }
+        .alert("Password Required", isPresented: $showPasswordPrompt) {
+            SecureField("Password", text: $passwordInput)
+                .textContentType(.password)
+            Button("Unlock") { submitPassword() }
+            Button("Cancel", role: .cancel) {
+                passwordInput = ""
+                isVideoLoading = false
+            }
+        } message: {
+            Text("This stream is password-protected.")
+        }
         // Use item: so the CaptureMode value is captured directly in the closure,
         // avoiding the stale-state bug with isPresented + a separate state variable.
         .fullScreenCover(item: $broadcastMode) { captureMode in
@@ -910,10 +926,44 @@ struct StreamView: View {
     /// the AVPlayer error path will surface "Stream offline" exactly as before.
     private func primeHLSCookiesAndPlay() async {
         let api = DFAPI(url: serverURL, token: token)
-        let result = await api.refreshHLSCookies(name: streamName, password: password)
+        let suppliedPassword = currentPassword
+        let result = await api.refreshHLSCookies(name: streamName, password: suppliedPassword)
         await MainActor.run {
-            setupHLSPlayer()
+            // If the deep link supplied a wrong password, treat it like a retry
+            // so the user sees a toast explaining why they're being re-prompted.
+            handleHLSResult(result, isRetry: !(suppliedPassword?.isEmpty ?? true))
+        }
+    }
+
+    /// Centralizes UI side-effects of an HLS-token call: starts/refreshes the
+    /// player on success, prompts the viewer on a password failure, and (when
+    /// the failure follows an explicit submission) surfaces a toast.
+    private func handleHLSResult(_ result: DFAPI.HLSCookieResult, isRetry: Bool) {
+        switch result {
+        case .passwordRequired:
+            if isRetry {
+                ToastManager.shared.showToast(message: "Incorrect password")
+            }
+            passwordInput = ""
+            showPasswordPrompt = true
+            isVideoLoading = false
+        case .ok, .unsupported, .failure:
+            if player == nil { setupHLSPlayer() }
             scheduleHLSRefresh(result: result)
+        }
+    }
+
+    private func submitPassword() {
+        let entered = passwordInput
+        passwordInput = ""
+        showPasswordPrompt = false
+        guard !entered.isEmpty else { return }
+        currentPassword = entered
+        isVideoLoading = true
+        Task {
+            let api = DFAPI(url: serverURL, token: token)
+            let result = await api.refreshHLSCookies(name: streamName, password: entered)
+            await MainActor.run { handleHLSResult(result, isRetry: true) }
         }
     }
 
@@ -927,14 +977,14 @@ struct StreamView: View {
         case .ok(let exp):
             let remaining = max(0, Double(exp) - Date().timeIntervalSince1970)
             delay = min(Self.hlsRefreshFallback, max(Self.hlsRefreshFloor, remaining / 2))
-        case .failure:
+        case .failure, .passwordRequired:
             delay = Self.hlsRefreshFallback
         }
         hlsRefreshTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             Task {
                 let api = DFAPI(url: serverURL, token: token)
-                let next = await api.refreshHLSCookies(name: streamName, password: password)
-                await MainActor.run { scheduleHLSRefresh(result: next) }
+                let next = await api.refreshHLSCookies(name: streamName, password: currentPassword)
+                await MainActor.run { handleHLSResult(next, isRetry: false) }
             }
         }
     }
