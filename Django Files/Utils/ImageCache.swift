@@ -13,15 +13,31 @@ class ImageCache {
     private let cache = NSCache<NSString, UIImage>()
     private let contentCache = NSCache<NSString, NSData>()
 
+    // Disk-backed session: thumbnails survive app restarts and memory pressure evictions.
+    static let thumbnailSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 200 * 1024 * 1024,
+            diskPath: "df_thumbnails"
+        )
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        return URLSession(configuration: config)
+    }()
+
     private init() {
         cache.countLimit = 500
-        cache.totalCostLimit = 50 * 1024 * 1024  // 50 MB
+        // Scale-factor-aware cost limit: retina devices use 4× the pixel bytes of logical size.
+        cache.totalCostLimit = 100 * 1024 * 1024  // 100 MB
         contentCache.countLimit = 100
         contentCache.totalCostLimit = 100 * 1024 * 1024  // 100 MB
     }
 
     func set(_ image: UIImage, for key: String) {
-        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        // Use actual pixel bytes so NSCache evicts accurately on retina displays.
+        let scale = image.scale
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height }
+            ?? Int(image.size.width * image.size.height * scale * scale * 4)
         cache.setObject(image, forKey: key as NSString, cost: cost)
     }
 
@@ -36,9 +52,22 @@ class ImageCache {
     func getContent(for key: String) -> Data? {
         return contentCache.object(forKey: key as NSString) as Data?
     }
+
+    /// Combined disk cache bytes (URLCache) + best-effort memory cache estimate.
+    var totalCacheBytes: Int {
+        let disk = Self.thumbnailSession.configuration.urlCache?.currentDiskUsage ?? 0
+        let mem  = Self.thumbnailSession.configuration.urlCache?.currentMemoryUsage ?? 0
+        return disk + mem
+    }
+
+    func clearAll() {
+        cache.removeAllObjects()
+        contentCache.removeAllObjects()
+        Self.thumbnailSession.configuration.urlCache?.removeAllCachedResponses()
+    }
 }
 
-/// Drop-in replacement for AsyncImage with an in-memory NSCache layer.
+/// Drop-in replacement for AsyncImage with in-memory NSCache + disk URLCache.
 ///
 /// Uses `.task(id: url)` for correct structured-concurrency lifecycle:
 /// - Automatically cancelled when the view disappears or the url changes.
@@ -84,14 +113,16 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             cachedImage = hit
             return
         }
-        // Not cached — show placeholder while downloading.
         cachedImage = nil
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await ImageCache.thumbnailSession.data(from: url)
             guard !Task.isCancelled else { return }
             guard (response as? HTTPURLResponse).map({ $0.statusCode < 300 }) ?? true else { return }
-            // UIImage init is fast for thumbnails; running on the main actor is acceptable.
-            guard let image = UIImage(data: data) else { return }
+            // Decode + GPU-prep on a background thread so the main actor never stalls.
+            let image = await Task.detached(priority: .userInitiated) {
+                UIImage(data: data)?.preparingForDisplay()
+            }.value
+            guard !Task.isCancelled, let image else { return }
             ImageCache.shared.set(image, for: key)
             cachedImage = image
         } catch {

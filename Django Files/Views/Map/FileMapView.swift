@@ -214,13 +214,39 @@ struct FileMapView: View {
 
     // MARK: Map content
 
+    private func isSameLocationCluster(_ cluster: MapCluster) -> Bool {
+        let lats = cluster.files.map { $0.coordinate.latitude }
+        let lons = cluster.files.map { $0.coordinate.longitude }
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return true }
+        return (maxLat - minLat) < 0.001 && (maxLon - minLon) < 0.001
+    }
+
     @ViewBuilder
     private func pinView(for cluster: MapCluster) -> some View {
         if cluster.isCluster {
+            let sameLocation = isSameLocationCluster(cluster)
+            // Build media pairs keeping thumbnailURLs and mediaFiles index-aligned.
+            let mediaPairs = cluster.files
+                .filter { $0.file.mime.hasPrefix("image/") || $0.file.mime.hasPrefix("video/") }
+                .compactMap { gf -> (DFFile, URL)? in
+                    guard let url = thumbURL(for: gf.file) else { return nil }
+                    return (gf.file, url)
+                }
+            let thumbURLs   = mediaPairs.map { $0.1 }
+            let mediaFiles  = mediaPairs.map { $0.0 }
             MapClusterPin(
-                representativeThumbURL: cluster.representative.flatMap { thumbURL(for: $0.file) },
+                thumbnailURLs: thumbURLs,
+                mediaFiles: mediaFiles,
+                files: cluster.files.map { $0.file },
                 count: cluster.files.count,
-                onTap: { zoomToCluster(cluster) }
+                isSameLocation: sameLocation,
+                onZoom: { zoomToCluster(cluster) },
+                onViewFiles: {
+                    clusterPreviewFiles = cluster.files.map { $0.file }
+                    clusterPreviewIndex = 0
+                    showingClusterPreview = true
+                }
             )
         } else if let geo = cluster.files.first {
             FileMapPin(
@@ -484,15 +510,24 @@ struct FileMapView: View {
 // MARK: - Cluster pin
 
 struct MapClusterPin: View {
-    let representativeThumbURL: URL?
+    let thumbnailURLs: [URL]
+    let mediaFiles: [DFFile]
+    let files: [DFFile]
     let count: Int
-    let onTap: () -> Void
+    let isSameLocation: Bool
+    let onZoom: () -> Void
+    let onViewFiles: () -> Void
+
+    @State private var showingCallout = false
 
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if isSameLocation { showingCallout = true }
+            else { onZoom() }
+        }) {
             ZStack(alignment: .topTrailing) {
                 Group {
-                    if let url = representativeThumbURL {
+                    if let url = thumbnailURLs.first {
                         CachedAsyncImage(url: url) { img in
                             img.resizable().scaledToFill()
                         } placeholder: {
@@ -508,8 +543,11 @@ struct MapClusterPin: View {
                     }
                 }
                 .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white, lineWidth: 2))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(
+                    showingCallout ? Color.accentColor : .white,
+                    lineWidth: showingCallout ? 3 : 2
+                ))
 
                 Text(count < 100 ? "\(count)" : "99+")
                     .font(.system(size: 11, weight: .bold))
@@ -519,9 +557,109 @@ struct MapClusterPin: View {
                     .shadow(color: .black.opacity(0.3), radius: 2)
                     .offset(x: 8, y: -8)
             }
-            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            .shadow(color: .black.opacity(showingCallout ? 0.5 : 0.3),
+                    radius: showingCallout ? 6 : 4, y: 2)
+            .scaleEffect(showingCallout ? 1.1 : 1.0)
+            .animation(.spring(response: 0.2), value: showingCallout)
         }
         .buttonStyle(.plain)
+        .popover(isPresented: $showingCallout, arrowEdge: .bottom) {
+            ClusterMapCallout(thumbnailURLs: thumbnailURLs, mediaFiles: mediaFiles, totalCount: count) {
+                showingCallout = false
+                onViewFiles()
+            }
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
+// MARK: - Cluster callout
+
+struct ClusterMapCallout: View {
+    let thumbnailURLs: [URL]
+    let mediaFiles: [DFFile]   // index-aligned with thumbnailURLs
+    let totalCount: Int
+    let onViewFiles: () -> Void
+
+    @State private var currentIndex: Int = 0
+
+    private var displayURLs: [URL] { Array(thumbnailURLs.prefix(8)) }
+
+    private var location: String? { mediaFiles.compactMap { $0.gpsArea }.first }
+
+    private var dateRange: String {
+        let dates = mediaFiles.map { $0.formattedDate() }
+        guard let first = dates.first else { return "" }
+        guard let last = dates.last, last != first else { return first }
+        return "\(first) – \(last)"
+    }
+
+    private var avgElevation: Double? {
+        let alts = mediaFiles.compactMap { $0.gpsAltitude }
+        guard !alts.isEmpty else { return nil }
+        return alts.reduce(0, +) / Double(alts.count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onViewFiles) {
+                ZStack {
+                    if displayURLs.isEmpty {
+                        Color(.systemGray5).overlay {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 32)).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        ForEach(Array(displayURLs.enumerated()), id: \.offset) { idx, url in
+                            CachedAsyncImage(url: url) { img in
+                                img.resizable().scaledToFill()
+                            } placeholder: {
+                                Color(.systemGray5)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 150)
+                            .clipped()
+                            .opacity(currentIndex == idx ? 1 : 0)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .clipped()
+            }
+            .buttonStyle(.plain)
+            .task {
+                guard displayURLs.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    guard !Task.isCancelled else { break }
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        currentIndex = (currentIndex + 1) % displayURLs.count
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                if let loc = location {
+                    Label(loc, systemImage: "mappin.and.ellipse")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                HStack {
+                    Text(dateRange)
+                        .font(.caption2).foregroundStyle(.tertiary)
+                    Spacer()
+                    if let alt = avgElevation {
+                        Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Text("\(totalCount) \(totalCount == 1 ? "file" : "files")")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(14)
+        }
+        .frame(width: 280)
     }
 }
 
@@ -554,9 +692,9 @@ struct FileMapPin: View {
                         Color(.systemGray5)
                     }
                     .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
                 } else {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 7)
                         .fill(Color.accentColor.opacity(0.15))
                         .frame(width: 44, height: 44)
                         .overlay {
@@ -566,7 +704,7 @@ struct FileMapPin: View {
                 }
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 7)
                     .strokeBorder(showingCallout ? Color.accentColor : .white,
                                   lineWidth: showingCallout ? 3 : 2)
             )
@@ -594,10 +732,11 @@ struct FileMapCallout: View {
     let onViewFile: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             Button(action: onViewFile) {
                 Group {
-                    if file.mime.hasPrefix("image/"), let url = thumbnailURL {
+                    if file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/"),
+                       let url = thumbnailURL {
                         CachedAsyncImage(url: url) { img in
                             img.resizable().scaledToFill()
                         } placeholder: {
@@ -605,12 +744,15 @@ struct FileMapCallout: View {
                         }
                     } else {
                         Color(.systemGray5).overlay {
-                            Image(systemName: "doc.fill").foregroundStyle(.secondary)
+                            Image(systemName: "doc.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .frame(width: 88, height: 88)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .clipped()
             }
             .buttonStyle(.plain)
 
@@ -620,14 +762,17 @@ struct FileMapCallout: View {
                     Text(area)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
-                if let alt = file.gpsAltitude {
-                    Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
-                        .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Text(file.formattedDate()).font(.caption2).foregroundStyle(.tertiary)
+                    Spacer()
+                    if let alt = file.gpsAltitude {
+                        Label(String(format: "%.0f m", alt), systemImage: "mountain.2.circle")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
-                Text(file.formattedDate()).font(.caption2).foregroundStyle(.tertiary)
             }
+            .padding(14)
         }
-        .padding(14)
         .frame(width: 280)
     }
 }
