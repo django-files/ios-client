@@ -11,7 +11,7 @@ import SwiftData
 import CoreHaptics
 import SwiftUI
 
-class ShareViewController: UIViewController, URLSessionTaskDelegate {
+class ShareViewController: UIViewController {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DjangoFilesSession.self,
@@ -32,12 +32,10 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
     var session: DjangoFilesSession = DjangoFilesSession()
     var shareURLs: [URL] = []
     private var pendingLoads = 0
-    private var lastResponseURL: String?
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // Setup SwiftUI view
         viewModel.shareViewController = self
         let shareView = ShareView(viewModel: viewModel)
         hostingController = UIHostingController(rootView: shareView)
@@ -55,11 +53,10 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         ])
         hostingController.didMove(toParent: self)
 
-        // Load available servers
         getAvailableServers()
 
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
-            self.showMessageAndDismiss(message: "Nothing to share.")
+            showError("Nothing to share.")
             return
         }
 
@@ -71,7 +68,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
 
         guard !allProviders.isEmpty else {
-            showMessageAndDismiss(message: "Nothing to share.")
+            showError("Nothing to share.")
             return
         }
 
@@ -84,7 +81,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                 itemProvider.loadItem(forTypeIdentifier: "public.url", options: nil) { (item, error) in
                     DispatchQueue.main.async {
                         guard let url = item as? URL else {
-                            self.showMessageAndDismiss(message: "Invalid URL.")
+                            self.showError("Invalid URL.")
                             return
                         }
                         self.viewModel.showShortText = true
@@ -104,7 +101,6 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             }
         }
 
-        // Load all items (images, videos, files, text)
         pendingLoads = allProviders.count
         for provider in allProviders {
             loadProvider(provider)
@@ -169,7 +165,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
 
         let count = shareURLs.count
         guard count > 0 else {
-            showMessageAndDismiss(message: "Nothing to share.")
+            showError("Nothing to share.")
             return
         }
         if count > 1 {
@@ -184,7 +180,6 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         viewModel.isImageUpload = true
 
         if let error = error {
-            // skip this item but keep going
             itemLoaded()
             print("Error loading image: \(error.localizedDescription)")
             return
@@ -257,34 +252,14 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             session = defaultSession
 
         } catch {
-            self.showMessageAndDismiss(message: error.localizedDescription)
+            showError(error.localizedDescription)
             viewModel.availableSessions = []
         }
     }
 
-    func getDefaultServer() -> DjangoFilesSession? {
-        var selectedServer: DjangoFilesSession?
-        do{
-            let servers = try sharedModelContainer.mainContext.fetch(FetchDescriptor<DjangoFilesSession>())
-            if servers.count == 0 {
-                return nil
-            }
-            selectedServer = servers.first(where: {
-                return $0.defaultSession
-            })
-            if selectedServer == nil{
-                selectedServer = servers[0]
-            }
-        }
-        catch {
-            self.showMessageAndDismiss(message: error.localizedDescription)
-        }
-        return selectedServer
-    }
-
     func randomString(length: Int) -> String {
-      let letters = "abcdefghijklmnopqrstuvwxyz0123456789-_"
-      return String((0..<length).map{ _ in letters.randomElement()! })
+        let letters = "abcdefghijklmnopqrstuvwxyz0123456789-_"
+        return String((0..<length).map { _ in letters.randomElement()! })
     }
 
     func handleShare(from viewModel: ShareViewModel) {
@@ -293,23 +268,111 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
 
         if doShorten && !isShortLinkValid(shortText: viewModel.shortText) {
-            DispatchQueue.main.async {
-                viewModel.alertMessage = "Short URL can only contain lowercase letters, numbers, hyphens, and underscores."
-                viewModel.shouldAutoDismiss = false
-                viewModel.showAlert = true
-            }
+            let alert = UIAlertController(
+                title: nil,
+                message: "Short URL can only contain lowercase letters, numbers, hyphens, and underscores.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
             return
         }
 
         viewModel.isShareEnabled = false
 
-        Task {
-            if !doShorten {
-                await shareFile(viewModel: viewModel)
-            } else {
-                await shareLink(viewModel: viewModel)
+        // Write edited text content back to the source file before copying
+        if !viewModel.previewText.isEmpty && viewModel.isTextEditable, let firstURL = shareURLs.first {
+            try? viewModel.previewText.write(to: firstURL, atomically: true, encoding: .utf8)
+        }
+
+        guard let jobID = prepareJob(viewModel: viewModel) else {
+            showError("Could not prepare upload.")
+            viewModel.isShareEnabled = true
+            return
+        }
+
+        cleanupTempFiles()
+
+        let deepLink = URL(string: "djangofiles://upload-job/?id=\(jobID)")!
+        NSLog("[ShareUpload] opening deep link: %@", deepLink.absoluteString)
+
+        extensionContext?.open(deepLink) { [weak self] success in
+            NSLog("[ShareUpload] extensionContext.open success=%d", success ? 1 : 0)
+            if !success {
+                let fallback = self?.openURLViaResponderChain(deepLink) ?? false
+                NSLog("[ShareUpload] responder chain fallback success=%d", fallback ? 1 : 0)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self?.extensionContext?.completeRequest(returningItems: [])
             }
         }
+    }
+
+    @discardableResult
+    private func openURLViaResponderChain(_ url: URL) -> Bool {
+        var responder: UIResponder? = self
+        let selector = sel_registerName("openURL:")
+        while let r = responder {
+            if r.responds(to: selector) && r !== self {
+                _ = r.perform(selector, with: url)
+                return true
+            }
+            responder = r.next
+        }
+        return false
+    }
+
+    private func prepareJob(viewModel: ShareViewModel) -> String? {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.djangofiles.app"
+        ) else { return nil }
+
+        let jobID = UUID().uuidString
+
+        var copiedFileNames: [String] = []
+
+        if !doShorten {
+            let jobFilesDir = container
+                .appendingPathComponent("upload-files")
+                .appendingPathComponent(jobID)
+            guard (try? FileManager.default.createDirectory(
+                at: jobFilesDir, withIntermediateDirectories: true)) != nil
+            else { return nil }
+
+            for (i, url) in shareURLs.enumerated() {
+                let ext = url.pathExtension
+                let filename = ext.isEmpty ? "\(i)" : "\(i).\(ext)"
+                let dest = jobFilesDir.appendingPathComponent(filename)
+                guard (try? FileManager.default.copyItem(at: url, to: dest)) != nil else {
+                    return nil
+                }
+                copiedFileNames.append(filename)
+            }
+        }
+
+        let job = DFPendingUploadJob(
+            id: jobID,
+            sessionURL: session.url,
+            sessionToken: session.token,
+            fileNames: copiedFileNames,
+            albumIDs: viewModel.selectedAlbums.map { $0.id },
+            firstAlbumURL: viewModel.selectedAlbums.first?.url,
+            albumName: viewModel.selectedAlbums.first?.name,
+            privateUpload: viewModel.privateUpload,
+            stripExif: viewModel.stripExif,
+            stripGps: viewModel.stripGps,
+            isShorten: doShorten,
+            shortenSourceURL: shareURLs.first?.absoluteString,
+            shortText: viewModel.shortText
+        )
+
+        let jobsDir = container.appendingPathComponent("upload-jobs")
+        try? FileManager.default.createDirectory(at: jobsDir, withIntermediateDirectories: true)
+        let jobFile = jobsDir.appendingPathComponent("\(jobID).json")
+        guard let data = try? JSONEncoder().encode(job),
+              (try? data.write(to: jobFile)) != nil else { return nil }
+
+        return jobID
     }
 
     func handleCancel() {
@@ -328,129 +391,18 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         tempFileURLs.removeAll()
     }
 
-    func shareFile(viewModel: ShareViewModel) async {
-        viewModel.showProgress = true
-        viewModel.uploadProgress = 0
-
-        // If sharing editable text, write the edited content back to the temp file
-        if !viewModel.previewText.isEmpty && viewModel.isTextEditable, let firstURL = shareURLs.first {
-            do {
-                try viewModel.previewText.write(to: firstURL, atomically: true, encoding: .utf8)
-            } catch {
-                DispatchQueue.main.async {
-                    self.showMessageAndDismiss(message: "Could not update text content.")
-                }
-                return
-            }
-        }
-
-        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        let total = shareURLs.count
-
-        let albumsParam = viewModel.selectedAlbumIDs.map { String($0) }.joined(separator: ",")
-
-        for (index, url) in shareURLs.enumerated() {
-            let task = await api.uploadFileStreamed(url: url, albums: albumsParam, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
-            let response = await task?.waitForComplete()
-
-            if let responseURL = response?.url {
-                lastResponseURL = responseURL
-            } else {
-                DispatchQueue.main.async {
-                    viewModel.showProgress = false
-                    viewModel.uploadProgress = 0
-                    viewModel.isShareEnabled = true
-                    self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                viewModel.uploadProgress = Float(index + 1) / Float(total)
-            }
-        }
-
-        DispatchQueue.main.async {
-            viewModel.isLoading = false
-            UIPasteboard.general.string = self.lastResponseURL
-            NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
-            self.notifyClipboard()
-        }
-    }
-
-    func shareLink(viewModel: ShareViewModel) async {
-        guard let shareURL = shareURLs.first else { return }
-        let shortLink: String = viewModel.shortText.isEmpty ? randomString(length: 5) : viewModel.shortText
-        let api = DFAPI(url: URL(string: session.url)!, token: session.token)
-        let response = await api.createShort(url: shareURL, short: shortLink, selectedServer: session)
-
-        DispatchQueue.main.async {
-            viewModel.isLoading = false
-
-            if response == nil{
-                viewModel.isShareEnabled = true
-                self.showMessageAndDismiss(message: "Bad server response.")
-            }
-            else{
-                UIPasteboard.general.string = response?.url
-                NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
-                self.notifyClipboard()
-            }
-        }
-    }
-
-    func isShortLinkValid(shortText: String) -> Bool{
+    func isShortLinkValid(shortText: String) -> Bool {
         let validUrl = /[a-z0-9\-_]+/
-        if shortText.wholeMatch(of: validUrl) != nil {
-            return true
-        }
-        else{
-            return false
-        }
+        return shortText.wholeMatch(of: validUrl) != nil
     }
 
-    @objc func clipboardChanged() { }
-
-    func dismissAfterAlert(shouldComplete: Bool = false) {
-        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false, block: { _ in
-            DispatchQueue.main.async {
-                if shouldComplete {
-                    self.extensionContext!.completeRequest(returningItems: [])
-                } else {
-                    self.extensionContext!.cancelRequest(withError: NSError(domain: "", code: 0))
-                }
-            }
-        } )
-        self.dismiss(animated: false)
-    }
-
-    func notifyClipboard() {
-        cleanupTempFiles()
-
-        let generator = UINotificationFeedbackGenerator()
-        generator.prepare()
-        generator.notificationOccurred(.success)
-
+    private func showError(_ message: String) {
         DispatchQueue.main.async {
-            self.viewModel.alertMessage = "Link copied to clipboard"
-            self.viewModel.shouldAutoDismiss = true
-            self.viewModel.showAlert = true
-        }
-    }
-
-    func showMessageAndDismiss(message: String){
-        DispatchQueue.main.async {
-            self.viewModel.alertMessage = message
-            self.viewModel.shouldAutoDismiss = false
-            self.viewModel.showAlert = true
-        }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64)
-    {
-        let uploadProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
-        DispatchQueue.main.async {
-            self.viewModel.uploadProgress = uploadProgress
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                self?.extensionContext?.cancelRequest(withError: NSError(domain: "", code: 0))
+            })
+            self.present(alert, animated: true)
         }
     }
 
@@ -478,3 +430,4 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         return UIImage(cgImage: downsampledImage)
     }
 }
+

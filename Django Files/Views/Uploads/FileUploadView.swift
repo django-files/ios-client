@@ -66,13 +66,6 @@ struct FileUploadView: View {
     @State private var recordingURL: URL?
     @State private var recordingStartedAt: Date?
 
-    @State private var isUploading = false
-    @State private var uploadProgress: Double = 0
-
-    private var useAccessoryProgress: Bool {
-        if #available(iOS 26.0, *) { return true } else { return false }
-    }
-
     var body: some View {
         NavigationStack {
             form
@@ -112,11 +105,6 @@ struct FileUploadView: View {
             albumSection
             if isRecording, let startedAt = recordingStartedAt {
                 Section { RecordingIndicator(startedAt: startedAt) }
-            }
-            if isUploading && !useAccessoryProgress {
-                Section {
-                    ProgressView(value: uploadProgress) { Text("Uploading…") }
-                }
             }
         }
     }
@@ -213,139 +201,22 @@ struct FileUploadView: View {
     // MARK: - Upload dispatch
 
     private func startCapturedImageUpload(_ image: UIImage) {
-        if useAccessoryProgress {
-            detachCapturedImageUpload(image)
-            dismiss()
-        } else {
-            Task { await uploadCapturedImageInline(image) }
-        }
+        detachCapturedImageUpload(image)
+        dismiss()
     }
 
     private func startPhotosUpload(_ items: [PhotosPickerItem]) {
-        if useAccessoryProgress {
-            detachPhotosUpload(items)
-            dismiss()
-        } else {
-            Task { await uploadPhotosInline(items) }
-        }
+        detachPhotosUpload(items)
+        dismiss()
     }
 
     private func startFilesUpload(_ urls: [URL]) {
-        if useAccessoryProgress {
-            detachFilesUpload(urls)
-            dismiss()
-        } else {
-            Task { await uploadFilesInline(urls) }
-        }
-    }
-
-    // MARK: - Inline upload (iOS < 26 fallback)
-
-    private func uploadCapturedImageInline(_ image: UIImage) async {
-        guard let data = image.jpegData(compressionQuality: 0.8),
-              let tempURL = saveTemporaryFile(data: data, filename: "ios_photo.jpg") else { return }
-        isUploading = true
-        uploadProgress = 0
-        let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        let delegate = UploadProgressDelegate { uploadProgress = $0 }
-        _ = await api.uploadFile(
-            url: tempURL,
-            albums: albumIdParam,
-            privateUpload: uploadPrivate,
-            stripExif: stripExif,
-            stripGps: stripGps,
-            taskDelegate: delegate
-        )
-        try? FileManager.default.removeItem(at: tempURL)
-        isUploading = false
-        dismiss()
-    }
-
-    private func uploadPhotosInline(_ items: [PhotosPickerItem]) async {
-        isUploading = true
-        uploadProgress = 0
-        let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        let total = Double(items.count)
-        for (index, item) in items.enumerated() {
-            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .audiovisualContent) }
-            let tempURL: URL?
-            if isVideo {
-                tempURL = try? await item.loadTransferable(type: VideoTransferable.self).map { $0.url }
-            } else {
-                tempURL = try? await item.loadTransferable(type: Data.self)
-                    .flatMap { saveTemporaryFile(data: $0, filename: "photo_\(index).jpg") }
-            }
-            guard let url = tempURL else { continue }
-            let delegate = UploadProgressDelegate { progress in
-                uploadProgress = (Double(index) + progress) / total
-            }
-            _ = await api.uploadFile(
-                url: url,
-                albums: albumIdParam,
-                privateUpload: uploadPrivate,
-                stripExif: stripExif,
-                stripGps: stripGps,
-                taskDelegate: delegate
-            )
-            try? FileManager.default.removeItem(at: url)
-        }
-        isUploading = false
-        dismiss()
-    }
-
-    private func uploadFilesInline(_ urls: [URL]) async {
-        isUploading = true
-        uploadProgress = 0
-        let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        let total = Double(urls.count)
-        for (index, url) in urls.enumerated() {
-            let delegate = UploadProgressDelegate { progress in
-                uploadProgress = (Double(index) + progress) / total
-            }
-            _ = await api.uploadFile(
-                url: url,
-                albums: albumIdParam,
-                privateUpload: uploadPrivate,
-                stripExif: stripExif,
-                stripGps: stripGps,
-                taskDelegate: delegate
-            )
-        }
-        isUploading = false
-        dismiss()
-    }
-
-    private func uploadAudioInline(_ url: URL) async {
-        isUploading = true
-        uploadProgress = 0
-        let api = DFAPI(url: URL(string: server.url)!, token: server.token)
-        let delegate = UploadProgressDelegate { uploadProgress = $0 }
-        _ = await api.uploadFile(
-            url: url,
-            albums: albumIdParam,
-            privateUpload: uploadPrivate,
-            stripExif: stripExif,
-            stripGps: stripGps,
-            taskDelegate: delegate
-        )
-        try? FileManager.default.removeItem(at: url)
-        isUploading = false
+        detachFilesUpload(urls)
         dismiss()
     }
 
     private var albumIdParam: String {
         selectedAlbum.map { String($0.id) } ?? ""
-    }
-
-    private func saveTemporaryFile(data: Data, filename: String) -> URL? {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        do {
-            try data.write(to: url)
-            return url
-        } catch {
-            ToastManager.shared.showToast(message: "Could not save file: \(error.localizedDescription)")
-            return nil
-        }
     }
 
     // MARK: - Recording
@@ -380,12 +251,8 @@ struct FileUploadView: View {
         recordingStartedAt = nil
         guard let url = recordingURL else { return }
         recordingURL = nil
-        if useAccessoryProgress {
-            detachSingleFileUpload(tempURL: url, displayName: "recording.m4a", deleteAfter: true)
-            dismiss()
-        } else {
-            Task { await uploadAudioInline(url) }
-        }
+        detachSingleFileUpload(tempURL: url, displayName: "recording.m4a", deleteAfter: true)
+        dismiss()
     }
 
     private func cancelRecording() {
@@ -408,7 +275,8 @@ struct FileUploadView: View {
         let gps = stripGps
         let manager = uploadProgressManager
 
-        let id = manager.start(filename: displayName, thumbnail: thumbnail)
+        let host = URL(string: serverURL)?.host ?? serverURL
+        let id = manager.start(filename: displayName, thumbnail: thumbnail, serverHost: host)
         let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
             let delegate = UploadProgressDelegate { progress in
@@ -437,10 +305,11 @@ struct FileUploadView: View {
         let exif = stripExif
         let gps = stripGps
         let manager = uploadProgressManager
+        let host = URL(string: serverURL)?.host ?? serverURL
 
         let ids: [UUID] = items.enumerated().map { (index, item) in
             let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .audiovisualContent) }
-            return manager.start(filename: isVideo ? "video_\(index)" : "photo_\(index).jpg")
+            return manager.start(filename: isVideo ? "video_\(index)" : "photo_\(index).jpg", serverHost: host)
         }
 
         let task = Task.detached {
@@ -501,7 +370,8 @@ struct FileUploadView: View {
         let gps = stripGps
         let manager = uploadProgressManager
 
-        let ids: [UUID] = urls.map { manager.start(filename: $0.lastPathComponent) }
+        let host = URL(string: serverURL)?.host ?? serverURL
+        let ids: [UUID] = urls.map { manager.start(filename: $0.lastPathComponent, serverHost: host) }
 
         let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
@@ -538,7 +408,8 @@ struct FileUploadView: View {
         let gps = stripGps
         let manager = uploadProgressManager
 
-        let id = manager.start(filename: "ios_photo.jpg", thumbnail: image)
+        let host = URL(string: serverURL)?.host ?? serverURL
+        let id = manager.start(filename: "ios_photo.jpg", thumbnail: image, serverHost: host)
 
         let task = Task.detached {
             guard let data = image.jpegData(compressionQuality: 0.8) else {

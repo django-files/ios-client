@@ -81,6 +81,7 @@ struct Django_FilesApp: App {
     @StateObject private var streamStateManager = StreamStateManager()
     @StateObject private var albumStateManager = AlbumStateManager()
     @StateObject private var uploadProgressManager = UploadProgressManager()
+    @StateObject private var shareUploadManager = ShareUploadManager()
     @StateObject private var biometricLockManager = BiometricLockManager()
     @State private var showFileInfo = false
     var sharedModelContainer: ModelContainer = {
@@ -192,14 +193,22 @@ struct Django_FilesApp: App {
             .environmentObject(sessionManager)
             .environmentObject(biometricLockManager)
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
+                switch newPhase {
+                case .active:
                     DFAnalytics.logAppOpen()
                     biometricLockManager.checkAndLockIfNeeded()
                     if biometricLockManager.isLocked {
                         Task { await biometricLockManager.authenticate() }
                     }
-                } else if newPhase == .background {
+                    uploadProgressManager.appDidBecomeActive()
+                case .inactive:
+                    // App is transitioning away from active (about to background or app-switcher peek).
+                    // This is the last chance to start a Live Activity per Apple's rules.
+                    uploadProgressManager.appWillResignActive()
+                case .background:
                     biometricLockManager.recordBackgrounded()
+                @unknown default:
+                    break
                 }
             }
             .overlay {
@@ -216,6 +225,7 @@ struct Django_FilesApp: App {
                     previewStateManager: previewStateManager,
                     streamStateManager: streamStateManager,
                     albumStateManager: albumStateManager,
+                    shareUploadManager: shareUploadManager,
                     selectedTab: $selectedTab,
                     hasExistingSessions: $hasExistingSessions,
                     showingServerConfirmation: $showingServerConfirmation,

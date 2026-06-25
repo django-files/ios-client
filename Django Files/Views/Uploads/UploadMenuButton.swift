@@ -15,10 +15,6 @@ struct UploadMenuButton: View {
     @State private var showingAlbumCreator = false
     @State private var showingNewStream = false
 
-    private var useAccessoryProgress: Bool {
-        if #available(iOS 26.0, *) { return true } else { return false }
-    }
-
     var body: some View {
         Menu {
             Menu {
@@ -135,30 +131,22 @@ struct UploadMenuButton: View {
 
     @MainActor
     private func dispatchClipboardUpload(serverURL: URL, token: String, tempURL: URL, displayName: String, thumbnail: UIImage? = nil, successMessage: String, failureMessage: String) async {
-        if useAccessoryProgress {
-            let manager = uploadProgressManager
-            let id = manager.start(filename: displayName, thumbnail: thumbnail)
-            let task = Task.detached {
-                let api = DFAPI(url: serverURL, token: token)
-                let delegate = UploadProgressDelegate { progress in
-                    Task { @MainActor in manager.update(id: id, progress: progress) }
-                }
-                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
-                try? FileManager.default.removeItem(at: tempURL)
-                await MainActor.run {
-                    manager.finish(id: id)
-                    if !Task.isCancelled {
-                        ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
-                    }
-                }
-            }
-            manager.register(task: task)
-        } else {
+        let manager = uploadProgressManager
+        let id = manager.start(filename: displayName, thumbnail: thumbnail, serverHost: serverURL.host ?? serverURL.absoluteString)
+        let task = Task.detached {
             let api = DFAPI(url: serverURL, token: token)
-            let delegate = UploadProgressDelegate { _ in }
+            let delegate = UploadProgressDelegate { progress in
+                Task { @MainActor in manager.update(id: id, progress: progress) }
+            }
             let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
             try? FileManager.default.removeItem(at: tempURL)
-            ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+            await MainActor.run {
+                manager.finish(id: id)
+                if !Task.isCancelled {
+                    ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
+                }
+            }
         }
+        manager.register(task: task)
     }
 }

@@ -12,7 +12,7 @@ class DeepLinks {
     static let shared = DeepLinks()
     private init() {}
     
-    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, streamStateManager: StreamStateManager, albumStateManager: AlbumStateManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
+    @MainActor func handleDeepLink(_ url: URL, context: ModelContext, sessionManager: SessionManager, previewStateManager: PreviewStateManager, streamStateManager: StreamStateManager, albumStateManager: AlbumStateManager, shareUploadManager: ShareUploadManager, selectedTab: Binding<TabViewWindow.Tab>, hasExistingSessions: Binding<Bool>, showingServerConfirmation: Binding<Bool>, pendingAuthURL: Binding<URL?>, pendingAuthSignature: Binding<String?>) {
         guard url.scheme == "djangofiles" else { return }
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return }
 
@@ -42,6 +42,13 @@ class DeepLinks {
             handleStreamLink(components, context: context, sessionManager: sessionManager, streamStateManager: streamStateManager, selectedTab: selectedTab)
         case "album":
             handleAlbumLink(components, context: context, sessionManager: sessionManager, albumStateManager: albumStateManager, selectedTab: selectedTab)
+        case "upload-job":
+            print("[ShareUpload] deep link received: \(url)")
+            if let jobID = components.queryItems?.first(where: { $0.name == "id" })?.value {
+                shareUploadManager.processJob(id: jobID)
+            } else {
+                print("[ShareUpload] upload-job missing id query param")
+            }
         default:
             ToastManager.shared.showToast(message: "Unsupported deep link \(url)")
         }
