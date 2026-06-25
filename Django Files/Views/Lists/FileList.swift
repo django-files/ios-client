@@ -312,6 +312,7 @@ struct FileListView: View {
     @AppStorage("fileListShowingMap") private var showingMap: Bool = false
     @AppStorage("fileListIsGridView") private var isGridView: Bool = false
     @AppStorage("fileListGridColumns") private var gridColumnCount: Int = 2
+    @AppStorage("fileListGridNaturalAspect") private var naturalAspect: Bool = false
 
     @AppStorage("fileListSortField") private var sortField: String = "created"
     @AppStorage("fileListSortAscending") private var sortAscending: Bool = false
@@ -348,6 +349,10 @@ struct FileListView: View {
         return selectedMimeTypes.map(\.rawValue).sorted().joined(separator: ",")
     }
 
+    private var resolvedServerURL: URL {
+        server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+    }
+
     private func getTitle(server: Binding<DjangoFilesSession?>, albumName: String?) -> String {
         resolvedAlbum?.name ?? albumName ?? "Files"
     }
@@ -379,20 +384,6 @@ struct FileListView: View {
             }
         )
     }
-
-    private var gridColumnsBinding: Binding<Int> {
-        Binding(
-            get: { gridColumnCount },
-            set: { count in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showingMap = false
-                    isGridView = true
-                    gridColumnCount = count
-                }
-            }
-        )
-    }
-
 
     private var hasActiveFilters: Bool {
         !selectedMimeTypes.isEmpty
@@ -454,64 +445,72 @@ struct FileListView: View {
     }
 
     private var gridContent: some View {
-        ScrollView {
-            LazyVGrid(columns: gridColumns, spacing: 2) {
-                ForEach(filteredFiles) { file in
-                    let isSelected = selectedFileIDs.contains(file.id)
-                    Button {
-                        if isSelectMode {
-                            toggleSelection(file: file)
-                        } else {
-                            selectedFile = file
-                            showingPreview = true
-                        }
-                    } label: {
-                        FileGridItemView(
-                            file: file,
-                            serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
-                        )
-                        .contentShape(Rectangle())
-                        .overlay(alignment: .topLeading) {
+        let showDetails = gridColumnCount <= 5
+        let serverURL = resolvedServerURL
+        return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad in
+            ScrollView {
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(filteredFiles) { file in
+                        let isSelected = selectedFileIDs.contains(file.id)
+                        Button {
                             if isSelectMode {
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(isSelected ? Color.accentColor : .white)
-                                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                                    .padding(6)
+                                toggleSelection(file: file)
+                            } else {
+                                selectedFile = file
+                                showingPreview = true
+                            }
+                        } label: {
+                            FileGridItemView(
+                                file: file,
+                                serverURL: serverURL,
+                                showDetails: showDetails,
+                                naturalAspect: naturalAspect
+                            )
+                            .contentShape(Rectangle())
+                            .overlay(alignment: .topLeading) {
+                                if isSelectMode {
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(isSelected ? Color.accentColor : .white)
+                                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                        .padding(6)
+                                }
+                            }
+                            .opacity(isSelectMode && !isSelected ? 0.6 : 1.0)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if !isSelectMode {
+                                fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                             }
                         }
-                        .opacity(isSelectMode && !isSelected ? 0.6 : 1.0)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        if !isSelectMode {
-                            fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                        }
-                    }
-                    .onAppear {
-                        if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
-                            loadNextPage()
+                        .onAppear {
+                            if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
+                                loadNextPage()
+                            }
                         }
                     }
                 }
-            }
+                .padding(.top, topPad + 8)
+                .padding(.bottom, bottomPad + 8)
 
-            if isLoading && hasNextPage {
-                HStack {
-                    Spacer()
-                    LoadingView()
-                        .frame(width: 60, height: 60)
-                    Spacer()
+                if isLoading && hasNextPage {
+                    HStack {
+                        Spacer()
+                        LoadingView()
+                            .frame(width: 60, height: 60)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
+            }
+            .ignoresSafeArea()
+            .refreshable {
+                Task {
+                    await refreshFiles()
+                }
             }
         }
-        .refreshable {
-            Task {
-                await refreshFiles()
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     var body: some View {
@@ -687,15 +686,6 @@ struct FileListView: View {
                         Image(systemName: "map").tag("map")
                     }
                     .pickerStyle(.segmented)
-
-                    if isGridView {
-                        Picker("Columns", selection: gridColumnsBinding) {
-                            Image(systemName: "rectangle.grid.1x2").tag(1)
-                            Image(systemName: "square.grid.2x2").tag(2)
-                            Image(systemName: "square.grid.3x3").tag(3)
-                        }
-                        .pickerStyle(.segmented)
-                    }
 
                     Divider()
 
@@ -1219,18 +1209,89 @@ struct FileListView: View {
     
 }
 
+private struct PinchableGridContainer<Content: View>: View {
+    @Binding var gridColumnCount: Int
+    @ViewBuilder let content: (_ topPad: CGFloat, _ bottomPad: CGFloat) -> Content
+    @State private var gestureScale: CGFloat = 1.0
+    @State private var scaleAnchor: UnitPoint = .center
+    @State private var anchorCaptured: Bool = false
+    @State private var topPadding: CGFloat = 0
+    @State private var bottomPadding: CGFloat = 0
+    @State private var containerSize: CGSize = .zero
+
+    var body: some View {
+        content(topPadding, bottomPadding)
+            // scaleEffect is applied here — outside the content closure — so gestureScale
+            // changes drive a pure CALayer transform without re-evaluating the view tree.
+            .scaleEffect(x: gestureScale, y: gestureScale, anchor: scaleAnchor)
+            .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear {
+                            topPadding = geo.safeAreaInsets.top
+                            bottomPadding = geo.safeAreaInsets.bottom
+                            containerSize = geo.size
+                        }
+                        .onChange(of: geo.safeAreaInsets) { _, insets in
+                            topPadding = insets.top
+                            bottomPadding = insets.bottom
+                        }
+                        .onChange(of: geo.size) { _, size in
+                            containerSize = size
+                        }
+                }
+            }
+            // highPriorityGesture: MagnifyGesture only activates on two fingers, so
+            // single-finger scrolls and taps pass through naturally. When two fingers
+            // are detected, this wins over child button gestures — preventing accidental
+            // taps during a pinch without ever blocking the ScrollView's pan gesture.
+            .highPriorityGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        if !anchorCaptured {
+                            if containerSize != .zero {
+                                let x = max(0, min(1, value.startLocation.x / containerSize.width))
+                                let y = max(0, min(1, value.startLocation.y / containerSize.height))
+                                scaleAnchor = UnitPoint(x: x, y: y)
+                            }
+                            anchorCaptured = true
+                        }
+                        gestureScale = max(0.4, min(3.0, value.magnification))
+                    }
+                    .onEnded { value in
+                        let newCount = max(1, min(10, Int((CGFloat(gridColumnCount) / value.magnification).rounded())))
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            gridColumnCount = newCount
+                            gestureScale = 1.0
+                        }
+                        anchorCaptured = false
+                    }
+            )
+    }
+}
+
 struct FileGridItemView: View {
     let file: DFFile
     let serverURL: URL
+    let thumbnailURL: URL
+    var showDetails: Bool = true
+    var naturalAspect: Bool = false
+
+    init(file: DFFile, serverURL: URL, showDetails: Bool = true, naturalAspect: Bool = false) {
+        self.file = file
+        self.serverURL = serverURL
+        self.showDetails = showDetails
+        self.naturalAspect = naturalAspect
+        var components = URLComponents(
+            url: serverURL.appendingPathComponent("/raw/\(file.name)"),
+            resolvingAgainstBaseURL: true
+        )
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        self.thumbnailURL = components?.url ?? serverURL
+    }
 
     private var isMedia: Bool {
         file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/")
-    }
-
-    private var thumbnailURL: URL {
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? serverURL
     }
 
     private func getIcon() -> String {
@@ -1243,6 +1304,14 @@ struct FileGridItemView: View {
     }
 
     var body: some View {
+        if naturalAspect && isMedia {
+            naturalMediaCell
+        } else {
+            squareCell
+        }
+    }
+
+    private var squareCell: some View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .overlay {
@@ -1262,7 +1331,7 @@ struct FileGridItemView: View {
                             }
                     }
 
-                    if !isMedia {
+                    if !isMedia && showDetails {
                         Text(file.name)
                             .font(.caption2)
                             .lineLimit(2)
@@ -1273,26 +1342,39 @@ struct FileGridItemView: View {
                             .frame(maxWidth: .infinity)
                             .background(.black.opacity(0.5))
                     }
-
                 }
                 .clipped()
             }
-            .overlay(alignment: .bottomTrailing) {
-                if file.private || file.password != "" || file.expr != "" {
-                    HStack(spacing: 2) {
-                        if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
-                        if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
-                        if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.55))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .padding(4)
-                }
-            }
+            .overlay(alignment: .bottomTrailing) { statusBadge }
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var naturalMediaCell: some View {
+        CachedAsyncImage(url: thumbnailURL) { image in
+            image.resizable().scaledToFit()
+        } placeholder: {
+            Color(.systemGray5)
+                .aspectRatio(4/3, contentMode: .fit)
+        }
+        .overlay(alignment: .bottomTrailing) { statusBadge }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if showDetails && (file.private || file.password != "" || file.expr != "") {
+            HStack(spacing: 2) {
+                if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+                if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+                if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.55))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .padding(4)
+        }
     }
 }
 

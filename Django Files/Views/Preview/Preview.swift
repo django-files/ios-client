@@ -74,6 +74,24 @@ struct ContentPreview: View {
         .background(.black)
     }
 
+    private func previewErrorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 48))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.white.opacity(0.7))
+            Text("Failed to load")
+                .font(.headline)
+                .foregroundStyle(.white)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var imagePreview: some View {
         GeometryReader { geometry in
             if let content = content {
@@ -84,10 +102,10 @@ struct ContentPreview: View {
                     ImageScrollView(image: uiImage, isContentScrolling: $isContentScrolling)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
-                    Text("Unable to load image")
+                    previewErrorView(message: "Image could not be decoded")
                 }
-            } else if error != nil {
-                Text("Unable to load image \(String(describing: error))")
+            } else if let error {
+                previewErrorView(message: error.localizedDescription)
             }
         }
         .ignoresSafeArea()

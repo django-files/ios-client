@@ -173,15 +173,14 @@ struct SettingsView: View {
                     } label: {
                         Label("Privacy", systemImage: "hand.raised")
                     }
+                    NavigationLink {
+                        CacheSettingsView()
+                    } label: {
+                        Label("Cache", systemImage: "internaldrive")
+                    }
                 }
 
                 Section(header: Text("About")) {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text(versionInfo)
-                            .foregroundColor(.secondary)
-                    }
                     NavigationLink {
                         AboutView(serverVersion: sessionManager.cachedVersion)
                     } label: {
@@ -197,6 +196,51 @@ struct SettingsView: View {
                     })
                 }
             }
+        }
+    }
+}
+
+struct CacheSettingsView: View {
+    @State private var cacheSizeBytes: Int = 0
+    @State private var showingClearConfirm = false
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Label("Image Cache", systemImage: "photo.on.rectangle.angled")
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(cacheSizeBytes), countStyle: .file))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Button(role: .destructive) {
+                    showingClearConfirm = true
+                } label: {
+                    Label("Clear Cache", systemImage: "trash")
+                }
+                .disabled(cacheSizeBytes == 0)
+            } footer: {
+                Text("Cached thumbnails and previews speed up browsing. Clearing frees disk space and forces images to re-download on next view.")
+            }
+        }
+        .navigationTitle("Cache")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            cacheSizeBytes = ImageCache.shared.totalCacheBytes
+        }
+        .confirmationDialog(
+            "Clear Cache?",
+            isPresented: $showingClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Cache", role: .destructive) {
+                ImageCache.shared.clearAll()
+                cacheSizeBytes = ImageCache.shared.totalCacheBytes
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove all cached images and thumbnails. They will be re-downloaded as you browse.")
         }
     }
 }
