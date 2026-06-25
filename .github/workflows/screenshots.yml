@@ -30,7 +30,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
 
       - name: "Capture Screenshots"
         run: fastlane screenshots
@@ -72,7 +72,7 @@ jobs:
           merge-multiple: true
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
 
       - name: "Upload Screenshots to App Store Connect"
         run: fastlane upload_screenshots
