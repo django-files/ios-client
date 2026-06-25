@@ -43,3 +43,5 @@ jobs:
         run: fastlane tests
         env:
           CI: true
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: 120
+          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: 6

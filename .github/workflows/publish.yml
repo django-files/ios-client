@@ -55,6 +55,8 @@ jobs:
           ASC_API_ID: ${{ secrets.ASC_API_ID }}
           BUILD_NUMBER: ${{ steps.run.outputs.number }}
           VERSION_NUMBER: ${{ github.event.release.tag_name }}
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: 120
+          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: 6
 
       - name: "Debug Fastlane"
         if: ${{ !github.event.act }}
