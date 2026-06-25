@@ -347,8 +347,10 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         let api = DFAPI(url: URL(string: session.url)!, token: session.token)
         let total = shareURLs.count
 
+        let albumsParam = viewModel.selectedAlbumIDs.map { String($0) }.joined(separator: ",")
+
         for (index, url) in shareURLs.enumerated() {
-            let task = await api.uploadFileStreamed(url: url, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
+            let task = await api.uploadFileStreamed(url: url, albums: albumsParam, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
             let response = await task?.waitForComplete()
 
             if let responseURL = response?.url {

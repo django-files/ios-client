@@ -11,7 +11,15 @@ import UIKit
 struct ShareView: View {
     @ObservedObject var viewModel: ShareViewModel
     @FocusState private var isShortTextFocused: Bool
-    
+
+    private func albumLabel(_ ids: [Int]) -> String {
+        switch ids.count {
+        case 0: return "None"
+        case 1: return "1 Album"
+        default: return "\(ids.count) Albums"
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
@@ -112,6 +120,41 @@ struct ShareView: View {
             }
             .padding(.top, 8)
 
+            // Album picker
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Album")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+
+                Button {
+                    viewModel.showAlbumPicker = true
+                } label: {
+                    HStack {
+                        Text(albumLabel(viewModel.selectedAlbumIDs))
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray5))
+                    .cornerRadius(8)
+                }
+                .padding(.horizontal, 16)
+                .disabled(viewModel.selectedSession == nil)
+            }
+            .padding(.top, 8)
+            .sheet(isPresented: $viewModel.showAlbumPicker) {
+                ShareAlbumPickerSheet(
+                    server: viewModel.selectedSession,
+                    selectedAlbumIDs: $viewModel.selectedAlbumIDs
+                )
+            }
+
             VStack(spacing: 2) {
                 Toggle("Private", isOn: $viewModel.privateUpload)
                     .padding(.horizontal, 16)
@@ -196,6 +239,8 @@ class ShareViewModel: ObservableObject {
     @Published var stripExif: Bool = false
     @Published var stripGps: Bool = false
     @Published var isImageUpload: Bool = false
+    @Published var selectedAlbumIDs: [Int] = []
+    @Published var showAlbumPicker: Bool = false
 
     weak var shareViewController: ShareViewController?
     
