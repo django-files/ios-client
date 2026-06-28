@@ -124,7 +124,7 @@ extension DFAPI {
     /// POST /api/auth/token/ — when the session is already authenticated (e.g. via passkey),
     /// the backend returns a fresh Bearer token without needing a username/password body.
     public func issueTokenForCurrentSession(using session: URLSession) async throws -> String {
-        let endpoint = encodeParametersIntoURL(path: getAPIPath(.login), parameters: [:])
+        let endpoint = self.url.appendingPathComponent(getAPIPath(.login))
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue(DFAPI.customUserAgent, forHTTPHeaderField: "User-Agent")

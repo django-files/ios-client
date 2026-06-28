@@ -119,6 +119,26 @@ struct LoginView: View {
         }
     }
 
+    /// Returns true while the given method's ceremony is in flight, so the
+    /// button can render a "...ing" label.
+    private func isWorking(for method: DFAuthMethod) -> Bool {
+        switch AuthMethodKind(method) {
+        case .passkey: return isPasskeyLoggingIn
+        case .oauth: return false
+        }
+    }
+
+    /// Single dispatcher for every non-local entry in /api/auth/methods/.
+    /// New auth methods only need to extend `AuthMethodKind` and add a case here.
+    private func activate(method: DFAuthMethod) async {
+        switch AuthMethodKind(method) {
+        case .passkey:
+            await handlePasskeyLogin()
+        case .oauth:
+            handleOAuthLogin(url: method.url)
+        }
+    }
+
     private func handleOAuthLogin(url: String) {
         if URL(string: url) != nil {
             print("Valid OAuth URL, showing web view")
@@ -192,30 +212,6 @@ struct LoginView: View {
                                 Text("Login for \(dfapi.url)")
                                     .padding([.top], 5)
                                     .padding([.bottom], 15)
-                                if authMethods.contains(where: { $0.name == "passkey" }) {
-                                    Button {
-                                        Task { await handlePasskeyLogin() }
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: "person.badge.key.fill")
-                                            Text(
-                                                isPasskeyLoggingIn
-                                                    ? "Signing in with Passkey..."
-                                                    : "Sign in with Passkey"
-                                            )
-                                        }
-                                        .frame(maxWidth: 300)
-                                        .padding()
-                                        .background(.blue)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
-                                    }
-                                    .padding([.leading, .trailing], 50)
-                                    .padding([.bottom], 15)
-                                    .opacity(0.85)
-                                    .disabled(isPasskeyLoggingIn || isLoggingIn)
-                                }
-
                                 if authMethods.contains(where: {
                                     $0.name == "local"
                                 }) {
@@ -275,28 +271,18 @@ struct LoginView: View {
                                         .padding([.bottom], 15)
                                 }
 
-                                // OAuth method login buttons
+                                // Non-local methods (OAuth providers, passkey)
+                                // dispatched from the server's auth_methods list.
                                 ForEach(
                                     authMethods.filter { $0.name != "local" },
                                     id: \.name
                                 ) { method in
-                                    Button {
-                                        handleOAuthLogin(url: method.url)
-                                    } label: {
-                                        HStack {
-                                            Text(
-                                                "\(method.name.capitalized) Login"
-                                            )
-                                        }
-                                        .frame(maxWidth: 300)
-                                        .padding()
-                                        .background(.indigo)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
-                                    }
-                                    .padding([.leading, .trailing], 50)
-                                    .padding([.bottom])
-                                    .opacity(0.8)
+                                    AuthMethodButton(
+                                        method: method,
+                                        isWorking: isWorking(for: method),
+                                        action: { Task { await activate(method: method) } }
+                                    )
+                                    .disabled(isPasskeyLoggingIn || isLoggingIn)
                                 }
                             }
                             .frame(
@@ -373,6 +359,74 @@ struct LoginView: View {
 struct OAuthURL: Identifiable {
     let id = UUID()
     let url: String
+}
+
+// MARK: - Auth method dispatch
+
+/// Categorizes a `DFAuthMethod` returned by `/api/auth/methods/` into the
+/// client-side handler that knows how to drive it. Centralizing the mapping
+/// here keeps new methods (e.g. another native ceremony) a one-line change.
+enum AuthMethodKind {
+    case passkey
+    case oauth
+
+    init(_ method: DFAuthMethod) {
+        switch method.name {
+        case "passkey": self = .passkey
+        default: self = .oauth
+        }
+    }
+}
+
+/// Renders one auth method as a button, picking icon / label / color from
+/// the method kind so every entry in `/api/auth/methods/` looks consistent
+/// without per-call duplication at the use site.
+struct AuthMethodButton: View {
+    let method: DFAuthMethod
+    let isWorking: Bool
+    let action: () -> Void
+
+    private var kind: AuthMethodKind { AuthMethodKind(method) }
+
+    private var systemImage: String? {
+        switch kind {
+        case .passkey: return "person.badge.key.fill"
+        case .oauth: return nil
+        }
+    }
+
+    private var label: String {
+        switch kind {
+        case .passkey: return isWorking ? "Signing in with Passkey..." : "Sign in with Passkey"
+        case .oauth: return "\(method.name.capitalized) Login"
+        }
+    }
+
+    private var background: Color {
+        switch kind {
+        case .passkey: return .blue
+        case .oauth: return .indigo
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(label)
+            }
+            .frame(maxWidth: 300)
+            .padding()
+            .background(background)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .padding([.leading, .trailing], 50)
+        .padding([.bottom])
+        .opacity(0.8)
+    }
 }
 
 #Preview {
