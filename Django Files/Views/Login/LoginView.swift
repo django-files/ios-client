@@ -17,6 +17,7 @@ struct LoginView: View {
     @State private var showErrorBanner: Bool = false
 
     @State private var oauthError: String? = nil
+    @State private var isPasskeyLoggingIn: Bool = false
 
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
@@ -89,6 +90,32 @@ struct LoginView: View {
             withAnimation {
                 showErrorBanner = false
             }
+        }
+    }
+
+    private func handlePasskeyLogin() async {
+        guard !isPasskeyLoggingIn else { return }
+        isPasskeyLoggingIn = true
+        defer { isPasskeyLoggingIn = false }
+        self.oauthError = nil
+        DFAnalytics.logLoginMethodSelected(.passkey)
+        do {
+            let ok = try await dfapi.passkeyLogin(selectedServer: selectedServer)
+            if ok {
+                await MainActor.run {
+                    selectedServer.auth = true
+                    try? modelContext.save()
+                }
+                onLoginSuccess()
+                self.dismiss()
+            } else {
+                await showErrorBanner()
+            }
+        } catch DFPasskeyError.canceled {
+            // User-initiated cancellation is not an error worth surfacing.
+        } catch {
+            self.oauthError = ": " + (error.localizedDescription)
+            await showErrorBanner()
         }
     }
 
@@ -165,6 +192,30 @@ struct LoginView: View {
                                 Text("Login for \(dfapi.url)")
                                     .padding([.top], 5)
                                     .padding([.bottom], 15)
+                                if authMethods.contains(where: { $0.name == "passkey" }) {
+                                    Button {
+                                        Task { await handlePasskeyLogin() }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "person.badge.key.fill")
+                                            Text(
+                                                isPasskeyLoggingIn
+                                                    ? "Signing in with Passkey..."
+                                                    : "Sign in with Passkey"
+                                            )
+                                        }
+                                        .frame(maxWidth: 300)
+                                        .padding()
+                                        .background(.blue)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
+                                    }
+                                    .padding([.leading, .trailing], 50)
+                                    .padding([.bottom], 15)
+                                    .opacity(0.85)
+                                    .disabled(isPasskeyLoggingIn || isLoggingIn)
+                                }
+
                                 if authMethods.contains(where: {
                                     $0.name == "local"
                                 }) {
