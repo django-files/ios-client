@@ -17,7 +17,6 @@ struct LoginView: View {
     @State private var showErrorBanner: Bool = false
 
     @State private var oauthError: String? = nil
-    @State private var isPasskeyLoggingIn: Bool = false
 
     let dfapi: DFAPI
     var onLoginSuccess: () -> Void
@@ -93,56 +92,21 @@ struct LoginView: View {
         }
     }
 
-    private func handlePasskeyLogin() async {
-        guard !isPasskeyLoggingIn else { return }
-        isPasskeyLoggingIn = true
-        defer { isPasskeyLoggingIn = false }
-        self.oauthError = nil
-        DFAnalytics.logLoginMethodSelected(.passkey)
-        do {
-            let ok = try await dfapi.passkeyLogin(selectedServer: selectedServer)
-            if ok {
-                await MainActor.run {
-                    selectedServer.auth = true
-                    try? modelContext.save()
-                }
-                onLoginSuccess()
-                self.dismiss()
-            } else {
-                await showErrorBanner()
-            }
-        } catch DFPasskeyError.canceled {
-            // User-initiated cancellation is not an error worth surfacing.
-        } catch {
-            self.oauthError = ": " + (error.localizedDescription)
-            await showErrorBanner()
-        }
-    }
-
-    /// Returns true while the given method's ceremony is in flight, so the
-    /// button can render a "...ing" label.
-    private func isWorking(for method: DFAuthMethod) -> Bool {
-        switch AuthMethodKind(method) {
-        case .passkey: return isPasskeyLoggingIn
-        case .oauth: return false
-        }
-    }
-
     /// Single dispatcher for every non-local entry in /api/auth/methods/.
-    /// New auth methods only need to extend `AuthMethodKind` and add a case here.
-    private func activate(method: DFAuthMethod) async {
-        switch AuthMethodKind(method) {
-        case .passkey:
-            await handlePasskeyLogin()
-        case .oauth:
-            handleOAuthLogin(url: method.url)
-        }
+    /// Every web-based ceremony (OAuth provider, passkey) opens in the same
+    /// ASWebAuthenticationSession and is closed out via the djangofiles://
+    /// callback the backend issues — so the only thing that differs between
+    /// methods is the URL the server hands us. Per-method analytics and
+    /// button styling live on `AuthMethodKind` / `AuthMethodButton`.
+    private func activate(method: DFAuthMethod) {
+        let kind = AuthMethodKind(method)
+        DFAnalytics.logLoginMethodSelected(kind.analyticsEvent)
+        handleOAuthLogin(url: method.url)
     }
 
     private func handleOAuthLogin(url: String) {
         if URL(string: url) != nil {
             print("Valid OAuth URL, showing web view")
-            DFAnalytics.logLoginMethodSelected(.oauth)
             oauthSheetURL = OAuthURL(url: url)
         } else {
             print("Failed to create OAuth URL from: '\(url)'")
@@ -279,10 +243,9 @@ struct LoginView: View {
                                 ) { method in
                                     AuthMethodButton(
                                         method: method,
-                                        isWorking: isWorking(for: method),
-                                        action: { Task { await activate(method: method) } }
+                                        action: { activate(method: method) }
                                     )
-                                    .disabled(isPasskeyLoggingIn || isLoggingIn)
+                                    .disabled(isLoggingIn)
                                 }
                             }
                             .frame(
@@ -363,9 +326,10 @@ struct OAuthURL: Identifiable {
 
 // MARK: - Auth method dispatch
 
-/// Categorizes a `DFAuthMethod` returned by `/api/auth/methods/` into the
-/// client-side handler that knows how to drive it. Centralizing the mapping
-/// here keeps new methods (e.g. another native ceremony) a one-line change.
+/// Categorizes a `DFAuthMethod` returned by `/api/auth/methods/` so the UI
+/// can pick consistent label / icon / color without scattering string checks.
+/// All web ceremonies run through the same ASWebAuthenticationSession, so
+/// new methods only need a case here plus the corresponding button styling.
 enum AuthMethodKind {
     case passkey
     case oauth
@@ -376,14 +340,20 @@ enum AuthMethodKind {
         default: self = .oauth
         }
     }
+
+    var analyticsEvent: DFAnalytics.LoginMethod {
+        switch self {
+        case .passkey: return .passkey
+        case .oauth: return .oauth
+        }
+    }
 }
 
-/// Renders one auth method as a button, picking icon / label / color from
-/// the method kind so every entry in `/api/auth/methods/` looks consistent
-/// without per-call duplication at the use site.
+/// Renders one entry from `/api/auth/methods/` as a button. Styling is keyed
+/// off `AuthMethodKind` so every entry stays visually distinct without
+/// per-call duplication at the use site.
 struct AuthMethodButton: View {
     let method: DFAuthMethod
-    let isWorking: Bool
     let action: () -> Void
 
     private var kind: AuthMethodKind { AuthMethodKind(method) }
@@ -397,7 +367,7 @@ struct AuthMethodButton: View {
 
     private var label: String {
         switch kind {
-        case .passkey: return isWorking ? "Signing in with Passkey..." : "Sign in with Passkey"
+        case .passkey: return "Sign in with Passkey"
         case .oauth: return "\(method.name.capitalized) Login"
         }
     }
