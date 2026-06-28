@@ -112,6 +112,37 @@ struct ShareView: View {
             }
             .padding(.top, 8)
 
+            if !viewModel.showShortText {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Album")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+
+                    Button {
+                        viewModel.showAlbumPicker = true
+                    } label: {
+                        HStack {
+                            Text(viewModel.selectedAlbumIDs.isEmpty ? "None" : "\(viewModel.selectedAlbumIDs.count) selected")
+                                .lineLimit(1)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray5))
+                        .cornerRadius(8)
+                    }
+                    .disabled(viewModel.selectedSession == nil)
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 8)
+            }
+
             VStack(spacing: 2) {
                 Toggle("Private", isOn: $viewModel.privateUpload)
                     .padding(.horizontal, 16)
@@ -157,6 +188,9 @@ struct ShareView: View {
                     .scaleEffect(1.5)
             }
         }
+        .sheet(isPresented: $viewModel.showAlbumPicker) {
+            ShareAlbumPickerSheet(server: viewModel.selectedSession, selectedAlbumIDs: $viewModel.selectedAlbumIDs)
+        }
         .toastNotification(
             message: viewModel.alertMessage,
             isPresented: $viewModel.showAlert,
@@ -196,6 +230,8 @@ class ShareViewModel: ObservableObject {
     @Published var stripExif: Bool = false
     @Published var stripGps: Bool = false
     @Published var isImageUpload: Bool = false
+    @Published var selectedAlbumIDs: [Int] = []
+    @Published var showAlbumPicker: Bool = false
 
     weak var shareViewController: ShareViewController?
     
