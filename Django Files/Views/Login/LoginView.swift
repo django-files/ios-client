@@ -92,10 +92,21 @@ struct LoginView: View {
         }
     }
 
+    /// Single dispatcher for every non-local entry in /api/auth/methods/.
+    /// Every web-based ceremony (OAuth provider, passkey) opens in the same
+    /// ASWebAuthenticationSession and is closed out via the djangofiles://
+    /// callback the backend issues — so the only thing that differs between
+    /// methods is the URL the server hands us. Per-method analytics and
+    /// button styling live on `AuthMethodKind` / `AuthMethodButton`.
+    private func activate(method: DFAuthMethod) {
+        let kind = AuthMethodKind(method)
+        DFAnalytics.logLoginMethodSelected(kind.analyticsEvent)
+        handleOAuthLogin(url: method.url)
+    }
+
     private func handleOAuthLogin(url: String) {
         if URL(string: url) != nil {
             print("Valid OAuth URL, showing web view")
-            DFAnalytics.logLoginMethodSelected(.oauth)
             oauthSheetURL = OAuthURL(url: url)
         } else {
             print("Failed to create OAuth URL from: '\(url)'")
@@ -224,28 +235,17 @@ struct LoginView: View {
                                         .padding([.bottom], 15)
                                 }
 
-                                // OAuth method login buttons
+                                // Non-local methods (OAuth providers, passkey)
+                                // dispatched from the server's auth_methods list.
                                 ForEach(
                                     authMethods.filter { $0.name != "local" },
                                     id: \.name
                                 ) { method in
-                                    Button {
-                                        handleOAuthLogin(url: method.url)
-                                    } label: {
-                                        HStack {
-                                            Text(
-                                                "\(method.name.capitalized) Login"
-                                            )
-                                        }
-                                        .frame(maxWidth: 300)
-                                        .padding()
-                                        .background(.indigo)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
-                                    }
-                                    .padding([.leading, .trailing], 50)
-                                    .padding([.bottom])
-                                    .opacity(0.8)
+                                    AuthMethodButton(
+                                        method: method,
+                                        action: { activate(method: method) }
+                                    )
+                                    .disabled(isLoggingIn)
                                 }
                             }
                             .frame(
@@ -322,6 +322,81 @@ struct LoginView: View {
 struct OAuthURL: Identifiable {
     let id = UUID()
     let url: String
+}
+
+// MARK: - Auth method dispatch
+
+/// Categorizes a `DFAuthMethod` returned by `/api/auth/methods/` so the UI
+/// can pick consistent label / icon / color without scattering string checks.
+/// All web ceremonies run through the same ASWebAuthenticationSession, so
+/// new methods only need a case here plus the corresponding button styling.
+enum AuthMethodKind {
+    case passkey
+    case oauth
+
+    init(_ method: DFAuthMethod) {
+        switch method.name {
+        case "passkey": self = .passkey
+        default: self = .oauth
+        }
+    }
+
+    var analyticsEvent: DFAnalytics.LoginMethod {
+        switch self {
+        case .passkey: return .passkey
+        case .oauth: return .oauth
+        }
+    }
+}
+
+/// Renders one entry from `/api/auth/methods/` as a button. Styling is keyed
+/// off `AuthMethodKind` so every entry stays visually distinct without
+/// per-call duplication at the use site.
+struct AuthMethodButton: View {
+    let method: DFAuthMethod
+    let action: () -> Void
+
+    private var kind: AuthMethodKind { AuthMethodKind(method) }
+
+    private var systemImage: String? {
+        switch kind {
+        case .passkey: return "person.badge.key.fill"
+        case .oauth: return nil
+        }
+    }
+
+    private var label: String {
+        switch kind {
+        case .passkey: return "Sign in with Passkey"
+        case .oauth: return "\(method.name.capitalized) Login"
+        }
+    }
+
+    private var background: Color {
+        switch kind {
+        case .passkey: return .blue
+        case .oauth: return .indigo
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(label)
+            }
+            .frame(maxWidth: 300)
+            .padding()
+            .background(background)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .padding([.leading, .trailing], 50)
+        .padding([.bottom])
+        .opacity(0.8)
+    }
 }
 
 #Preview {
