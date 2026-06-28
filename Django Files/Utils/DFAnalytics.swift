@@ -32,6 +32,7 @@ enum DFAnalytics {
         case local
         case oauth
         case application
+        case passkey
     }
 
     enum AddFailReason: String {
