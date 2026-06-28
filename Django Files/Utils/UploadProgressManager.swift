@@ -3,6 +3,8 @@
 //  Django Files
 //
 
+import ActivityKit
+import DFUploadShared
 import SwiftUI
 import UIKit
 
@@ -20,6 +22,9 @@ final class UploadProgressManager: ObservableObject {
     @Published private(set) var totalCount: Int = 0
 
     private var activeTasks: [Task<Void, Never>] = []
+    private var activity: Activity<DFUploadActivityAttributes>?
+    private var activityServerHost: String = ""
+    private var lastActivityProgress: Double = -1
 
     var isUploading: Bool { !uploads.isEmpty }
 
@@ -35,15 +40,37 @@ final class UploadProgressManager: ObservableObject {
         return (Double(completedCount) + currentFraction) / Double(totalCount)
     }
 
-    func start(filename: String, thumbnail: UIImage? = nil) -> UUID {
-        if uploads.isEmpty {
+    func start(filename: String, thumbnail: UIImage? = nil, serverHost: String = "") -> UUID {
+        let isNewSession = uploads.isEmpty
+        if isNewSession {
             completedCount = 0
             totalCount = 0
+            activityServerHost = serverHost
         }
         totalCount += 1
         let upload = Upload(id: UUID(), filename: filename, thumbnail: thumbnail, progress: 0)
         uploads.append(upload)
+        updateActivity()
         return upload.id
+    }
+
+    /// Call on the `.inactive` scene-phase transition. The app is still considered foreground at
+    /// this point (per Apple's rules), so `Activity.request` will succeed; calling it on
+    /// `.background` is too late and silently fails.
+    func appWillResignActive() {
+        guard !uploads.isEmpty, activity == nil else { return }
+        startActivity()
+    }
+
+    /// Call when the app returns to the foreground. The in-app accessory bar takes over,
+    /// so the Live Activity is no longer needed.
+    func appDidBecomeActive() {
+        guard let activity else { return }
+        Task {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+        self.activity = nil
+        lastActivityProgress = -1
     }
 
     func setThumbnail(id: UUID, image: UIImage) {
@@ -54,6 +81,7 @@ final class UploadProgressManager: ObservableObject {
     func update(id: UUID, progress: Double) {
         guard let index = uploads.firstIndex(where: { $0.id == id }) else { return }
         uploads[index].progress = max(0, min(1, progress))
+        updateActivity()
     }
 
     func finish(id: UUID) {
@@ -62,6 +90,9 @@ final class UploadProgressManager: ObservableObject {
         completedCount += 1
         if uploads.isEmpty {
             activeTasks.removeAll()
+            endActivity(copiedURL: nil)
+        } else {
+            updateActivity()
         }
     }
 
@@ -75,6 +106,76 @@ final class UploadProgressManager: ObservableObject {
         uploads.removeAll()
         completedCount = 0
         totalCount = 0
+        if let activity {
+            Task {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            self.activity = nil
+        }
+        lastActivityProgress = -1
+    }
+
+    // MARK: - Live Activity
+
+    private func startActivity() {
+        guard activity == nil else { return }
+        let info = ActivityAuthorizationInfo()
+        guard info.areActivitiesEnabled else { return }
+        let attrs = DFUploadActivityAttributes(serverHost: activityServerHost, albumName: nil)
+        let state = currentContentState(isComplete: false, copiedURL: nil)
+        do {
+            activity = try Activity.request(
+                attributes: attrs,
+                content: ActivityContent(state: state, staleDate: .now + 3600)
+            )
+            lastActivityProgress = state.progress
+        } catch {
+            NSLog("[UploadProgress] Activity.request failed: %@", String(describing: error))
+        }
+    }
+
+    private func updateActivity() {
+        guard let activity else { return }
+        let state = currentContentState(isComplete: false, copiedURL: nil)
+        if abs(state.progress - lastActivityProgress) < 0.02
+            && state.uploadedCount == activity.content.state.uploadedCount
+            && state.totalCount == activity.content.state.totalCount {
+            return
+        }
+        lastActivityProgress = state.progress
+        Task {
+            await activity.update(ActivityContent(state: state, staleDate: .now + 3600))
+        }
+    }
+
+    private func endActivity(copiedURL: String?) {
+        guard let activity else { return }
+        let final = DFUploadActivityAttributes.ContentState(
+            progress: 1.0,
+            uploadedCount: totalCount,
+            totalCount: totalCount,
+            isComplete: true,
+            copiedURL: copiedURL
+        )
+        let dismissalDate = Date().addingTimeInterval(15)
+        Task {
+            await activity.end(
+                ActivityContent(state: final, staleDate: nil),
+                dismissalPolicy: .after(dismissalDate)
+            )
+        }
+        self.activity = nil
+        lastActivityProgress = -1
+    }
+
+    private func currentContentState(isComplete: Bool, copiedURL: String?) -> DFUploadActivityAttributes.ContentState {
+        DFUploadActivityAttributes.ContentState(
+            progress: cumulativeProgress,
+            uploadedCount: completedCount,
+            totalCount: totalCount,
+            isComplete: isComplete,
+            copiedURL: copiedURL
+        )
     }
 }
 

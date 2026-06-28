@@ -6,6 +6,10 @@
 	<false/>
 	<key>CFBundleIdentifier</key>
 	<string>com.djangofiles.app.UploadAndCopy</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>djangofiles</string>
+	</array>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>

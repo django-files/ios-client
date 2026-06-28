@@ -30,7 +30,7 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES }}" | base64 --decode > "Django Files/GoogleService-Info.plist"
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
 
       - name: "Capture Screenshots"
         run: fastlane screenshots
@@ -39,6 +39,8 @@ jobs:
           SCREENSHOT_SERVER_URL: ${{ secrets.SCREENSHOT_SERVER_URL }}
           SCREENSHOT_USERNAME: ${{ secrets.SCREENSHOT_USERNAME }}
           SCREENSHOT_PASSWORD: ${{ secrets.SCREENSHOT_PASSWORD }}
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: 120
+          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: 6
 
       - name: "Upload Screenshots"
         if: always()
@@ -72,7 +74,7 @@ jobs:
           merge-multiple: true
 
       - name: "Select Xcode"
-        run: sudo xcode-select --switch /Applications/Xcode_26.4.app
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
 
       - name: "Upload Screenshots to App Store Connect"
         run: fastlane upload_screenshots

@@ -230,11 +230,14 @@ struct DFAPI {
         }
     }
 
-    public func uploadFileStreamed(url: URL, fileName: String? = nil, privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate) async -> DjangoFilesUploadDelegate? {
+    public func uploadFileStreamed(url: URL, fileName: String? = nil, albums: String = "", privateUpload: Bool = false, stripExif: Bool = false, stripGps: Bool = false, taskDelegate: URLSessionTaskDelegate) async -> DjangoFilesUploadDelegate? {
         let boundary = UUID().uuidString
 
         do {
             var headers: [HTTPField.Name: String] = [.contentType: "multipart/form-data; boundary=\(boundary)"]
+            if !albums.isEmpty {
+                headers[HTTPField.Name("Albums")!] = albums
+            }
             if privateUpload {
                 headers[HTTPField.Name("Private")!] = "true"
             }

@@ -7,7 +7,7 @@ import SwiftUI
 
 struct ShareAlbumPickerSheet: View {
     let server: DjangoFilesSession?
-    @Binding var selectedAlbumIDs: [Int]
+    @Binding var selectedAlbums: [DFAlbum]
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -27,22 +27,26 @@ struct ShareAlbumPickerSheet: View {
         return displayedAlbums.contains { $0.name.lowercased() == trimmed.lowercased() }
     }
 
+    private func isSelected(_ album: DFAlbum) -> Bool {
+        selectedAlbums.contains { $0.id == album.id }
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 if searchText.isEmpty {
                     Section("Selected") {
-                        if displayedAlbums.filter({ selectedAlbumIDs.contains($0.id) }).isEmpty && !isLoading {
+                        if selectedAlbums.isEmpty && !isLoading {
                             Label("No album selected", systemImage: "photo.stack")
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(displayedAlbums.filter { selectedAlbumIDs.contains($0.id) }) { album in
+                            ForEach(selectedAlbums) { album in
                                 albumRow(album, isSelected: true)
                             }
                         }
                     }
 
-                    let unselected = displayedAlbums.filter { !selectedAlbumIDs.contains($0.id) }
+                    let unselected = displayedAlbums.filter { !isSelected($0) }
                     if !unselected.isEmpty {
                         Section("Recent Albums") {
                             ForEach(unselected) { album in
@@ -63,7 +67,7 @@ struct ShareAlbumPickerSheet: View {
                                 .frame(maxWidth: .infinity)
                         } else {
                             ForEach(displayedAlbums) { album in
-                                albumRow(album, isSelected: selectedAlbumIDs.contains(album.id))
+                                albumRow(album, isSelected: isSelected(album))
                             }
                             if displayedAlbums.isEmpty {
                                 Text("No albums found")
@@ -108,10 +112,10 @@ struct ShareAlbumPickerSheet: View {
     private func albumRow(_ album: DFAlbum, isSelected: Bool) -> some View {
         Button {
             withAnimation {
-                if selectedAlbumIDs.contains(album.id) {
-                    selectedAlbumIDs.removeAll { $0 == album.id }
+                if isSelected {
+                    selectedAlbums.removeAll { $0.id == album.id }
                 } else {
-                    selectedAlbumIDs.append(album.id)
+                    selectedAlbums.append(album)
                 }
             }
         } label: {
@@ -166,7 +170,7 @@ struct ShareAlbumPickerSheet: View {
                     if !albums.contains(where: { $0.id == newAlbum.id }) {
                         albums.insert(newAlbum, at: 0)
                     }
-                    selectedAlbumIDs.append(newAlbum.id)
+                    selectedAlbums.append(newAlbum)
                     searchText = ""
                     isCreating = false
                 }
