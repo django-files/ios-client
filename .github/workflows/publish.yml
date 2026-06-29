@@ -91,7 +91,7 @@ jobs:
       - name: "Upload IPA to Release"
         if: ${{ github.event_name == 'release' }}
         continue-on-error: true
-        uses: svenstaro/upload-release-action@v3
+        uses: svenstaro/upload-release-action@v2
         with:
           file: "Django Files.ipa"
           tag: ${{ github.ref }}
