@@ -527,10 +527,13 @@ extension StreamChatManager: URLSessionWebSocketDelegate {
 // MARK: - DFAPI Extension
 
 extension DFAPI {
-    public func getStreams(page: Int = 1, filterUserID: Int? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> DFStreamsResponse {
+    public func getStreams(page: Int = 1, filterUserID: Int? = nil, search: String? = nil, selectedServer: DjangoFilesSession? = nil) async throws -> DFStreamsResponse {
         var parameters: [String: String] = [:]
         if let filterUserID {
             parameters["user"] = String(filterUserID)
+        }
+        if let search, !search.isEmpty {
+            parameters["search"] = search
         }
         let responseBody = try await makeAPIRequest(
             path: "/api/streams/\(page)/",

@@ -23,22 +23,17 @@ struct TabViewWindow: View {
     @State private var filesNavigationPath = NavigationPath()
     @State private var albumsNavigationPath = NavigationPath()
     @State private var showFileInfo = false
+    @State private var searchQuery = ""
 
     @AppStorage("tabOrder")   private var tabOrderString   = "files,albums,shorts,streams"
     @AppStorage("hiddenTabs") private var hiddenTabsString = ""
 
-    private var orderedVisibleTabs: [Tab] {
+    private var orderedVisibleTabs: [PrimaryTab] {
         let hidden = Set(hiddenTabsString.split(separator: ",").map(String.init).filter { !$0.isEmpty })
         let order  = tabOrderString.split(separator: ",").map(String.init)
-        return order.compactMap { id -> Tab? in
-            guard !hidden.contains(id) else { return nil }
-            switch id {
-            case "files":   return .files
-            case "albums":  return .albums
-            case "shorts":  return .shorts
-            case "streams": return .streams
-            default:        return nil
-            }
+        return order.compactMap { id -> PrimaryTab? in
+            guard !hidden.contains(id), let tab = PrimaryTab(rawValue: id) else { return nil }
+            return tab
         }
     }
 
@@ -47,52 +42,69 @@ struct TabViewWindow: View {
         _selectedTab = selectedTab
     }
     
-    enum Tab {
-        case files, albums, shorts, streams, settings, mobileWeb
+    enum Tab: Hashable {
+        case files, albums, shorts, streams, settings, search
+    }
+
+    private enum PrimaryTab: String, Hashable {
+        case files, albums, shorts, streams
+
+        var appTab: Tab {
+            switch self {
+            case .files: return .files
+            case .albums: return .albums
+            case .shorts: return .shorts
+            case .streams: return .streams
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .files: return "Files"
+            case .albums: return "Albums"
+            case .shorts: return "Shorts"
+            case .streams: return "Streams"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .files: return "document.fill"
+            case .albums: return "square.stack"
+            case .shorts: return "link"
+            case .streams: return "video.fill"
+            }
+        }
     }
     
     var body: some View {
         Group {
             if let server = sessionManager.selectedSession {
-                TabView(selection: $selectedTab) {
-                    if server.auth {
-                        ForEach(orderedVisibleTabs, id: \.self) { tab in
-                            tabContent(for: tab, server: server)
-                        }
+                Group {
+                    if #available(iOS 26.0, *) {
+                        modernTabView(server: server)
+                    } else {
+                        legacyTabView(server: server)
                     }
-
-                    SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
-                        .tabItem {
-                            Label("Settings", systemImage: "gear")
-                        }
-                        .tag(Tab.settings)
                 }
-                .tabBarMinimizeIfAvailable()
-                .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
                 .onChange(of: uploadProgressManager.isUploading) { _, isUploading in
                     ToastManager.shared.bottomInset = isUploading ? 72 : 0
                 }
-                .onChange(of: sessionManager.selectedSession) { oldValue, newValue in
+                .onChange(of: sessionManager.selectedSession) { _, newValue in
                     if let session = newValue {
-                        // Clear navigation paths when switching servers
                         filesNavigationPath = NavigationPath()
                         albumsNavigationPath = NavigationPath()
-
-                        // Force view refresh
                         serverChangeRefreshTrigger = UUID()
-
                         sessionManager.saveSelectedSession()
-                        Task {
-                            await refreshUserData(session: session)
-                        }
-                        Task {
-                            await sessionManager.fetchVersion()
-                        }
+                        Task { await refreshUserData(session: session) }
+                        Task { await sessionManager.fetchVersion() }
                     }
                 }
-                .onChange(of: sessionManager.selectedSession?.auth) { oldValue, newValue in
+                .onChange(of: sessionManager.selectedSession?.auth) { _, newValue in
                     if let isAuth = newValue, !isAuth {
-                        selectedTab = .settings
+                        if #unavailable(iOS 26.0) {
+                            selectedTab = .settings
+                        }
                         showLoginSheet = true
                     }
                 }
@@ -109,16 +121,94 @@ struct TabViewWindow: View {
             sessionManager.loadLastSelectedSession(from: sessions)
             if let selectedSession = sessionManager.selectedSession {
                 connectToWebSocket(session: selectedSession)
-                Task {
-                    await refreshUserData(session: selectedSession)
-                }
-                Task {
-                    await sessionManager.fetchVersion()
-                }
+                Task { await refreshUserData(session: selectedSession) }
+                Task { await sessionManager.fetchVersion() }
             }
         }
     }
-    
+
+    @available(iOS 26.0, *)
+    @ViewBuilder
+    private func modernTabView(server: DjangoFilesSession) -> some View {
+        TabView(selection: $selectedTab) {
+            if server.auth, let tab = orderedVisibleTab(at: 0) {
+                SwiftUI.Tab(tab.title, systemImage: tab.icon, value: tab.appTab) {
+                    tabContentView(for: tab.appTab, server: server)
+                }
+            }
+            if server.auth, let tab = orderedVisibleTab(at: 1) {
+                SwiftUI.Tab(tab.title, systemImage: tab.icon, value: tab.appTab) {
+                    tabContentView(for: tab.appTab, server: server)
+                }
+            }
+            if server.auth, let tab = orderedVisibleTab(at: 2) {
+                SwiftUI.Tab(tab.title, systemImage: tab.icon, value: tab.appTab) {
+                    tabContentView(for: tab.appTab, server: server)
+                }
+            }
+            if server.auth, let tab = orderedVisibleTab(at: 3) {
+                SwiftUI.Tab(tab.title, systemImage: tab.icon, value: tab.appTab) {
+                    tabContentView(for: tab.appTab, server: server)
+                }
+            }
+            if server.auth {
+                SwiftUI.Tab(value: Tab.search, role: .search) {
+                    NavigationStack {
+                        SearchView(server: $sessionManager.selectedSession, searchQuery: $searchQuery)
+                    }
+                    .searchable(text: $searchQuery, prompt: "Search files…")
+                }
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
+    }
+
+    private func orderedVisibleTab(at index: Int) -> PrimaryTab? {
+        guard orderedVisibleTabs.indices.contains(index) else { return nil }
+        return orderedVisibleTabs[index]
+    }
+
+    @ViewBuilder
+    private func legacyTabView(server: DjangoFilesSession) -> some View {
+        TabView(selection: $selectedTab) {
+            if server.auth {
+                ForEach(orderedVisibleTabs, id: \.self) { tab in
+                    tabContent(for: tab.appTab, server: server)
+                }
+            }
+            SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
+                .tabItem { Label("Settings", systemImage: "gear") }
+                .tag(Tab.settings)
+        }
+        .tabBarMinimizeIfAvailable()
+        .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
+    }
+
+    @ViewBuilder
+    private func tabContentView(for tab: Tab, server: DjangoFilesSession) -> some View {
+        switch tab {
+        case .files:
+            NavigationStack(path: $filesNavigationPath) {
+                FileListView(server: .constant(server), albumID: nil, navigationPath: $filesNavigationPath, albumName: nil)
+                    .id(serverChangeRefreshTrigger)
+            }
+        case .albums:
+            NavigationStack(path: $albumsNavigationPath) {
+                AlbumListView(navigationPath: $albumsNavigationPath, server: $sessionManager.selectedSession)
+                    .id(serverChangeRefreshTrigger)
+            }
+        case .shorts:
+            ShortListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+        case .streams:
+            StreamListView(server: $sessionManager.selectedSession)
+                .id(serverChangeRefreshTrigger)
+        default:
+            EmptyView()
+        }
+    }
+
     @ViewBuilder
     private func tabContent(for tab: Tab, server: DjangoFilesSession) -> some View {
         switch tab {
@@ -165,6 +255,7 @@ struct TabViewWindow: View {
         _ = api.connectToWebSocket()
     }
 }
+
 
 private extension View {
     @ViewBuilder

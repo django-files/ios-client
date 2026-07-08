@@ -20,6 +20,8 @@ struct ShortListView: View {
     @State private var filterUserID: Int? = nil
     @State private var users: [DFUser] = []
     @AppStorage("shortListSortOption") private var sortOption: String = "-created"
+    @State private var showingSettings = false
+    @State private var settingsShowLogin = false
     @EnvironmentObject private var sessionManager: SessionManager
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
@@ -74,48 +76,54 @@ struct ShortListView: View {
                     }
                     .navigationTitle("Short URLs")
                     .toolbar {
-                        if sessionManager.supportsOrdering || (server.wrappedValue?.superUser ?? false) {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Menu {
-                                    if sessionManager.supportsOrdering {
-                                        Menu {
-                                            Picker("", selection: $sortOption) {
-                                                ForEach(ShortSortOption.allCases, id: \.rawValue) { option in
-                                                    Label(option.label, systemImage: option.icon).tag(option.rawValue)
-                                                }
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Menu {
+                                if sessionManager.supportsOrdering {
+                                    Menu {
+                                        Picker("", selection: $sortOption) {
+                                            ForEach(ShortSortOption.allCases, id: \.rawValue) { option in
+                                                Label(option.label, systemImage: option.icon).tag(option.rawValue)
                                             }
-                                            .pickerStyle(.inline)
-                                        } label: {
-                                            Label("Sort", systemImage: "arrow.up.arrow.down")
-                                                .symbolVariant(sortOption != "-created" ? .fill : .none)
                                         }
+                                        .pickerStyle(.inline)
+                                    } label: {
+                                        Label("Sort", systemImage: "arrow.up.arrow.down")
+                                            .symbolVariant(sortOption != "-created" ? .fill : .none)
                                     }
-                                    if server.wrappedValue?.superUser ?? false {
-                                        Menu {
-                                            Picker("", selection: Binding(
-                                                get: { filterUserID },
-                                                set: { newValue in
-                                                    filterUserID = newValue
-                                                    Task { await refreshShorts() }
-                                                }
-                                            )) {
-                                                Label("All Users", systemImage: "person.2")
-                                                    .tag(Optional<Int>(0))
-                                                ForEach(users, id: \.id) { user in
-                                                    Label(user.username, systemImage: "person.circle")
-                                                        .tag(Optional(user.id))
-                                                }
-                                            }
-                                            .pickerStyle(.inline)
-                                        } label: {
-                                            Label("Users", systemImage: "person.2")
-                                                .symbolVariant(isFilteringUsers ? .fill : .none)
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "line.3.horizontal.decrease")
-                                        .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                                 }
+                                if server.wrappedValue?.superUser ?? false {
+                                    Menu {
+                                        Picker("", selection: Binding(
+                                            get: { filterUserID },
+                                            set: { newValue in
+                                                filterUserID = newValue
+                                                Task { await refreshShorts() }
+                                            }
+                                        )) {
+                                            Label("All Users", systemImage: "person.2")
+                                                .tag(Optional<Int>(0))
+                                            ForEach(users, id: \.id) { user in
+                                                Label(user.username, systemImage: "person.circle")
+                                                    .tag(Optional(user.id))
+                                            }
+                                        }
+                                        .pickerStyle(.inline)
+                                    } label: {
+                                        Label("Users", systemImage: "person.2")
+                                            .symbolVariant(isFilteringUsers ? .fill : .none)
+                                    }
+                                }
+
+                                Divider()
+
+                                Button {
+                                    showingSettings = true
+                                } label: {
+                                    Label("Settings", systemImage: "gear")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                             }
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
@@ -127,6 +135,9 @@ struct ShortListView: View {
             } else {
                 Label("No server selected.", systemImage: "exclamationmark.triangle")
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(sessionManager: sessionManager, showLoginSheet: $settingsShowLogin)
         }
         .onChange(of: sortOption) { _, _ in
             Task { await refreshShorts() }
@@ -194,7 +205,7 @@ struct ShortListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let response = try await api.getShorts(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, selectedServer: serverInstance)
+            let response = try await api.getShorts(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil, selectedServer: serverInstance)
             if append {
                 shorts.append(contentsOf: response.shorts)
             } else {
