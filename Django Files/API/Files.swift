@@ -28,12 +28,13 @@ public struct DFFile: Codable, Hashable, Equatable, Identifiable {
     public var raw: String
     public var date: String
     public var albums: [Int]
+    public var tags: [String]
     public var exif: [String: AnyCodable]?
     public var meta: [String: AnyCodable]?
-    
+
     // Skip nested JSON structures
     enum CodingKeys: String, CodingKey {
-        case id, user, size, mime, name, info, expr, view, maxv, password, `private`, avatar, userName, userUsername, url, thumb, raw, date, albums, exif, meta
+        case id, user, size, mime, name, info, expr, view, maxv, password, `private`, avatar, userName, userUsername, url, thumb, raw, date, albums, tags, exif, meta
     }
     
     public init(from decoder: Decoder) throws {
@@ -57,7 +58,8 @@ public struct DFFile: Codable, Hashable, Equatable, Identifiable {
         raw = try container.decode(String.self, forKey: .raw)
         date = try container.decode(String.self, forKey: .date)
         albums = try container.decode([Int].self, forKey: .albums)
-        
+        tags = (try? container.decode([String].self, forKey: .tags)) ?? []
+
         // Decode exif and meta as dynamic JSON objects
         if let exifContainer = try? container.decode([String: AnyCodable].self, forKey: .exif) {
             exif = exifContainer
@@ -93,6 +95,7 @@ public struct DFFile: Codable, Hashable, Equatable, Identifiable {
         try container.encode(raw, forKey: .raw)
         try container.encode(date, forKey: .date)
         try container.encode(albums, forKey: .albums)
+        try container.encode(tags, forKey: .tags)
         try container.encode(exif, forKey: .exif)
         try container.encode(meta, forKey: .meta)
     }

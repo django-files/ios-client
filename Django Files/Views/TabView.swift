@@ -24,6 +24,7 @@ struct TabViewWindow: View {
     @State private var albumsNavigationPath = NavigationPath()
     @State private var showFileInfo = false
     @State private var searchQuery = ""
+    @State private var searchScope: SearchScope = .files
 
     @AppStorage("tabOrder")   private var tabOrderString   = "files,albums,shorts,streams"
     @AppStorage("hiddenTabs") private var hiddenTabsString = ""
@@ -154,9 +155,14 @@ struct TabViewWindow: View {
             if server.auth {
                 SwiftUI.Tab(value: Tab.search, role: .search) {
                     NavigationStack {
-                        SearchView(server: $sessionManager.selectedSession, searchQuery: $searchQuery)
+                        SearchView(server: $sessionManager.selectedSession, searchQuery: $searchQuery, scope: $searchScope)
                     }
-                    .searchable(text: $searchQuery, prompt: "Search files…")
+                    .searchable(text: $searchQuery, prompt: "Search…")
+                    .searchScopes($searchScope) {
+                        ForEach(SearchScope.allCases, id: \.self) { s in
+                            Text(s.rawValue).tag(s)
+                        }
+                    }
                 }
             }
         }
