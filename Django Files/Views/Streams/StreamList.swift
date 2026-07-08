@@ -9,6 +9,8 @@ import Combine
 struct StreamListView: View {
     let server: Binding<DjangoFilesSession?>
 
+    @EnvironmentObject private var sessionManager: SessionManager
+
     @State private var streams: [DFStream] = []
     @State private var isLoading = false
     @State private var hasMoreResults = true
@@ -17,6 +19,8 @@ struct StreamListView: View {
     @State private var users: [DFUser] = []
     @State private var liveFilter: LiveFilter = .all
     @State private var streamPendingDelete: DFStream? = nil
+    @State private var showingSettings = false
+    @State private var settingsShowLogin = false
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
     private var hasActiveFilters: Bool { isFilteringUsers || liveFilter != .all }
@@ -141,8 +145,16 @@ struct StreamListView: View {
                                         }
                                     }
                                 }
+
+                                Divider()
+
+                                Button {
+                                    showingSettings = true
+                                } label: {
+                                    Label("Settings", systemImage: "gear")
+                                }
                             } label: {
-                                Image(systemName: "line.3.horizontal.decrease")
+                                Image(systemName: "ellipsis")
                                     .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
                             }
                         }
@@ -154,6 +166,9 @@ struct StreamListView: View {
             } else {
                 Label("No server selected.", systemImage: "exclamationmark.triangle")
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(sessionManager: sessionManager, showLoginSheet: $settingsShowLogin)
         }
         .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.streamStatusNotification)) { notification in
             guard let name = notification.userInfo?["name"] as? String,
@@ -261,7 +276,7 @@ struct StreamListView: View {
         let page = (streams.count / streamsPerPage) + 1
 
         do {
-            let response = try await api.getStreams(page: page, filterUserID: filterUserID, selectedServer: session)
+            let response = try await api.getStreams(page: page, filterUserID: filterUserID, search: nil, selectedServer: session)
             await MainActor.run {
                 streams.append(contentsOf: response.streams)
                 hasMoreResults = response.next != nil

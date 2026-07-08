@@ -304,7 +304,9 @@ struct FileListView: View {
     @State private var showingBulkAlbumPicker: Bool = false
     
     @State private var redirectURLs: [String: String] = [:]
-    
+    @State private var showingSettings = false
+    @State private var settingsShowLogin = false
+
     @State private var resolvedAlbum: DFAlbum?
     @State private var showFileInfo: Bool = false
     @State private var users: [DFUser] = []
@@ -430,7 +432,7 @@ struct FileListView: View {
     }
     
     private func loadFiles() {
-        if (files.count > 0) { return }
+        if files.count > 0 { return }
         isLoading = true
         errorMessage = nil
         currentPage = 1
@@ -769,6 +771,14 @@ struct FileListView: View {
                         }
                         .disabled(filteredFiles.isEmpty)
                     }
+
+                    Divider()
+
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gear")
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.primary)
@@ -864,6 +874,9 @@ struct FileListView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(sessionManager: sessionManager, showLoginSheet: $settingsShowLogin)
         }
         .onAppear {
             loadFiles()
@@ -1129,7 +1142,7 @@ struct FileListView: View {
         do {
             // Superuser with no user selected means "all users"; backend expects user=0 for that case
             let effectiveFilterUserID = filterUserID ?? (serverInstance.superUser ? 0 : nil)
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil)
+            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil)
             if append {
                 // Only append new files that aren't already in the list
                 let newFiles = filesResponse.files.filter { newFile in
@@ -1440,4 +1453,3 @@ enum MimeTypeFilter: String, CaseIterable {
     }
 
 }
-

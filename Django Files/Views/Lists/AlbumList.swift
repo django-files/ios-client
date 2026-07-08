@@ -29,6 +29,8 @@ struct AlbumListView: View {
     @State private var filterUserID: Int? = nil
     @State private var users: [DFUser] = []
     @AppStorage("albumListSortOption") private var sortOption: String = "-created"
+    @State private var showingSettings = false
+    @State private var settingsShowLogin = false
 
     private var isFilteringUsers: Bool { filterUserID != server.wrappedValue?.userID }
     private var hasActiveOptions: Bool { isFilteringUsers || (sessionManager.supportsOrdering && sortOption != "-created") }
@@ -115,48 +117,54 @@ struct AlbumListView: View {
         .overlay { statusOverlay }
         .navigationTitle("Albums")
         .toolbar {
-            if sessionManager.supportsOrdering || (server.wrappedValue?.superUser ?? false) {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        if sessionManager.supportsOrdering {
-                            Menu {
-                                Picker("", selection: $sortOption) {
-                                    ForEach(AlbumSortOption.allCases, id: \.rawValue) { option in
-                                        Label(option.label, systemImage: option.icon).tag(option.rawValue)
-                                    }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Menu {
+                    if sessionManager.supportsOrdering {
+                        Menu {
+                            Picker("", selection: $sortOption) {
+                                ForEach(AlbumSortOption.allCases, id: \.rawValue) { option in
+                                    Label(option.label, systemImage: option.icon).tag(option.rawValue)
                                 }
-                                .pickerStyle(.inline)
-                            } label: {
-                                Label("Sort", systemImage: "arrow.up.arrow.down")
-                                    .symbolVariant(sortOption != "-created" ? .fill : .none)
                             }
+                            .pickerStyle(.inline)
+                        } label: {
+                            Label("Sort", systemImage: "arrow.up.arrow.down")
+                                .symbolVariant(sortOption != "-created" ? .fill : .none)
                         }
-                        if server.wrappedValue?.superUser ?? false {
-                            Menu {
-                                Picker("", selection: Binding(
-                                    get: { filterUserID },
-                                    set: { newValue in
-                                        filterUserID = newValue
-                                        Task { await refreshAlbumsAsync() }
-                                    }
-                                )) {
-                                    Label("All Users", systemImage: "person.2")
-                                        .tag(Optional<Int>(0))
-                                    ForEach(users, id: \.id) { user in
-                                        Label(user.username, systemImage: "person.circle")
-                                            .tag(Optional(user.id))
-                                    }
-                                }
-                                .pickerStyle(.inline)
-                            } label: {
-                                Label("Users", systemImage: "person.2")
-                                    .symbolVariant(isFilteringUsers ? .fill : .none)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                     }
+                    if server.wrappedValue?.superUser ?? false {
+                        Menu {
+                            Picker("", selection: Binding(
+                                get: { filterUserID },
+                                set: { newValue in
+                                    filterUserID = newValue
+                                    Task { await refreshAlbumsAsync() }
+                                }
+                            )) {
+                                Label("All Users", systemImage: "person.2")
+                                    .tag(Optional<Int>(0))
+                                ForEach(users, id: \.id) { user in
+                                    Label(user.username, systemImage: "person.circle")
+                                        .tag(Optional(user.id))
+                                }
+                            }
+                            .pickerStyle(.inline)
+                        } label: {
+                            Label("Users", systemImage: "person.2")
+                                .symbolVariant(isFilteringUsers ? .fill : .none)
+                        }
+                    }
+
+                    Divider()
+
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gear")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(hasActiveOptions ? Color.accentColor : Color.primary)
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -191,6 +199,9 @@ struct AlbumListView: View {
             }
         } message: {
             Text("Are you sure you want to delete \"\(String(describing: albumToDelete?.name ?? "Unknown Album"))\"?")
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(sessionManager: sessionManager, showLoginSheet: $settingsShowLogin)
         }
         .onReceive(NotificationCenter.default.publisher(for: DFWebSocket.albumUpdateNotification)) { notification in
             guard let id = notification.userInfo?["id"] as? Int,
@@ -256,7 +267,7 @@ struct AlbumListView: View {
         isLoading = true
         errorMessage = nil
         currentPage = 1
-        
+
         Task {
             await fetchAlbums(page: currentPage)
         }
@@ -293,7 +304,7 @@ struct AlbumListView: View {
         let api = DFAPI(url: url, token: serverInstance.token)
 
         do {
-            let albumsResponse = try await api.getAlbums(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, selectedServer: serverInstance)
+            let albumsResponse = try await api.getAlbums(page: page, filterUserID: filterUserID, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil, selectedServer: serverInstance)
             if append {
                 albums.append(contentsOf: albumsResponse.albums)
             } else {
