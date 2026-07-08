@@ -60,6 +60,12 @@ struct SearchView: View {
         }
     }
 
+    private func matchingTag(for file: DFFile) -> String? {
+        guard !searchQuery.isEmpty else { return nil }
+        let q = searchQuery.lowercased()
+        return file.tags.first { $0.lowercased().contains(q) }
+    }
+
     @ViewBuilder
     private var listContent: some View {
         switch scope {
@@ -69,7 +75,19 @@ struct SearchView: View {
                     selectedFile = file
                     showingPreview = true
                 } label: {
-                    FileRowView(file: .constant(file), serverURL: serverURL)
+                    VStack(alignment: .leading, spacing: 4) {
+                        FileRowView(file: .constant(file), serverURL: serverURL)
+                        if let tag = matchingTag(for: file) {
+                            Text(tag)
+                                .font(.caption2.weight(.medium))
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .foregroundStyle(.white)
+                                .background(Color.blue, in: Capsule())
+                                .padding(.leading, 72)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }
