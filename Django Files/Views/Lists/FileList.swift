@@ -767,7 +767,7 @@ struct FileListView: View {
                             isSelectMode = true
                             selectedFileIDs = []
                         } label: {
-                            Label("Bulk Select", systemImage: "checklist")
+                            Label("Select", systemImage: "checklist")
                         }
                         .disabled(filteredFiles.isEmpty)
                     }
