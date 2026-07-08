@@ -265,6 +265,30 @@ struct PreviewFileInfo: View {
                 }
             }
 
+            // Tags Section
+            if !file.tags.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Tags", systemImage: "tag")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(file.tags, id: \.self) { tag in
+                                Text(tag)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(.tint.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+
             // Albums Section
             if !file.albums.isEmpty {
                 Divider()
