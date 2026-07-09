@@ -446,7 +446,7 @@ struct AlbumThumbnailGrid: View {
                 LazyVGrid(columns: columns, spacing: 2) {
                     ForEach(0..<4, id: \.self) { i in
                         if i < thumbURLs.count {
-                            CachedAsyncImage(url: thumbURLs[i]) { image in
+                            CachedAsyncImage(url: thumbURLs[i], targetSize: 31) { image in
                                 image.resizable().scaledToFill()
                             } placeholder: {
                                 Color.secondary.opacity(0.12)

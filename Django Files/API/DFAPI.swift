@@ -54,6 +54,10 @@ struct DFAPI {
     var decoder: JSONDecoder
     private let apiSession: URLSession
 
+    // Shared across all DFAPI instances: views construct a DFAPI per request, and a
+    // per-instance session gets a fresh connection pool — every API call was paying
+    // a full TCP + TLS handshake instead of reusing keep-alive connections.
+    private static let defaultSession = URLSession(configuration: .ephemeral)
 
     init(url: URL, token: String, session: URLSession? = nil){
         self.url = url
@@ -61,7 +65,7 @@ struct DFAPI {
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        apiSession = session ?? DFAPIConfiguration.sessionOverride ?? URLSession(configuration: .ephemeral)
+        apiSession = session ?? DFAPIConfiguration.sessionOverride ?? DFAPI.defaultSession
     }
     
     private func encodeParametersIntoURL(path: String, parameters: [String: String]) -> URL {

@@ -1104,7 +1104,9 @@ struct FileListView: View {
         isLoading = true
         errorMessage = nil
         currentPage = 1
-        files = []
+        // Don't clear here: page 1 replaces the array atomically on success (and the
+        // error path clears it), so the current content stays up during the refresh
+        // instead of tearing down and rebuilding the whole grid.
         await fetchFiles(page: currentPage)
     }
     
@@ -1347,11 +1349,25 @@ struct FileGridItemView: View, Equatable {
         return "doc.fill"
     }
 
+    private var hasBadge: Bool {
+        showDetails && (file.private || file.password != "" || file.expr != "")
+    }
+
     var body: some View {
-        if naturalAspect && isMedia {
-            naturalMediaCell
+        let core = Group {
+            if naturalAspect && isMedia {
+                naturalMediaCell
+            } else {
+                squareCell
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        // Badge overlay attached only when there's something to draw — a constant
+        // empty overlay still costs a node on every one of hundreds of cells.
+        if hasBadge {
+            core.overlay(alignment: .bottomTrailing) { statusBadge }
         } else {
-            squareCell
+            core
         }
     }
 
@@ -1390,10 +1406,6 @@ struct FileGridItemView: View, Equatable {
                     }
                 }
             }
-            .overlay(alignment: .bottomTrailing) { statusBadge }
-            // Single clip for both overflow and corners (a `.clipped()` here plus a
-            // clipShape would clip every cell twice).
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     private var naturalMediaCell: some View {
@@ -1403,25 +1415,20 @@ struct FileGridItemView: View, Equatable {
             Color(.systemGray5)
                 .aspectRatio(4/3, contentMode: .fit)
         }
-        .overlay(alignment: .bottomTrailing) { statusBadge }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
-    @ViewBuilder
     private var statusBadge: some View {
-        if showDetails && (file.private || file.password != "" || file.expr != "") {
-            HStack(spacing: 2) {
-                if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
-                if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
-                if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 3)
-            .background(.black.opacity(0.55))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(4)
+        HStack(spacing: 2) {
+            if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+            if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+            if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
         }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(4)
     }
 }
 
