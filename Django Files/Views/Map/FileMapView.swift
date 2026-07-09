@@ -528,7 +528,7 @@ struct MapClusterPin: View {
             ZStack(alignment: .topTrailing) {
                 Group {
                     if let url = thumbnailURLs.first {
-                        CachedAsyncImage(url: url) { img in
+                        CachedAsyncImage(url: url, targetSize: 48) { img in
                             img.resizable().scaledToFill()
                         } placeholder: {
                             Color(.systemGray5).overlay {
@@ -611,7 +611,7 @@ struct ClusterMapCallout: View {
                         }
                     } else {
                         ForEach(Array(displayURLs.enumerated()), id: \.offset) { idx, url in
-                            CachedAsyncImage(url: url) { img in
+                            CachedAsyncImage(url: url, targetSize: 280) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
                                 Color(.systemGray5)
@@ -686,7 +686,7 @@ struct FileMapPin: View {
         Button { showingCallout = true } label: {
             ZStack {
                 if showThumb, let url = thumbnailURL {
-                    CachedAsyncImage(url: url) { img in
+                    CachedAsyncImage(url: url, targetSize: 44) { img in
                         img.resizable().scaledToFill()
                     } placeholder: {
                         Color(.systemGray5)
@@ -737,7 +737,7 @@ struct FileMapCallout: View {
                 Group {
                     if file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/"),
                        let url = thumbnailURL {
-                        CachedAsyncImage(url: url) { img in
+                        CachedAsyncImage(url: url, targetSize: 280) { img in
                             img.resizable().scaledToFill()
                         } placeholder: {
                             Color(.systemGray5)

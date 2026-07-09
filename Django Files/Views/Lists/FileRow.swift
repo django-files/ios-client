@@ -36,16 +36,14 @@ struct FileRowView: View {
     }
     
     private var thumbnailURL: URL {
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? serverURL
+        file.thumbnailURL(on: serverURL)
     }
     
     var body: some View {
         HStack(alignment: .center) {
             VStack(spacing: 0) {
                 if file.mime.hasPrefix("image/") || file.mime.hasPrefix("video/") {
-                    CachedAsyncImage(url: thumbnailURL) { image in
+                    CachedAsyncImage(url: thumbnailURL, targetSize: 64) { image in
                         image
                             .resizable()
                             .scaledToFill()

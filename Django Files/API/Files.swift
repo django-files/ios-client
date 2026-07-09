@@ -271,10 +271,20 @@ extension DFFile {
         guard let info = exif?["GPSInfo"]?.value as? [String: Any] else { return nil }
         return info["6"] as? Double
     }
+
+    /// Server-generated thumbnail endpoint for this file.
+    public func thumbnailURL(on serverURL: URL) -> URL {
+        var components = URLComponents(
+            url: serverURL.appendingPathComponent("/raw/\(name)"),
+            resolvingAgainstBaseURL: true
+        )
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? serverURL
+    }
 }
 
 extension DFAPI {
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil, filterType: String? = nil, ordering: String? = nil, search: String? = nil) async throws -> DFFilesResponse {
+    public func getFiles(page: Int = 1, pageSize: Int? = nil, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil, filterType: String? = nil, ordering: String? = nil, search: String? = nil) async throws -> DFFilesResponse {
         var parameters: [String: String] = [:]
         if let album {
             parameters["album"] = String(album)
@@ -295,8 +305,9 @@ extension DFAPI {
             parameters["search"] = search
         }
 
+        // /api/files/{page}/{count}/ — count falls back to the server default (25) when omitted
         let responseBody = try await makeAPIRequest(
-            path: getAPIPath(.files) + "\(page)/",
+            path: getAPIPath(.files) + "\(page)/" + (pageSize.map { "\($0)/" } ?? ""),
             parameters: parameters,
             method: .get,
             selectedServer: selectedServer

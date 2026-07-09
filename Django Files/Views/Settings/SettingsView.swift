@@ -30,7 +30,7 @@ struct SettingsView: View {
                             } label: {
                                 HStack(spacing: 12) {
                                     if let avatarUrl = server.avatarUrl {
-                                        CachedAsyncImage(url: avatarUrl) { image in
+                                        CachedAsyncImage(url: avatarUrl, targetSize: 44) { image in
                                             image
                                                 .resizable()
                                                 .aspectRatio(contentMode: .fill)

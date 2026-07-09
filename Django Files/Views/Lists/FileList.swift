@@ -108,102 +108,73 @@ class FileListManager: ObservableObject, FileListDelegate {
         return status
     }
     
+    /// Apply `change` to the given files locally, reassigning the array once so a
+    /// single view update covers every mutation.
+    private func mutate(fileIDs: [Int], _ change: (inout DFFile) -> Void) {
+        withAnimation {
+            var updated = files
+            for id in fileIDs {
+                if let index = updated.firstIndex(where: { $0.id == id }) {
+                    change(&updated[index])
+                }
+            }
+            files = updated
+        }
+    }
+
+    /// Shared server-edit path: POST the change, and mirror it locally on success.
+    private func applyEdit(fileIDs: [Int], changes: [String: Any], _ change: @escaping (inout DFFile) -> Void) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: fileIDs, changes: changes, selectedServer: serverInstance)
+        if status {
+            mutate(fileIDs: fileIDs, change)
+        }
+        return status
+    }
+
     func renameFile(fileID: Int, newName: String, onSuccess: (() -> Void)?) async -> Bool {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
             return false
         }
-        
+
         let api = DFAPI(url: url, token: serverInstance.token)
         let status = await api.renameFile(fileID: fileID, name: newName, selectedServer: serverInstance)
         if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    
-                    // Update the name
-                    updatedFiles[index].name = newName
-                    
-                    // Update URLs that contain the filename
-                    let file = updatedFiles[index]
-                    
-                    // Update raw URL
-                    if let oldRawURL = URL(string: file.raw) {
-                        let newRawURL = oldRawURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].raw = newRawURL.absoluteString
+            mutate(fileIDs: [fileID]) { file in
+                file.name = newName
+                // The raw/thumb/share URLs embed the filename — rewrite their last components
+                let urlKeyPaths: [WritableKeyPath<DFFile, String>] = [\.raw, \.thumb, \.url]
+                for keyPath in urlKeyPaths {
+                    if let old = URL(string: file[keyPath: keyPath]) {
+                        file[keyPath: keyPath] = old.deletingLastPathComponent()
+                            .appendingPathComponent(newName).absoluteString
                     }
-                    
-                    // Update thumb URL
-                    if let oldThumbURL = URL(string: file.thumb) {
-                        let newThumbURL = oldThumbURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].thumb = newThumbURL.absoluteString
-                    }
-                    
-                    // Update main URL
-                    if let oldURL = URL(string: file.url) {
-                        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].url = newURL.absoluteString
-                    }
-                    
-                    // Reassign the entire array to trigger a view update
-                    files = updatedFiles
                 }
-                onSuccess?()
             }
+            onSuccess?()
         }
         return status
     }
 
     func setFilePassword(fileID: Int, password: String, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["password": password], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].password = password
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["password": password]) { $0.password = password }
+        if status { onSuccess?() }
         return status
     }
 
     func setFilePrivate(fileID: Int, isPrivate: Bool, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["private": isPrivate], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].private = isPrivate
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["private": isPrivate]) { $0.private = isPrivate }
+        if status { onSuccess?() }
         return status
     }
 
     func updateFileAlbums(fileID: Int, albumIDs: [Int]) {
-        withAnimation {
-            if let index = files.firstIndex(where: { $0.id == fileID }) {
-                var updated = files
-                updated[index].albums = albumIDs
-                files = updated
-            }
-        }
+        mutate(fileIDs: [fileID]) { $0.albums = albumIDs }
     }
 
     func updateFilesAlbums(updates: [Int: [Int]]) {
@@ -219,42 +190,12 @@ class FileListManager: ObservableObject, FileListDelegate {
     }
 
     func setFilesPrivate(fileIDs: [Int], isPrivate: Bool) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else { return false }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: fileIDs, changes: ["private": isPrivate], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                var updated = files
-                for id in fileIDs {
-                    if let index = updated.firstIndex(where: { $0.id == id }) {
-                        updated[index].private = isPrivate
-                    }
-                }
-                files = updated
-            }
-        }
-        return status
+        await applyEdit(fileIDs: fileIDs, changes: ["private": isPrivate]) { $0.private = isPrivate }
     }
 
     func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["expr": expr], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].expr = expr
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["expr": expr]) { $0.expr = expr }
+        if status { onSuccess?() }
         return status
     }
 }
@@ -325,6 +266,7 @@ struct FileListView: View {
 
     @State private var mapFileCount: Int = 0
     @State private var mapIsLoading: Bool = false
+    @State private var gridScrollAnchor = GridScrollAnchor()
 
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
@@ -342,8 +284,10 @@ struct FileListView: View {
         nonmutating set { fileListManager.files = newValue }
     }
 
-    private var filteredFiles: [DFFile] {
-        fileListManager.files
+    /// The user can act on (delete/edit) files they own; superusers own everything.
+    private func isOwned(_ file: DFFile) -> Bool {
+        (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID)
+            || server.wrappedValue?.superUser == true
     }
 
     private var filterTypeParam: String? {
@@ -399,13 +343,6 @@ struct FileListView: View {
         return "list.bullet"
     }
 
-    private func thumbnailURL(file: DFFile) -> URL? {
-        guard let serverURL = server.wrappedValue.flatMap({ URL(string: $0.url) }) else { return nil }
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url
-    }
-    
     private func checkForDeepLinkTarget() {
         print("checkForDeepLinkTarget Called with target: \(String(describing: previewStateManager.deepLinkTargetFileID))")
         if let targetFileID = previewStateManager.deepLinkTargetFileID {
@@ -442,57 +379,104 @@ struct FileListView: View {
         }
     }
     
+    // Photos-style density scaling: tighter gutters and squarer corners as cells shrink.
+    private var gridSpacing: CGFloat {
+        gridColumnCount >= 6 ? 1 : 2
+    }
+
+    private var gridCornerRadius: CGFloat {
+        max(0, 12 - CGFloat(gridColumnCount) * 1.5)
+    }
+
+    // Zoomed-out grids show hundreds of cells per screen; scale the fetch size with
+    // density so pagination keeps up (server caps are generous, cap ours at 500).
+    private var pageSize: Int {
+        guard isGridView else { return 25 }
+        return min(500, max(25, gridColumnCount * gridColumnCount * 3))
+    }
+
     private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumnCount)
+        Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: gridColumnCount)
     }
 
     private var gridContent: some View {
         let showDetails = gridColumnCount <= 5
+        let showContextMenus = gridColumnCount <= 8
         let serverURL = resolvedServerURL
-        return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad in
+        let prefetchThreshold = max(5, gridColumnCount * 3)
+        // Reference-box binding: scroll tracking writes go to the box (no view
+        // invalidation per row scrolled); the value is only read back when the column
+        // count swaps, letting the system keep the anchor item in place (Photos-style).
+        let anchorBinding = Binding<Int?>(
+            get: { gridScrollAnchor.fileID },
+            set: { gridScrollAnchor.fileID = $0 }
+        )
+        return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad, width in
+            let cellSize: CGFloat? = width > 0
+                ? (width - gridSpacing * CGFloat(gridColumnCount - 1)) / CGFloat(gridColumnCount)
+                : nil
+            // Membership set built once per body evaluation — the previous per-cell
+            // `files.suffix(n).contains` scan cost O(n) on every single cell appear.
+            let prefetchIDs = Set(files.suffix(prefetchThreshold).map(\.id))
             ScrollView {
-                LazyVGrid(columns: gridColumns, spacing: 2) {
-                    ForEach(filteredFiles) { file in
+                LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
+                    ForEach(files) { file in
                         let isSelected = selectedFileIDs.contains(file.id)
-                        Button {
+                        let item = FileGridItemView(
+                            file: file,
+                            serverURL: serverURL,
+                            showDetails: showDetails,
+                            naturalAspect: naturalAspect,
+                            cornerRadius: gridCornerRadius,
+                            targetSize: cellSize
+                        )
+                        .equatable()
+                        .contentShape(Rectangle())
+                        let base = Group {
                             if isSelectMode {
-                                toggleSelection(file: file)
+                                item
+                                    .overlay(alignment: .topLeading) {
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(isSelected ? Color.accentColor : .white)
+                                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                            .padding(6)
+                                    }
+                                    .opacity(isSelected ? 1.0 : 0.6)
                             } else {
-                                selectedFile = file
-                                showingPreview = true
+                                item
                             }
-                        } label: {
-                            FileGridItemView(
-                                file: file,
-                                serverURL: serverURL,
-                                showDetails: showDetails,
-                                naturalAspect: naturalAspect
-                            )
-                            .contentShape(Rectangle())
-                            .overlay(alignment: .topLeading) {
+                        }
+                        // Tap gesture instead of Button: press-tracking and accessibility
+                        // wrappers add up across hundreds of visible cells.
+                        let cell = base
+                            .onTapGesture {
                                 if isSelectMode {
-                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 22))
-                                        .foregroundStyle(isSelected ? Color.accentColor : .white)
-                                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                                        .padding(6)
+                                    toggleSelection(file: file)
+                                } else {
+                                    selectedFile = file
+                                    showingPreview = true
                                 }
                             }
-                            .opacity(isSelectMode && !isSelected ? 0.6 : 1.0)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            if !isSelectMode {
+                            .onAppear {
+                                if hasNextPage && prefetchIDs.contains(file.id) {
+                                    loadNextPage()
+                                }
+                            }
+
+                        // The modifier itself installs a UIKit interaction per cell, so
+                        // it must not be attached at all when zoomed far out (hundreds
+                        // of visible cells) — an empty menu closure isn't enough.
+                        if showContextMenus && !isSelectMode {
+                            cell.contextMenu {
                                 fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                             }
-                        }
-                        .onAppear {
-                            if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
-                                loadNextPage()
-                            }
+                        } else {
+                            cell
                         }
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.top, topPad + 8)
                 .padding(.bottom, bottomPad + 8)
 
@@ -506,6 +490,7 @@ struct FileListView: View {
                     .padding(.vertical, 8)
                 }
             }
+            .scrollPosition(id: anchorBinding, anchor: .center)
             .ignoresSafeArea()
             .refreshable {
                 Task {
@@ -531,7 +516,7 @@ struct FileListView: View {
                 gridContent
             } else {
                 List {
-            ForEach(filteredFiles) { file in
+            ForEach(files) { file in
                 let isSelected = selectedFileIDs.contains(file.id)
                 Button {
                     if isSelectMode {
@@ -552,12 +537,12 @@ struct FileListView: View {
                             if file.mime.starts(with: "image/") && !isSelectMode {
                                 FileRowView(
                                     file: $fileListManager.files[realIndex],
-                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                    serverURL: resolvedServerURL
                                 )
                                 .contextMenu {
                                     fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                 } preview: {
-                                    CachedAsyncImage(url: thumbnailURL(file: file)) { image in
+                                    CachedAsyncImage(url: file.thumbnailURL(on: resolvedServerURL)) { image in
                                         image
                                             .resizable()
                                             .scaledToFill()
@@ -570,7 +555,7 @@ struct FileListView: View {
                             } else {
                                 FileRowView(
                                     file: $fileListManager.files[realIndex],
-                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                    serverURL: resolvedServerURL
                                 )
                                 .contextMenu {
                                     if !isSelectMode {
@@ -583,8 +568,7 @@ struct FileListView: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     if !isSelectMode {
-                        let fileIsOwned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-                        if fileIsOwned {
+                        if isOwned(file) {
                             Button {
                                 fileIDsToDelete = [file.id]
                                 fileNameToDelete = file.name
@@ -769,7 +753,7 @@ struct FileListView: View {
                         } label: {
                             Label("Select", systemImage: "checklist")
                         }
-                        .disabled(filteredFiles.isEmpty)
+                        .disabled(files.isEmpty)
                     }
 
                     Divider()
@@ -908,8 +892,7 @@ struct FileListView: View {
     }
     
     private func toggleSelection(file: DFFile) {
-        let owned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-        guard owned else { return }
+        guard isOwned(file) else { return }
         if selectedFileIDs.contains(file.id) {
             selectedFileIDs.remove(file.id)
         } else {
@@ -918,16 +901,13 @@ struct FileListView: View {
     }
 
     private var ownedSelectedIDs: [Int] {
-        filteredFiles
-            .filter { selectedFileIDs.contains($0.id) }
-            .filter { file in
-                (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-            }
+        files
+            .filter { selectedFileIDs.contains($0.id) && isOwned($0) }
             .map(\.id)
     }
 
     private var selectedFiles: [DFFile] {
-        filteredFiles.filter { selectedFileIDs.contains($0.id) }
+        files.filter { selectedFileIDs.contains($0.id) }
     }
 
     @ViewBuilder
@@ -935,9 +915,7 @@ struct FileListView: View {
         VStack(spacing: 0) {
             Divider()
             HStack {
-                let allOwned = filteredFiles.filter { file in
-                    (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-                }
+                let allOwned = files.filter { isOwned($0) }
                 let allOwnedSelected = !allOwned.isEmpty && allOwned.allSatisfy { selectedFileIDs.contains($0.id) }
 
                 Button {
@@ -992,7 +970,7 @@ struct FileListView: View {
                         guard !ids.isEmpty else { return }
                         fileIDsToDelete = ids
                         fileNameToDelete = ids.count == 1
-                            ? (filteredFiles.first(where: { $0.id == ids[0] })?.name ?? "")
+                            ? (files.first(where: { $0.id == ids[0] })?.name ?? "")
                             : "\(ids.count) files"
                         showingDeleteConfirmation = true
                     } label: {
@@ -1011,7 +989,7 @@ struct FileListView: View {
 
     private func fileContextMenu(for file: DFFile, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
-        let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+        let isOwner = isOwned(file)
         return FileContextMenuButtons(
             isPrivate: isPrivate,
             isOwner: isOwner,
@@ -1112,8 +1090,12 @@ struct FileListView: View {
         guard hasNextPage else { return }
         guard !isLoading else { return }  // Prevent multiple simultaneous loading requests
         isLoading = true
+        // Derive the page from what we already have so changing pageSize (pinch zoom)
+        // never skips server offsets — integer division only ever re-fetches overlap,
+        // which the append path deduplicates.
+        let nextPage = (files.count / pageSize) + 1
         Task {
-            await fetchFiles(page: currentPage + 1, append: true)
+            await fetchFiles(page: nextPage, append: true)
         }
     }
     
@@ -1122,7 +1104,9 @@ struct FileListView: View {
         isLoading = true
         errorMessage = nil
         currentPage = 1
-        files = []
+        // Don't clear here: page 1 replaces the array atomically on success (and the
+        // error path clears it), so the current content stays up during the refresh
+        // instead of tearing down and rebuilding the whole grid.
         await fetchFiles(page: currentPage)
     }
     
@@ -1142,12 +1126,11 @@ struct FileListView: View {
         do {
             // Superuser with no user selected means "all users"; backend expects user=0 for that case
             let effectiveFilterUserID = filterUserID ?? (serverInstance.superUser ? 0 : nil)
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil)
+            let filesResponse = try await api.getFiles(page: page, pageSize: pageSize, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil)
             if append {
                 // Only append new files that aren't already in the list
-                let newFiles = filesResponse.files.filter { newFile in
-                    !files.contains { $0.id == newFile.id }
-                }
+                let existingIDs = Set(files.map(\.id))
+                let newFiles = filesResponse.files.filter { !existingIDs.contains($0.id) }
                 files.append(contentsOf: newFiles)
             } else {
                 files = filesResponse.files
@@ -1222,38 +1205,69 @@ struct FileListView: View {
     
 }
 
+// Plain reference type on purpose: scrollPosition(id:) writes on every row scrolled,
+// and holding the value outside @State keeps those writes from re-evaluating the
+// (large) file grid body.
+private final class GridScrollAnchor {
+    var fileID: Int?
+}
+
 private struct PinchableGridContainer<Content: View>: View {
+    static var maxColumns: Int { 25 }
+
     @Binding var gridColumnCount: Int
-    @ViewBuilder let content: (_ topPad: CGFloat, _ bottomPad: CGFloat) -> Content
-    @State private var gestureScale: CGFloat = 1.0
-    @State private var scaleAnchor: UnitPoint = .center
-    @State private var anchorCaptured: Bool = false
+    @ViewBuilder let content: (_ topPad: CGFloat, _ bottomPad: CGFloat, _ width: CGFloat) -> Content
     @State private var topPadding: CGFloat = 0
     @State private var bottomPadding: CGFloat = 0
     @State private var containerSize: CGSize = .zero
 
     var body: some View {
-        content(topPadding, bottomPadding)
-            // scaleEffect is applied here — outside the content closure — so gestureScale
-            // changes drive a pure CALayer transform without re-evaluating the view tree.
-            .scaleEffect(x: gestureScale, y: gestureScale, anchor: scaleAnchor)
-            .background {
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear {
-                            topPadding = geo.safeAreaInsets.top
-                            bottomPadding = geo.safeAreaInsets.bottom
-                            containerSize = geo.size
-                        }
-                        .onChange(of: geo.safeAreaInsets) { _, insets in
-                            topPadding = insets.top
-                            bottomPadding = insets.bottom
-                        }
-                        .onChange(of: geo.size) { _, size in
-                            containerSize = size
-                        }
-                }
+        PinchZoomLayer(gridColumnCount: $gridColumnCount, containerSize: containerSize) {
+            content(topPadding, bottomPadding, containerSize.width)
+        }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        topPadding = geo.safeAreaInsets.top
+                        bottomPadding = geo.safeAreaInsets.bottom
+                        containerSize = geo.size
+                    }
+                    .onChange(of: geo.safeAreaInsets) { _, insets in
+                        topPadding = insets.top
+                        bottomPadding = insets.bottom
+                    }
+                    .onChange(of: geo.size) { _, size in
+                        containerSize = size
+                    }
             }
+        }
+    }
+}
+
+// Owns all per-frame gesture state, and holds `content` as a pre-built value rather
+// than a closure: pinch frames re-run only this body, the stored grid subtree diffs
+// as unchanged, and the scale change stays a pure CALayer transform. When the state
+// lived beside the content closure, every gesture frame re-evaluated the entire
+// LazyVGrid ForEach.
+private struct PinchZoomLayer<Content: View>: View {
+    @Binding var gridColumnCount: Int
+    let containerSize: CGSize
+    let content: Content
+
+    @State private var gestureScale: CGFloat = 1.0
+    @State private var scaleAnchor: UnitPoint = .center
+    @State private var anchorCaptured: Bool = false
+
+    init(gridColumnCount: Binding<Int>, containerSize: CGSize, @ViewBuilder content: () -> Content) {
+        self._gridColumnCount = gridColumnCount
+        self.containerSize = containerSize
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .scaleEffect(x: gestureScale, y: gestureScale, anchor: scaleAnchor)
             // highPriorityGesture: MagnifyGesture only activates on two fingers, so
             // single-finger scrolls and taps pass through naturally. When two fingers
             // are detected, this wins over child button gestures — preventing accidental
@@ -1269,12 +1283,20 @@ private struct PinchableGridContainer<Content: View>: View {
                             }
                             anchorCaptured = true
                         }
-                        gestureScale = max(0.4, min(3.0, value.magnification))
+                        gestureScale = max(0.2, min(3.0, value.magnification))
                     }
                     .onEnded { value in
-                        let newCount = max(1, min(10, Int((CGFloat(gridColumnCount) / value.magnification).rounded())))
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            gridColumnCount = newCount
+                        // Photos-style seamless reflow: swap the column count with NO
+                        // layout animation (animating it relayouts every visible cell
+                        // per frame — the zoom lag), but pick the residual scale that
+                        // makes the new layout's cell size exactly match what's on
+                        // screen, then settle that small correction back to 1.
+                        let startCount = gridColumnCount
+                        let finalScale = max(0.2, min(3.0, value.magnification))
+                        let newCount = max(1, min(PinchableGridContainer<Content>.maxColumns, Int((CGFloat(startCount) / finalScale).rounded())))
+                        gridColumnCount = newCount
+                        gestureScale = finalScale * CGFloat(newCount) / CGFloat(startCount)
+                        withAnimation(.easeOut(duration: 0.18)) {
                             gestureScale = 1.0
                         }
                         anchorCaptured = false
@@ -1283,24 +1305,35 @@ private struct PinchableGridContainer<Content: View>: View {
     }
 }
 
-struct FileGridItemView: View {
+struct FileGridItemView: View, Equatable {
     let file: DFFile
     let serverURL: URL
-    let thumbnailURL: URL
     var showDetails: Bool = true
     var naturalAspect: Bool = false
+    var cornerRadius: CGFloat = 8
+    var targetSize: CGFloat? = nil
 
-    init(file: DFFile, serverURL: URL, showDetails: Bool = true, naturalAspect: Bool = false) {
-        self.file = file
-        self.serverURL = serverURL
-        self.showDetails = showDetails
-        self.naturalAspect = naturalAspect
-        var components = URLComponents(
-            url: serverURL.appendingPathComponent("/raw/\(file.name)"),
-            resolvingAgainstBaseURL: true
-        )
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        self.thumbnailURL = components?.url ?? serverURL
+    // Compared via .equatable() at the call site so list-wide invalidations
+    // (page appends, selection changes) skip the body of every unchanged cell.
+    // Only fields that affect rendering participate.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.file.id == rhs.file.id
+            && lhs.file.name == rhs.file.name
+            && lhs.file.mime == rhs.file.mime
+            && lhs.file.private == rhs.file.private
+            && lhs.file.password == rhs.file.password
+            && lhs.file.expr == rhs.file.expr
+            && lhs.serverURL == rhs.serverURL
+            && lhs.showDetails == rhs.showDetails
+            && lhs.naturalAspect == rhs.naturalAspect
+            && lhs.cornerRadius == rhs.cornerRadius
+            && lhs.targetSize == rhs.targetSize
+    }
+
+    // Computed in body (pruned by Equatable) instead of init: URL parsing ran for
+    // every visible cell on every list-wide re-evaluation.
+    private var thumbnailURL: URL {
+        file.thumbnailURL(on: serverURL)
     }
 
     private var isMedia: Bool {
@@ -1316,11 +1349,25 @@ struct FileGridItemView: View {
         return "doc.fill"
     }
 
+    private var hasBadge: Bool {
+        showDetails && (file.private || file.password != "" || file.expr != "")
+    }
+
     var body: some View {
-        if naturalAspect && isMedia {
-            naturalMediaCell
+        let core = Group {
+            if naturalAspect && isMedia {
+                naturalMediaCell
+            } else {
+                squareCell
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        // Badge overlay attached only when there's something to draw — a constant
+        // empty overlay still costs a node on every one of hundreds of cells.
+        if hasBadge {
+            core.overlay(alignment: .bottomTrailing) { statusBadge }
         } else {
-            squareCell
+            core
         }
     }
 
@@ -1330,7 +1377,7 @@ struct FileGridItemView: View {
             .overlay {
                 ZStack(alignment: .bottom) {
                     if isMedia {
-                        CachedAsyncImage(url: thumbnailURL) { image in
+                        CachedAsyncImage(url: thumbnailURL, targetSize: targetSize) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Color(.systemGray5)
@@ -1339,7 +1386,9 @@ struct FileGridItemView: View {
                         Color(.systemGray5)
                             .overlay {
                                 Image(systemName: getIcon())
-                                    .font(.system(size: 30))
+                                    // Scale to the cell — a fixed 30pt symbol overflows
+                                    // (and wastes raster work on) tiny zoomed-out cells.
+                                    .font(.system(size: min(30, (targetSize ?? 75) * 0.4)))
                                     .foregroundStyle(.secondary)
                             }
                     }
@@ -1356,38 +1405,30 @@ struct FileGridItemView: View {
                             .background(.black.opacity(0.5))
                     }
                 }
-                .clipped()
             }
-            .overlay(alignment: .bottomTrailing) { statusBadge }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var naturalMediaCell: some View {
-        CachedAsyncImage(url: thumbnailURL) { image in
+        CachedAsyncImage(url: thumbnailURL, targetSize: targetSize) { image in
             image.resizable().scaledToFit()
         } placeholder: {
             Color(.systemGray5)
                 .aspectRatio(4/3, contentMode: .fit)
         }
-        .overlay(alignment: .bottomTrailing) { statusBadge }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    @ViewBuilder
     private var statusBadge: some View {
-        if showDetails && (file.private || file.password != "" || file.expr != "") {
-            HStack(spacing: 2) {
-                if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
-                if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
-                if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 3)
-            .background(.black.opacity(0.55))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(4)
+        HStack(spacing: 2) {
+            if file.private { Image(systemName: "lock.fill").font(.system(size: 8)) }
+            if file.password != "" { Image(systemName: "key.fill").font(.system(size: 8)) }
+            if file.expr != "" { Image(systemName: "clock.fill").font(.system(size: 8)) }
         }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(4)
     }
 }
 
