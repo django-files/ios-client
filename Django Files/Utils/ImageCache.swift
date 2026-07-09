@@ -115,25 +115,22 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         return "\(url.absoluteString)#\(pixelBucket)"
     }
 
-    // Synchronous cache read: appearing cells render their image on the very first
-    // frame instead of flashing the placeholder until `.task` fires a tick later —
-    // and a cache hit never dirties @State, so scrolling through already-decoded
-    // content causes zero view invalidations.
-    private var displayImage: UIImage? {
-        if let cacheKey, let hit = ImageCache.shared.get(for: cacheKey) { return hit }
-        return cachedImage
-    }
-
     var body: some View {
+        // Key built once per evaluation, and the cache read is synchronous: appearing
+        // cells render their image on the very first frame instead of flashing the
+        // placeholder until `.task` fires a tick later — and a cache hit never dirties
+        // @State, so scrolling through already-decoded content causes zero invalidations.
+        let key = cacheKey
+        let hit = key.flatMap { ImageCache.shared.get(for: $0) } ?? cachedImage
         Group {
-            if let displayImage {
-                content(Image(uiImage: displayImage))
+            if let hit {
+                content(Image(uiImage: hit))
             } else {
                 placeholder()
             }
         }
-        .task(id: cacheKey) {
-            await load(url, key: cacheKey, maxPixels: pixelBucket)
+        .task(id: key) {
+            await load(url, key: key, maxPixels: pixelBucket)
         }
     }
 

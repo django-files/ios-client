@@ -36,9 +36,7 @@ struct FileRowView: View {
     }
     
     private var thumbnailURL: URL {
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url ?? serverURL
+        file.thumbnailURL(on: serverURL)
     }
     
     var body: some View {

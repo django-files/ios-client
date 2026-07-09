@@ -108,102 +108,73 @@ class FileListManager: ObservableObject, FileListDelegate {
         return status
     }
     
+    /// Apply `change` to the given files locally, reassigning the array once so a
+    /// single view update covers every mutation.
+    private func mutate(fileIDs: [Int], _ change: (inout DFFile) -> Void) {
+        withAnimation {
+            var updated = files
+            for id in fileIDs {
+                if let index = updated.firstIndex(where: { $0.id == id }) {
+                    change(&updated[index])
+                }
+            }
+            files = updated
+        }
+    }
+
+    /// Shared server-edit path: POST the change, and mirror it locally on success.
+    private func applyEdit(fileIDs: [Int], changes: [String: Any], _ change: @escaping (inout DFFile) -> Void) async -> Bool {
+        guard let serverInstance = server.wrappedValue,
+              let url = URL(string: serverInstance.url) else {
+            return false
+        }
+        let api = DFAPI(url: url, token: serverInstance.token)
+        let status = await api.editFiles(fileIDs: fileIDs, changes: changes, selectedServer: serverInstance)
+        if status {
+            mutate(fileIDs: fileIDs, change)
+        }
+        return status
+    }
+
     func renameFile(fileID: Int, newName: String, onSuccess: (() -> Void)?) async -> Bool {
         guard let serverInstance = server.wrappedValue,
               let url = URL(string: serverInstance.url) else {
             return false
         }
-        
+
         let api = DFAPI(url: url, token: serverInstance.token)
         let status = await api.renameFile(fileID: fileID, name: newName, selectedServer: serverInstance)
         if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    
-                    // Update the name
-                    updatedFiles[index].name = newName
-                    
-                    // Update URLs that contain the filename
-                    let file = updatedFiles[index]
-                    
-                    // Update raw URL
-                    if let oldRawURL = URL(string: file.raw) {
-                        let newRawURL = oldRawURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].raw = newRawURL.absoluteString
+            mutate(fileIDs: [fileID]) { file in
+                file.name = newName
+                // The raw/thumb/share URLs embed the filename — rewrite their last components
+                let urlKeyPaths: [WritableKeyPath<DFFile, String>] = [\.raw, \.thumb, \.url]
+                for keyPath in urlKeyPaths {
+                    if let old = URL(string: file[keyPath: keyPath]) {
+                        file[keyPath: keyPath] = old.deletingLastPathComponent()
+                            .appendingPathComponent(newName).absoluteString
                     }
-                    
-                    // Update thumb URL
-                    if let oldThumbURL = URL(string: file.thumb) {
-                        let newThumbURL = oldThumbURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].thumb = newThumbURL.absoluteString
-                    }
-                    
-                    // Update main URL
-                    if let oldURL = URL(string: file.url) {
-                        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
-                        updatedFiles[index].url = newURL.absoluteString
-                    }
-                    
-                    // Reassign the entire array to trigger a view update
-                    files = updatedFiles
                 }
-                onSuccess?()
             }
+            onSuccess?()
         }
         return status
     }
 
     func setFilePassword(fileID: Int, password: String, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["password": password], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].password = password
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["password": password]) { $0.password = password }
+        if status { onSuccess?() }
         return status
     }
 
     func setFilePrivate(fileID: Int, isPrivate: Bool, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["private": isPrivate], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].private = isPrivate
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["private": isPrivate]) { $0.private = isPrivate }
+        if status { onSuccess?() }
         return status
     }
 
     func updateFileAlbums(fileID: Int, albumIDs: [Int]) {
-        withAnimation {
-            if let index = files.firstIndex(where: { $0.id == fileID }) {
-                var updated = files
-                updated[index].albums = albumIDs
-                files = updated
-            }
-        }
+        mutate(fileIDs: [fileID]) { $0.albums = albumIDs }
     }
 
     func updateFilesAlbums(updates: [Int: [Int]]) {
@@ -219,42 +190,12 @@ class FileListManager: ObservableObject, FileListDelegate {
     }
 
     func setFilesPrivate(fileIDs: [Int], isPrivate: Bool) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else { return false }
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: fileIDs, changes: ["private": isPrivate], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                var updated = files
-                for id in fileIDs {
-                    if let index = updated.firstIndex(where: { $0.id == id }) {
-                        updated[index].private = isPrivate
-                    }
-                }
-                files = updated
-            }
-        }
-        return status
+        await applyEdit(fileIDs: fileIDs, changes: ["private": isPrivate]) { $0.private = isPrivate }
     }
 
     func setFileExpiration(fileID: Int, expr: String, onSuccess: (() -> Void)?) async -> Bool {
-        guard let serverInstance = server.wrappedValue,
-              let url = URL(string: serverInstance.url) else {
-            return false
-        }
-        
-        let api = DFAPI(url: url, token: serverInstance.token)
-        let status = await api.editFiles(fileIDs: [fileID], changes: ["expr": expr], selectedServer: serverInstance)
-        if status {
-            withAnimation {
-                if let index = files.firstIndex(where: { $0.id == fileID }) {
-                    var updatedFiles = files
-                    updatedFiles[index].expr = expr
-                    files = updatedFiles
-                }
-                onSuccess?()
-            }
-        }
+        let status = await applyEdit(fileIDs: [fileID], changes: ["expr": expr]) { $0.expr = expr }
+        if status { onSuccess?() }
         return status
     }
 }
@@ -343,8 +284,10 @@ struct FileListView: View {
         nonmutating set { fileListManager.files = newValue }
     }
 
-    private var filteredFiles: [DFFile] {
-        fileListManager.files
+    /// The user can act on (delete/edit) files they own; superusers own everything.
+    private func isOwned(_ file: DFFile) -> Bool {
+        (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID)
+            || server.wrappedValue?.superUser == true
     }
 
     private var filterTypeParam: String? {
@@ -400,13 +343,6 @@ struct FileListView: View {
         return "list.bullet"
     }
 
-    private func thumbnailURL(file: DFFile) -> URL? {
-        guard let serverURL = server.wrappedValue.flatMap({ URL(string: $0.url) }) else { return nil }
-        var components = URLComponents(url: serverURL.appendingPathComponent("/raw/\(file.name)"), resolvingAgainstBaseURL: true)
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return components?.url
-    }
-    
     private func checkForDeepLinkTarget() {
         print("checkForDeepLinkTarget Called with target: \(String(describing: previewStateManager.deepLinkTargetFileID))")
         if let targetFileID = previewStateManager.deepLinkTargetFileID {
@@ -481,28 +417,22 @@ struct FileListView: View {
                 : nil
             // Membership set built once per body evaluation — the previous per-cell
             // `files.suffix(n).contains` scan cost O(n) on every single cell appear.
-            let prefetchIDs = Set(filteredFiles.suffix(prefetchThreshold).map(\.id))
+            let prefetchIDs = Set(files.suffix(prefetchThreshold).map(\.id))
             ScrollView {
                 LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
-                    ForEach(filteredFiles) { file in
+                    ForEach(files) { file in
                         let isSelected = selectedFileIDs.contains(file.id)
-                        let cell = Button {
-                            if isSelectMode {
-                                toggleSelection(file: file)
-                            } else {
-                                selectedFile = file
-                                showingPreview = true
-                            }
-                        } label: {
-                            let item = FileGridItemView(
-                                file: file,
-                                serverURL: serverURL,
-                                showDetails: showDetails,
-                                naturalAspect: naturalAspect,
-                                cornerRadius: gridCornerRadius,
-                                targetSize: cellSize
-                            )
-                            .contentShape(Rectangle())
+                        let item = FileGridItemView(
+                            file: file,
+                            serverURL: serverURL,
+                            showDetails: showDetails,
+                            naturalAspect: naturalAspect,
+                            cornerRadius: gridCornerRadius,
+                            targetSize: cellSize
+                        )
+                        .equatable()
+                        .contentShape(Rectangle())
+                        let base = Group {
                             if isSelectMode {
                                 item
                                     .overlay(alignment: .topLeading) {
@@ -517,12 +447,22 @@ struct FileListView: View {
                                 item
                             }
                         }
-                        .buttonStyle(.plain)
-                        .onAppear {
-                            if hasNextPage && prefetchIDs.contains(file.id) {
-                                loadNextPage()
+                        // Tap gesture instead of Button: press-tracking and accessibility
+                        // wrappers add up across hundreds of visible cells.
+                        let cell = base
+                            .onTapGesture {
+                                if isSelectMode {
+                                    toggleSelection(file: file)
+                                } else {
+                                    selectedFile = file
+                                    showingPreview = true
+                                }
                             }
-                        }
+                            .onAppear {
+                                if hasNextPage && prefetchIDs.contains(file.id) {
+                                    loadNextPage()
+                                }
+                            }
 
                         // The modifier itself installs a UIKit interaction per cell, so
                         // it must not be attached at all when zoomed far out (hundreds
@@ -576,7 +516,7 @@ struct FileListView: View {
                 gridContent
             } else {
                 List {
-            ForEach(filteredFiles) { file in
+            ForEach(files) { file in
                 let isSelected = selectedFileIDs.contains(file.id)
                 Button {
                     if isSelectMode {
@@ -597,12 +537,12 @@ struct FileListView: View {
                             if file.mime.starts(with: "image/") && !isSelectMode {
                                 FileRowView(
                                     file: $fileListManager.files[realIndex],
-                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                    serverURL: resolvedServerURL
                                 )
                                 .contextMenu {
                                     fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
                                 } preview: {
-                                    CachedAsyncImage(url: thumbnailURL(file: file)) { image in
+                                    CachedAsyncImage(url: file.thumbnailURL(on: resolvedServerURL)) { image in
                                         image
                                             .resizable()
                                             .scaledToFill()
@@ -615,7 +555,7 @@ struct FileListView: View {
                             } else {
                                 FileRowView(
                                     file: $fileListManager.files[realIndex],
-                                    serverURL: server.wrappedValue.flatMap { URL(string: $0.url) } ?? URL(string: "https://localhost")!
+                                    serverURL: resolvedServerURL
                                 )
                                 .contextMenu {
                                     if !isSelectMode {
@@ -628,8 +568,7 @@ struct FileListView: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     if !isSelectMode {
-                        let fileIsOwned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-                        if fileIsOwned {
+                        if isOwned(file) {
                             Button {
                                 fileIDsToDelete = [file.id]
                                 fileNameToDelete = file.name
@@ -814,7 +753,7 @@ struct FileListView: View {
                         } label: {
                             Label("Select", systemImage: "checklist")
                         }
-                        .disabled(filteredFiles.isEmpty)
+                        .disabled(files.isEmpty)
                     }
 
                     Divider()
@@ -953,8 +892,7 @@ struct FileListView: View {
     }
     
     private func toggleSelection(file: DFFile) {
-        let owned = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-        guard owned else { return }
+        guard isOwned(file) else { return }
         if selectedFileIDs.contains(file.id) {
             selectedFileIDs.remove(file.id)
         } else {
@@ -963,16 +901,13 @@ struct FileListView: View {
     }
 
     private var ownedSelectedIDs: [Int] {
-        filteredFiles
-            .filter { selectedFileIDs.contains($0.id) }
-            .filter { file in
-                (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-            }
+        files
+            .filter { selectedFileIDs.contains($0.id) && isOwned($0) }
             .map(\.id)
     }
 
     private var selectedFiles: [DFFile] {
-        filteredFiles.filter { selectedFileIDs.contains($0.id) }
+        files.filter { selectedFileIDs.contains($0.id) }
     }
 
     @ViewBuilder
@@ -980,9 +915,7 @@ struct FileListView: View {
         VStack(spacing: 0) {
             Divider()
             HStack {
-                let allOwned = filteredFiles.filter { file in
-                    (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
-                }
+                let allOwned = files.filter { isOwned($0) }
                 let allOwnedSelected = !allOwned.isEmpty && allOwned.allSatisfy { selectedFileIDs.contains($0.id) }
 
                 Button {
@@ -1037,7 +970,7 @@ struct FileListView: View {
                         guard !ids.isEmpty else { return }
                         fileIDsToDelete = ids
                         fileNameToDelete = ids.count == 1
-                            ? (filteredFiles.first(where: { $0.id == ids[0] })?.name ?? "")
+                            ? (files.first(where: { $0.id == ids[0] })?.name ?? "")
                             : "\(ids.count) files"
                         showingDeleteConfirmation = true
                     } label: {
@@ -1056,7 +989,7 @@ struct FileListView: View {
 
     private func fileContextMenu(for file: DFFile, isPrivate: Bool, expirationText: Binding<String>, passwordText: Binding<String>, fileNameText: Binding<String>) -> FileContextMenuButtons {
         var isPrivate: Bool = isPrivate
-        let isOwner = (server.wrappedValue?.userID != nil && file.user == server.wrappedValue?.userID) || (server.wrappedValue?.superUser == true)
+        let isOwner = isOwned(file)
         return FileContextMenuButtons(
             isPrivate: isPrivate,
             isOwner: isOwner,
@@ -1370,28 +1303,35 @@ private struct PinchZoomLayer<Content: View>: View {
     }
 }
 
-struct FileGridItemView: View {
+struct FileGridItemView: View, Equatable {
     let file: DFFile
     let serverURL: URL
-    let thumbnailURL: URL
     var showDetails: Bool = true
     var naturalAspect: Bool = false
     var cornerRadius: CGFloat = 8
     var targetSize: CGFloat? = nil
 
-    init(file: DFFile, serverURL: URL, showDetails: Bool = true, naturalAspect: Bool = false, cornerRadius: CGFloat = 8, targetSize: CGFloat? = nil) {
-        self.file = file
-        self.serverURL = serverURL
-        self.showDetails = showDetails
-        self.naturalAspect = naturalAspect
-        self.cornerRadius = cornerRadius
-        self.targetSize = targetSize
-        var components = URLComponents(
-            url: serverURL.appendingPathComponent("/raw/\(file.name)"),
-            resolvingAgainstBaseURL: true
-        )
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        self.thumbnailURL = components?.url ?? serverURL
+    // Compared via .equatable() at the call site so list-wide invalidations
+    // (page appends, selection changes) skip the body of every unchanged cell.
+    // Only fields that affect rendering participate.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.file.id == rhs.file.id
+            && lhs.file.name == rhs.file.name
+            && lhs.file.mime == rhs.file.mime
+            && lhs.file.private == rhs.file.private
+            && lhs.file.password == rhs.file.password
+            && lhs.file.expr == rhs.file.expr
+            && lhs.serverURL == rhs.serverURL
+            && lhs.showDetails == rhs.showDetails
+            && lhs.naturalAspect == rhs.naturalAspect
+            && lhs.cornerRadius == rhs.cornerRadius
+            && lhs.targetSize == rhs.targetSize
+    }
+
+    // Computed in body (pruned by Equatable) instead of init: URL parsing ran for
+    // every visible cell on every list-wide re-evaluation.
+    private var thumbnailURL: URL {
+        file.thumbnailURL(on: serverURL)
     }
 
     private var isMedia: Bool {

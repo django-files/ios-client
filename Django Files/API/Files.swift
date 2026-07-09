@@ -271,6 +271,16 @@ extension DFFile {
         guard let info = exif?["GPSInfo"]?.value as? [String: Any] else { return nil }
         return info["6"] as? Double
     }
+
+    /// Server-generated thumbnail endpoint for this file.
+    public func thumbnailURL(on serverURL: URL) -> URL {
+        var components = URLComponents(
+            url: serverURL.appendingPathComponent("/raw/\(name)"),
+            resolvingAgainstBaseURL: true
+        )
+        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        return components?.url ?? serverURL
+    }
 }
 
 extension DFAPI {
