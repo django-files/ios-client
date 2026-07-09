@@ -274,7 +274,7 @@ extension DFFile {
 }
 
 extension DFAPI {
-    public func getFiles(page: Int = 1, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil, filterType: String? = nil, ordering: String? = nil, search: String? = nil) async throws -> DFFilesResponse {
+    public func getFiles(page: Int = 1, pageSize: Int? = nil, album: Int? = nil, selectedServer: DjangoFilesSession? = nil, filterUserID: Int? = nil, filterMime: String? = nil, filterType: String? = nil, ordering: String? = nil, search: String? = nil) async throws -> DFFilesResponse {
         var parameters: [String: String] = [:]
         if let album {
             parameters["album"] = String(album)
@@ -295,8 +295,9 @@ extension DFAPI {
             parameters["search"] = search
         }
 
+        // /api/files/{page}/{count}/ — count falls back to the server default (25) when omitted
         let responseBody = try await makeAPIRequest(
-            path: getAPIPath(.files) + "\(page)/",
+            path: getAPIPath(.files) + "\(page)/" + (pageSize.map { "\($0)/" } ?? ""),
             parameters: parameters,
             method: .get,
             selectedServer: selectedServer

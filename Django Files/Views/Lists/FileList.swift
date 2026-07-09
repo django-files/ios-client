@@ -325,6 +325,7 @@ struct FileListView: View {
 
     @State private var mapFileCount: Int = 0
     @State private var mapIsLoading: Bool = false
+    @State private var gridScrollAnchor = GridScrollAnchor()
 
     init(server: Binding<DjangoFilesSession?>, albumID: Int?, navigationPath: Binding<NavigationPath>, albumName: String?) {
         self.server = server
@@ -442,19 +443,50 @@ struct FileListView: View {
         }
     }
     
+    // Photos-style density scaling: tighter gutters and squarer corners as cells shrink.
+    private var gridSpacing: CGFloat {
+        gridColumnCount >= 6 ? 1 : 2
+    }
+
+    private var gridCornerRadius: CGFloat {
+        max(0, 12 - CGFloat(gridColumnCount) * 1.5)
+    }
+
+    // Zoomed-out grids show hundreds of cells per screen; scale the fetch size with
+    // density so pagination keeps up (server caps are generous, cap ours at 500).
+    private var pageSize: Int {
+        guard isGridView else { return 25 }
+        return min(500, max(25, gridColumnCount * gridColumnCount * 3))
+    }
+
     private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumnCount)
+        Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: gridColumnCount)
     }
 
     private var gridContent: some View {
         let showDetails = gridColumnCount <= 5
+        let showContextMenus = gridColumnCount <= 8
         let serverURL = resolvedServerURL
-        return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad in
+        let prefetchThreshold = max(5, gridColumnCount * 3)
+        // Reference-box binding: scroll tracking writes go to the box (no view
+        // invalidation per row scrolled); the value is only read back when the column
+        // count swaps, letting the system keep the anchor item in place (Photos-style).
+        let anchorBinding = Binding<Int?>(
+            get: { gridScrollAnchor.fileID },
+            set: { gridScrollAnchor.fileID = $0 }
+        )
+        return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad, width in
+            let cellSize: CGFloat? = width > 0
+                ? (width - gridSpacing * CGFloat(gridColumnCount - 1)) / CGFloat(gridColumnCount)
+                : nil
+            // Membership set built once per body evaluation — the previous per-cell
+            // `files.suffix(n).contains` scan cost O(n) on every single cell appear.
+            let prefetchIDs = Set(filteredFiles.suffix(prefetchThreshold).map(\.id))
             ScrollView {
-                LazyVGrid(columns: gridColumns, spacing: 2) {
+                LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
                     ForEach(filteredFiles) { file in
                         let isSelected = selectedFileIDs.contains(file.id)
-                        Button {
+                        let cell = Button {
                             if isSelectMode {
                                 toggleSelection(file: file)
                             } else {
@@ -462,37 +494,49 @@ struct FileListView: View {
                                 showingPreview = true
                             }
                         } label: {
-                            FileGridItemView(
+                            let item = FileGridItemView(
                                 file: file,
                                 serverURL: serverURL,
                                 showDetails: showDetails,
-                                naturalAspect: naturalAspect
+                                naturalAspect: naturalAspect,
+                                cornerRadius: gridCornerRadius,
+                                targetSize: cellSize
                             )
                             .contentShape(Rectangle())
-                            .overlay(alignment: .topLeading) {
-                                if isSelectMode {
-                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 22))
-                                        .foregroundStyle(isSelected ? Color.accentColor : .white)
-                                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                                        .padding(6)
-                                }
+                            if isSelectMode {
+                                item
+                                    .overlay(alignment: .topLeading) {
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(isSelected ? Color.accentColor : .white)
+                                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                            .padding(6)
+                                    }
+                                    .opacity(isSelected ? 1.0 : 0.6)
+                            } else {
+                                item
                             }
-                            .opacity(isSelectMode && !isSelected ? 0.6 : 1.0)
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
-                            if !isSelectMode {
-                                fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
-                            }
-                        }
                         .onAppear {
-                            if hasNextPage && fileListManager.files.suffix(5).contains(where: { $0.id == file.id }) {
+                            if hasNextPage && prefetchIDs.contains(file.id) {
                                 loadNextPage()
                             }
                         }
+
+                        // The modifier itself installs a UIKit interaction per cell, so
+                        // it must not be attached at all when zoomed far out (hundreds
+                        // of visible cells) — an empty menu closure isn't enough.
+                        if showContextMenus && !isSelectMode {
+                            cell.contextMenu {
+                                fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            }
+                        } else {
+                            cell
+                        }
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.top, topPad + 8)
                 .padding(.bottom, bottomPad + 8)
 
@@ -506,6 +550,7 @@ struct FileListView: View {
                     .padding(.vertical, 8)
                 }
             }
+            .scrollPosition(id: anchorBinding, anchor: .center)
             .ignoresSafeArea()
             .refreshable {
                 Task {
@@ -1112,8 +1157,12 @@ struct FileListView: View {
         guard hasNextPage else { return }
         guard !isLoading else { return }  // Prevent multiple simultaneous loading requests
         isLoading = true
+        // Derive the page from what we already have so changing pageSize (pinch zoom)
+        // never skips server offsets — integer division only ever re-fetches overlap,
+        // which the append path deduplicates.
+        let nextPage = (files.count / pageSize) + 1
         Task {
-            await fetchFiles(page: currentPage + 1, append: true)
+            await fetchFiles(page: nextPage, append: true)
         }
     }
     
@@ -1142,12 +1191,11 @@ struct FileListView: View {
         do {
             // Superuser with no user selected means "all users"; backend expects user=0 for that case
             let effectiveFilterUserID = filterUserID ?? (serverInstance.superUser ? 0 : nil)
-            let filesResponse = try await api.getFiles(page: page, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil)
+            let filesResponse = try await api.getFiles(page: page, pageSize: pageSize, album: albumID, selectedServer: serverInstance, filterUserID: effectiveFilterUserID, filterType: filterTypeParam, ordering: sessionManager.supportsOrdering ? sortOption : nil, search: nil)
             if append {
                 // Only append new files that aren't already in the list
-                let newFiles = filesResponse.files.filter { newFile in
-                    !files.contains { $0.id == newFile.id }
-                }
+                let existingIDs = Set(files.map(\.id))
+                let newFiles = filesResponse.files.filter { !existingIDs.contains($0.id) }
                 files.append(contentsOf: newFiles)
             } else {
                 files = filesResponse.files
@@ -1222,38 +1270,69 @@ struct FileListView: View {
     
 }
 
+// Plain reference type on purpose: scrollPosition(id:) writes on every row scrolled,
+// and holding the value outside @State keeps those writes from re-evaluating the
+// (large) file grid body.
+private final class GridScrollAnchor {
+    var fileID: Int?
+}
+
 private struct PinchableGridContainer<Content: View>: View {
+    static var maxColumns: Int { 25 }
+
     @Binding var gridColumnCount: Int
-    @ViewBuilder let content: (_ topPad: CGFloat, _ bottomPad: CGFloat) -> Content
-    @State private var gestureScale: CGFloat = 1.0
-    @State private var scaleAnchor: UnitPoint = .center
-    @State private var anchorCaptured: Bool = false
+    @ViewBuilder let content: (_ topPad: CGFloat, _ bottomPad: CGFloat, _ width: CGFloat) -> Content
     @State private var topPadding: CGFloat = 0
     @State private var bottomPadding: CGFloat = 0
     @State private var containerSize: CGSize = .zero
 
     var body: some View {
-        content(topPadding, bottomPadding)
-            // scaleEffect is applied here — outside the content closure — so gestureScale
-            // changes drive a pure CALayer transform without re-evaluating the view tree.
-            .scaleEffect(x: gestureScale, y: gestureScale, anchor: scaleAnchor)
-            .background {
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear {
-                            topPadding = geo.safeAreaInsets.top
-                            bottomPadding = geo.safeAreaInsets.bottom
-                            containerSize = geo.size
-                        }
-                        .onChange(of: geo.safeAreaInsets) { _, insets in
-                            topPadding = insets.top
-                            bottomPadding = insets.bottom
-                        }
-                        .onChange(of: geo.size) { _, size in
-                            containerSize = size
-                        }
-                }
+        PinchZoomLayer(gridColumnCount: $gridColumnCount, containerSize: containerSize) {
+            content(topPadding, bottomPadding, containerSize.width)
+        }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        topPadding = geo.safeAreaInsets.top
+                        bottomPadding = geo.safeAreaInsets.bottom
+                        containerSize = geo.size
+                    }
+                    .onChange(of: geo.safeAreaInsets) { _, insets in
+                        topPadding = insets.top
+                        bottomPadding = insets.bottom
+                    }
+                    .onChange(of: geo.size) { _, size in
+                        containerSize = size
+                    }
             }
+        }
+    }
+}
+
+// Owns all per-frame gesture state, and holds `content` as a pre-built value rather
+// than a closure: pinch frames re-run only this body, the stored grid subtree diffs
+// as unchanged, and the scale change stays a pure CALayer transform. When the state
+// lived beside the content closure, every gesture frame re-evaluated the entire
+// LazyVGrid ForEach.
+private struct PinchZoomLayer<Content: View>: View {
+    @Binding var gridColumnCount: Int
+    let containerSize: CGSize
+    let content: Content
+
+    @State private var gestureScale: CGFloat = 1.0
+    @State private var scaleAnchor: UnitPoint = .center
+    @State private var anchorCaptured: Bool = false
+
+    init(gridColumnCount: Binding<Int>, containerSize: CGSize, @ViewBuilder content: () -> Content) {
+        self._gridColumnCount = gridColumnCount
+        self.containerSize = containerSize
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .scaleEffect(x: gestureScale, y: gestureScale, anchor: scaleAnchor)
             // highPriorityGesture: MagnifyGesture only activates on two fingers, so
             // single-finger scrolls and taps pass through naturally. When two fingers
             // are detected, this wins over child button gestures — preventing accidental
@@ -1269,12 +1348,20 @@ private struct PinchableGridContainer<Content: View>: View {
                             }
                             anchorCaptured = true
                         }
-                        gestureScale = max(0.4, min(3.0, value.magnification))
+                        gestureScale = max(0.2, min(3.0, value.magnification))
                     }
                     .onEnded { value in
-                        let newCount = max(1, min(10, Int((CGFloat(gridColumnCount) / value.magnification).rounded())))
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            gridColumnCount = newCount
+                        // Photos-style seamless reflow: swap the column count with NO
+                        // layout animation (animating it relayouts every visible cell
+                        // per frame — the zoom lag), but pick the residual scale that
+                        // makes the new layout's cell size exactly match what's on
+                        // screen, then settle that small correction back to 1.
+                        let startCount = gridColumnCount
+                        let finalScale = max(0.2, min(3.0, value.magnification))
+                        let newCount = max(1, min(PinchableGridContainer<Content>.maxColumns, Int((CGFloat(startCount) / finalScale).rounded())))
+                        gridColumnCount = newCount
+                        gestureScale = finalScale * CGFloat(newCount) / CGFloat(startCount)
+                        withAnimation(.easeOut(duration: 0.18)) {
                             gestureScale = 1.0
                         }
                         anchorCaptured = false
@@ -1289,12 +1376,16 @@ struct FileGridItemView: View {
     let thumbnailURL: URL
     var showDetails: Bool = true
     var naturalAspect: Bool = false
+    var cornerRadius: CGFloat = 8
+    var targetSize: CGFloat? = nil
 
-    init(file: DFFile, serverURL: URL, showDetails: Bool = true, naturalAspect: Bool = false) {
+    init(file: DFFile, serverURL: URL, showDetails: Bool = true, naturalAspect: Bool = false, cornerRadius: CGFloat = 8, targetSize: CGFloat? = nil) {
         self.file = file
         self.serverURL = serverURL
         self.showDetails = showDetails
         self.naturalAspect = naturalAspect
+        self.cornerRadius = cornerRadius
+        self.targetSize = targetSize
         var components = URLComponents(
             url: serverURL.appendingPathComponent("/raw/\(file.name)"),
             resolvingAgainstBaseURL: true
@@ -1330,7 +1421,7 @@ struct FileGridItemView: View {
             .overlay {
                 ZStack(alignment: .bottom) {
                     if isMedia {
-                        CachedAsyncImage(url: thumbnailURL) { image in
+                        CachedAsyncImage(url: thumbnailURL, targetSize: targetSize) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Color(.systemGray5)
@@ -1339,7 +1430,9 @@ struct FileGridItemView: View {
                         Color(.systemGray5)
                             .overlay {
                                 Image(systemName: getIcon())
-                                    .font(.system(size: 30))
+                                    // Scale to the cell — a fixed 30pt symbol overflows
+                                    // (and wastes raster work on) tiny zoomed-out cells.
+                                    .font(.system(size: min(30, (targetSize ?? 75) * 0.4)))
                                     .foregroundStyle(.secondary)
                             }
                     }
@@ -1356,21 +1449,22 @@ struct FileGridItemView: View {
                             .background(.black.opacity(0.5))
                     }
                 }
-                .clipped()
             }
             .overlay(alignment: .bottomTrailing) { statusBadge }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            // Single clip for both overflow and corners (a `.clipped()` here plus a
+            // clipShape would clip every cell twice).
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     private var naturalMediaCell: some View {
-        CachedAsyncImage(url: thumbnailURL) { image in
+        CachedAsyncImage(url: thumbnailURL, targetSize: targetSize) { image in
             image.resizable().scaledToFit()
         } placeholder: {
             Color(.systemGray5)
                 .aspectRatio(4/3, contentMode: .fit)
         }
         .overlay(alignment: .bottomTrailing) { statusBadge }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     @ViewBuilder
