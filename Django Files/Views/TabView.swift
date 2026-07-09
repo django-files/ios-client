@@ -26,6 +26,16 @@ struct TabViewWindow: View {
     @State private var searchQuery = ""
     @State private var searchScope: SearchScope = .files
 
+    private func scopeForTab(_ tab: Tab) -> SearchScope {
+        switch tab {
+        case .files: return .files
+        case .albums: return .albums
+        case .shorts: return .shorts
+        case .streams: return .streams
+        default: return .files
+        }
+    }
+
     @AppStorage("tabOrder")   private var tabOrderString   = "files,albums,shorts,streams"
     @AppStorage("hiddenTabs") private var hiddenTabsString = ""
 
@@ -166,6 +176,11 @@ struct TabViewWindow: View {
                 }
             }
         }
+        .onChange(of: selectedTab) { _, newTab in
+            if newTab != .search {
+                searchScope = scopeForTab(newTab)
+            }
+        }
         .tabBarMinimizeBehavior(.onScrollDown)
         .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
     }
@@ -186,6 +201,11 @@ struct TabViewWindow: View {
             SettingsView(sessionManager: sessionManager, showLoginSheet: $showLoginSheet)
                 .tabItem { Label("Settings", systemImage: "gear") }
                 .tag(Tab.settings)
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            if newTab != .search {
+                searchScope = scopeForTab(newTab)
+            }
         }
         .tabBarMinimizeIfAvailable()
         .uploadProgressAccessoryIfAvailable(isShowing: uploadProgressManager.isUploading)
