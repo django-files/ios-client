@@ -31,6 +31,31 @@ enum TusUploadError: Error {
     case interrupted
 }
 
+/// User-facing tus preferences, editable from the Uploads settings screen. Backed by the
+/// app-group `UserDefaults` suite (rather than `.standard`) so the share extension — which
+/// runs as its own process — reads the same values the main app writes.
+enum TusUploadSettings {
+    private static let appGroupID = "group.djangofiles.app"
+
+    static let enabledDefaultsKey = "tusUploadsEnabled"
+    static let chunkSizeMBDefaultsKey = "tusChunkSizeMB"
+    static let defaultChunkSizeMB = 40
+    static let availableChunkSizesMB = [10, 20, 40, 60, 90]
+
+    static var store: UserDefaults {
+        UserDefaults(suiteName: appGroupID) ?? .standard
+    }
+
+    static var isEnabled: Bool {
+        store.object(forKey: enabledDefaultsKey) == nil ? true : store.bool(forKey: enabledDefaultsKey)
+    }
+
+    static var chunkSizeBytes: Int {
+        let mb = store.object(forKey: chunkSizeMBDefaultsKey) as? Int ?? defaultChunkSizeMB
+        return mb * 1024 * 1024
+    }
+}
+
 /// Servers that have already told us they can't do tus this run, so repeated uploads to the
 /// same server don't all pay for a doomed creation request first. Not persisted — a fresh app
 /// launch (or a server later enabling tus) gets a clean retry.
@@ -49,8 +74,6 @@ private actor TusSupportCache {
 
 extension DFAPI {
     private static let tusResumableVersion = "1.0.0"
-    // Comfortably under both Cloudflare's 100MB request cap and the server's own 90MB default.
-    private static let tusChunkSize = 40 * 1024 * 1024
     private static let tusMaxRetries = 5
     private static let tusCompletionPollAttempts = 10
     private static let tusCompletionPollInterval: Duration = .seconds(1.5)
@@ -69,7 +92,7 @@ extension DFAPI {
     ) async -> DFUploadResponse? {
         let filename = fileName ?? (fileURL.absoluteString as NSString).lastPathComponent
 
-        if await !TusSupportCache.shared.isKnownUnsupported(url.absoluteString) {
+        if TusUploadSettings.isEnabled, await !TusSupportCache.shared.isKnownUnsupported(url.absoluteString) {
             do {
                 return try await uploadFileTus(
                     url: fileURL,
@@ -209,7 +232,7 @@ extension DFAPI {
 
         while offset < size {
             try fileHandle.seek(toOffset: UInt64(offset))
-            let chunkSize = Int(min(Int64(DFAPI.tusChunkSize), size - offset))
+            let chunkSize = Int(min(Int64(TusUploadSettings.chunkSizeBytes), size - offset))
             guard let chunk = try fileHandle.read(upToCount: chunkSize), !chunk.isEmpty else {
                 throw TusUploadError.interrupted
             }
