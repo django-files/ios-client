@@ -88,7 +88,9 @@ extension DFAPI {
         privateUpload: Bool = false,
         stripExif: Bool = false,
         stripGps: Bool = false,
-        taskDelegate: URLSessionTaskDelegate? = nil
+        taskDelegate: URLSessionTaskDelegate? = nil,
+        pauseGate: UploadPauseGate? = nil,
+        onTusActiveChange: ((Bool) -> Void)? = nil
     ) async -> DFUploadResponse? {
         let filename = fileName ?? (fileURL.absoluteString as NSString).lastPathComponent
 
@@ -101,11 +103,16 @@ extension DFAPI {
                     privateUpload: privateUpload,
                     stripExif: stripExif,
                     stripGps: stripGps,
-                    taskDelegate: taskDelegate
+                    taskDelegate: taskDelegate,
+                    pauseGate: pauseGate,
+                    onTusActiveChange: onTusActiveChange
                 )
             } catch TusUploadError.notSupported {
+                onTusActiveChange?(false)
                 await TusSupportCache.shared.markUnsupported(url.absoluteString)
             } catch {
+                onTusActiveChange?(false)
+                if error is CancellationError || Task.isCancelled { return nil }
                 print("DFAPI: tus upload failed (\(error)); falling back to legacy upload")
             }
         }
@@ -156,17 +163,22 @@ extension DFAPI {
         privateUpload: Bool,
         stripExif: Bool,
         stripGps: Bool,
-        taskDelegate: URLSessionTaskDelegate?
+        taskDelegate: URLSessionTaskDelegate?,
+        pauseGate: UploadPauseGate?,
+        onTusActiveChange: ((Bool) -> Void)?
     ) async throws -> DFUploadResponse {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let metadata = tusMetadata(fileName: fileName, albums: albums, privateUpload: privateUpload, stripExif: stripExif, stripGps: stripGps)
 
         let uploadURL = try await tusCreateUpload(size: size, metadata: metadata)
+        // Only from here on is this upload actually going over tus — the creation POST just
+        // succeeded, so pause is now meaningful (and won't silently no-op into a legacy retry).
+        onTusActiveChange?(true)
 
         let fileHandle = try FileHandle(forReadingFrom: fileURL)
         defer { try? fileHandle.close() }
-        try await tusPatchChunks(uploadURL: uploadURL, fileHandle: fileHandle, size: size, taskDelegate: taskDelegate)
+        try await tusPatchChunks(uploadURL: uploadURL, fileHandle: fileHandle, size: size, taskDelegate: taskDelegate, pauseGate: pauseGate)
 
         if let response = await tusAwaitProcessedFile(name: fileName, size: size) {
             return response
@@ -225,12 +237,13 @@ extension DFAPI {
         return offset
     }
 
-    private func tusPatchChunks(uploadURL: URL, fileHandle: FileHandle, size: Int64, taskDelegate: URLSessionTaskDelegate?) async throws {
+    private func tusPatchChunks(uploadURL: URL, fileHandle: FileHandle, size: Int64, taskDelegate: URLSessionTaskDelegate?, pauseGate: UploadPauseGate?) async throws {
         var offset: Int64 = 0
         var attempt = 0
         let session = URLSession(configuration: .ephemeral)
 
         while offset < size {
+            try await pauseGate?.waitWhilePaused()
             try fileHandle.seek(toOffset: UInt64(offset))
             let chunkSize = Int(min(Int64(TusUploadSettings.chunkSizeBytes), size - offset))
             guard let chunk = try fileHandle.read(upToCount: chunkSize), !chunk.isEmpty else {
@@ -256,6 +269,7 @@ extension DFAPI {
                 offset = newOffset
                 attempt = 0
             } catch {
+                if error is CancellationError || Task.isCancelled { throw CancellationError() }
                 attempt += 1
                 guard attempt <= DFAPI.tusMaxRetries else { throw TusUploadError.interrupted }
                 // The failed PATCH may have partially landed server-side — resync to the

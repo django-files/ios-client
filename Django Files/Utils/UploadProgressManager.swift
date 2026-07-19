@@ -13,6 +13,11 @@ final class UploadProgressManager: ObservableObject {
         var filename: String
         var thumbnail: UIImage?
         var progress: Double
+        /// True once this upload is confirmed to be running over tus — only tus uploads can
+        /// actually be paused/resumed, so the pause control stays hidden until then (and hides
+        /// again if a mid-transfer failure falls back to the legacy, non-pausable path).
+        var isPausable: Bool = false
+        var isPaused: Bool = false
     }
 
     @Published private(set) var uploads: [Upload] = []
@@ -20,6 +25,7 @@ final class UploadProgressManager: ObservableObject {
     @Published private(set) var totalCount: Int = 0
 
     private var activeTasks: [Task<Void, Never>] = []
+    private var pauseGates: [UUID: UploadPauseGate] = [:]
 
     var isUploading: Bool { !uploads.isEmpty }
 
@@ -56,9 +62,36 @@ final class UploadProgressManager: ObservableObject {
         uploads[index].progress = max(0, min(1, progress))
     }
 
+    func setPausable(id: UUID, pausable: Bool) {
+        guard let index = uploads.firstIndex(where: { $0.id == id }) else { return }
+        uploads[index].isPausable = pausable
+        if !pausable {
+            uploads[index].isPaused = false
+        }
+    }
+
+    func registerPauseGate(id: UUID, gate: UploadPauseGate) {
+        pauseGates[id] = gate
+    }
+
+    func togglePause(id: UUID) {
+        guard let index = uploads.firstIndex(where: { $0.id == id }), uploads[index].isPausable,
+              let gate = pauseGates[id] else { return }
+        let nowPaused = !uploads[index].isPaused
+        uploads[index].isPaused = nowPaused
+        Task {
+            if nowPaused {
+                await gate.pause()
+            } else {
+                await gate.resume()
+            }
+        }
+    }
+
     func finish(id: UUID) {
         guard uploads.contains(where: { $0.id == id }) else { return }
         uploads.removeAll { $0.id == id }
+        pauseGates.removeValue(forKey: id)
         completedCount += 1
         if uploads.isEmpty {
             activeTasks.removeAll()
@@ -72,6 +105,7 @@ final class UploadProgressManager: ObservableObject {
     func cancelAll() {
         for task in activeTasks { task.cancel() }
         activeTasks.removeAll()
+        pauseGates.removeAll()
         uploads.removeAll()
         completedCount = 0
         totalCount = 0
@@ -92,6 +126,18 @@ struct UploadProgressAccessoryView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Cancel upload")
+
+            if let current = manager.currentUpload, current.isPausable {
+                Button {
+                    manager.togglePause(id: current.id)
+                } label: {
+                    Image(systemName: current.isPaused ? "play.circle.fill" : "pause.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(current.isPaused ? "Resume upload" : "Pause upload")
+            }
 
             iconView
                 .frame(width: 32, height: 32)
