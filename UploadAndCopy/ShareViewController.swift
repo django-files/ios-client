@@ -350,8 +350,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         let albums = viewModel.selectedAlbumIDs.map(String.init).joined(separator: ",")
 
         for (index, url) in shareURLs.enumerated() {
-            let task = await api.uploadFileStreamed(url: url, albums: albums, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
-            let response = await task?.waitForComplete()
+            let response = await api.uploadFileResumable(url: url, albums: albums, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
 
             if let responseURL = response?.url {
                 lastResponseURL = responseURL
@@ -360,7 +359,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                     viewModel.showProgress = false
                     viewModel.uploadProgress = 0
                     viewModel.isShareEnabled = true
-                    self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
+                    self.showMessageAndDismiss(message: "Bad server response.")
                 }
                 return
             }

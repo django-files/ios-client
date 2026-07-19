@@ -248,7 +248,7 @@ struct FileUploadView: View {
         uploadProgress = 0
         let api = DFAPI(url: URL(string: server.url)!, token: server.token)
         let delegate = UploadProgressDelegate { uploadProgress = $0 }
-        _ = await api.uploadFile(
+        _ = await api.uploadFileResumable(
             url: tempURL,
             albums: albumIdParam,
             privateUpload: uploadPrivate,
@@ -279,7 +279,7 @@ struct FileUploadView: View {
             let delegate = UploadProgressDelegate { progress in
                 uploadProgress = (Double(index) + progress) / total
             }
-            _ = await api.uploadFile(
+            _ = await api.uploadFileResumable(
                 url: url,
                 albums: albumIdParam,
                 privateUpload: uploadPrivate,
@@ -302,7 +302,7 @@ struct FileUploadView: View {
             let delegate = UploadProgressDelegate { progress in
                 uploadProgress = (Double(index) + progress) / total
             }
-            _ = await api.uploadFile(
+            _ = await api.uploadFileResumable(
                 url: url,
                 albums: albumIdParam,
                 privateUpload: uploadPrivate,
@@ -320,7 +320,7 @@ struct FileUploadView: View {
         uploadProgress = 0
         let api = DFAPI(url: URL(string: server.url)!, token: server.token)
         let delegate = UploadProgressDelegate { uploadProgress = $0 }
-        _ = await api.uploadFile(
+        _ = await api.uploadFileResumable(
             url: url,
             albums: albumIdParam,
             privateUpload: uploadPrivate,
@@ -414,7 +414,7 @@ struct FileUploadView: View {
             let delegate = UploadProgressDelegate { progress in
                 Task { @MainActor in manager.update(id: id, progress: progress) }
             }
-            _ = await api.uploadFile(
+            _ = await api.uploadFileResumable(
                 url: tempURL,
                 albums: albums,
                 privateUpload: priv,
@@ -476,7 +476,7 @@ struct FileUploadView: View {
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
-                _ = await api.uploadFile(
+                _ = await api.uploadFileResumable(
                     url: url,
                     albums: albums,
                     privateUpload: priv,
@@ -514,7 +514,7 @@ struct FileUploadView: View {
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
-                _ = await api.uploadFile(
+                _ = await api.uploadFileResumable(
                     url: url,
                     albums: albums,
                     privateUpload: priv,
@@ -556,7 +556,7 @@ struct FileUploadView: View {
             let delegate = UploadProgressDelegate { progress in
                 Task { @MainActor in manager.update(id: id, progress: progress) }
             }
-            _ = await api.uploadFile(
+            _ = await api.uploadFileResumable(
                 url: tempURL,
                 albums: albums,
                 privateUpload: priv,

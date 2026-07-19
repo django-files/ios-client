@@ -143,7 +143,7 @@ struct UploadMenuButton: View {
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
-                let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+                let response = await api.uploadFileResumable(url: tempURL, taskDelegate: delegate)
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run {
                     manager.finish(id: id)
@@ -156,7 +156,7 @@ struct UploadMenuButton: View {
         } else {
             let api = DFAPI(url: serverURL, token: token)
             let delegate = UploadProgressDelegate { _ in }
-            let response = await api.uploadFile(url: tempURL, taskDelegate: delegate)
+            let response = await api.uploadFileResumable(url: tempURL, taskDelegate: delegate)
             try? FileManager.default.removeItem(at: tempURL)
             ToastManager.shared.showToast(message: response != nil ? successMessage : failureMessage)
         }

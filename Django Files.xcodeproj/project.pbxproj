@@ -117,6 +117,7 @@
 				API/Files.swift,
 				API/Short.swift,
 				API/Stats.swift,
+				API/Tus.swift,
 				API/Upload.swift,
 				API/Users.swift,
 				API/Websocket.swift,
