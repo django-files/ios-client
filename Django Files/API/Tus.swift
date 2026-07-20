@@ -258,8 +258,10 @@ extension DFAPI {
 
             do {
                 // Reports progress against the whole file (not just this chunk) by translating
-                // each chunk's own byte counts through the offset already committed.
-                let forwarder = TusChunkProgressForwarder(originalDelegate: taskDelegate, completedBytes: offset, totalSize: size)
+                // each chunk's own byte counts through the offset already committed. Also
+                // registers the task with pauseGate so a pause request can cancel it outright
+                // instead of waiting for a potentially large chunk to finish on its own.
+                let forwarder = TusChunkProgressForwarder(originalDelegate: taskDelegate, completedBytes: offset, totalSize: size, pauseGate: pauseGate)
                 let (_, response) = try await session.upload(for: request, from: chunk, delegate: forwarder)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 204,
                       let offsetHeader = http.value(forHTTPHeaderField: "Upload-Offset"),
@@ -270,6 +272,15 @@ extension DFAPI {
                 attempt = 0
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
+                if let pauseGate, await pauseGate.isPaused {
+                    // This "failure" is just pauseGate cancelling our in-flight PATCH to make
+                    // pause feel instant — not a real error, so it doesn't touch the retry
+                    // budget. Wait here until resumed, then resync the offset (the cancelled
+                    // PATCH may have partially landed) and retry this same chunk.
+                    try await pauseGate.waitWhilePaused()
+                    offset = (try? await tusCommittedOffset(uploadURL: uploadURL)) ?? offset
+                    continue
+                }
                 attempt += 1
                 guard attempt <= DFAPI.tusMaxRetries else { throw TusUploadError.interrupted }
                 // The failed PATCH may have partially landed server-side — resync to the
@@ -304,11 +315,19 @@ private class TusChunkProgressForwarder: NSObject, URLSessionTaskDelegate {
     let originalDelegate: URLSessionTaskDelegate?
     let completedBytes: Int64
     let totalSize: Int64
+    let pauseGate: UploadPauseGate?
 
-    init(originalDelegate: URLSessionTaskDelegate?, completedBytes: Int64, totalSize: Int64) {
+    init(originalDelegate: URLSessionTaskDelegate?, completedBytes: Int64, totalSize: Int64, pauseGate: UploadPauseGate?) {
         self.originalDelegate = originalDelegate
         self.completedBytes = completedBytes
         self.totalSize = totalSize
+        self.pauseGate = pauseGate
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        if let pauseGate {
+            Task { await pauseGate.setActiveTask(task) }
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
