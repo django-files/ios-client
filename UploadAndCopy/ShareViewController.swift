@@ -132,7 +132,10 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                     self.viewModel.shareLabel = "Upload Video"
                     if let url {
                         self.shareURLs.append(url)
-                        self.viewModel.previewVideoURL = url
+                        if self.viewModel.previewVideoURL == nil {
+                            self.viewModel.previewVideoURL = url
+                        }
+                        self.viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: thumbnail, videoURL: url))
                     }
                     if self.viewModel.previewImage == nil {
                         self.viewModel.previewImage = thumbnail
@@ -216,16 +219,13 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             return
         }
 
+        let previewSize = CGSize(width: 300, height: 300)
+
         if let url = item as? URL {
             shareURLs.append(url)
-            if viewModel.previewImage == nil {
-                let previewSize = CGSize(width: 300, height: 300)
-                viewModel.previewImage = downsample(imageAt: url, to: previewSize)
-            }
+            addImageThumbnail(downsample(imageAt: url, to: previewSize))
         } else if let image = item as? UIImage {
-            if viewModel.previewImage == nil {
-                viewModel.previewImage = image
-            }
+            addImageThumbnail(image)
             let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
             let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID().uuidString).png")
             do {
@@ -244,16 +244,22 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                 try data.write(to: targetURL)
                 tempFileURLs.insert(targetURL)
                 shareURLs.append(targetURL)
-                if viewModel.previewImage == nil {
-                    let previewSize = CGSize(width: 300, height: 300)
-                    viewModel.previewImage = downsample(imageAt: targetURL, to: previewSize)
-                }
+                addImageThumbnail(downsample(imageAt: targetURL, to: previewSize))
             } catch {
                 print("Could not save image data: \(error.localizedDescription)")
             }
         }
 
         itemLoaded()
+    }
+
+    /// Sets the single-item preview (used when only one image/video is shared) the first time
+    /// it's called, and always records the thumbnail for the multi-item grid.
+    private func addImageThumbnail(_ image: UIImage?) {
+        if viewModel.previewImage == nil {
+            viewModel.previewImage = image
+        }
+        viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: image, videoURL: nil))
     }
 
     func getAvailableServers() {
