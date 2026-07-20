@@ -169,6 +169,11 @@ struct SettingsView: View {
                         Label("Customize Tabs", systemImage: "square.grid.2x2")
                     }
                     NavigationLink {
+                        UploadSettingsView()
+                    } label: {
+                        Label("Uploads", systemImage: "arrow.up.circle")
+                    }
+                    NavigationLink {
                         PrivacySettingsView()
                     } label: {
                         Label("Privacy", systemImage: "hand.raised")

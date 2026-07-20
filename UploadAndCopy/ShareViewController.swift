@@ -10,6 +10,8 @@ import Social
 import SwiftData
 import CoreHaptics
 import SwiftUI
+import AVFoundation
+import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController, URLSessionTaskDelegate {
     var sharedModelContainer: ModelContainer = {
@@ -119,6 +121,28 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                     self.handleImageItem(item: item, error: error)
                 }
             }
+        } else if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            itemProvider.loadItem(forTypeIdentifier: UTType.movie.identifier, options: nil) { (item, error) in
+                let url = item as? URL
+                // Generated off whatever thread this completion handler lands on (not
+                // guaranteed to be main) so a large video's first frame doesn't block the UI.
+                let thumbnail = url.flatMap { self.videoThumbnail(for: $0) }
+                DispatchQueue.main.async {
+                    self.viewModel.showShortText = false
+                    self.viewModel.shareLabel = "Upload Video"
+                    if let url {
+                        self.shareURLs.append(url)
+                        if self.viewModel.previewVideoURL == nil {
+                            self.viewModel.previewVideoURL = url
+                        }
+                        self.viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: thumbnail, videoURL: url))
+                    }
+                    if self.viewModel.previewImage == nil {
+                        self.viewModel.previewImage = thumbnail
+                    }
+                    self.itemLoaded()
+                }
+            }
         } else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
             itemProvider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (item, error) in
                 DispatchQueue.main.async {
@@ -195,16 +219,13 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             return
         }
 
+        let previewSize = CGSize(width: 300, height: 300)
+
         if let url = item as? URL {
             shareURLs.append(url)
-            if viewModel.previewImage == nil {
-                let previewSize = CGSize(width: 300, height: 300)
-                viewModel.previewImage = downsample(imageAt: url, to: previewSize)
-            }
+            addImageThumbnail(downsample(imageAt: url, to: previewSize))
         } else if let image = item as? UIImage {
-            if viewModel.previewImage == nil {
-                viewModel.previewImage = image
-            }
+            addImageThumbnail(image)
             let tempDirectoryURL = NSURL.fileURL(withPath: NSTemporaryDirectory(), isDirectory: true)
             let targetURL = tempDirectoryURL.appendingPathComponent("\(UUID().uuidString).png")
             do {
@@ -223,16 +244,22 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                 try data.write(to: targetURL)
                 tempFileURLs.insert(targetURL)
                 shareURLs.append(targetURL)
-                if viewModel.previewImage == nil {
-                    let previewSize = CGSize(width: 300, height: 300)
-                    viewModel.previewImage = downsample(imageAt: targetURL, to: previewSize)
-                }
+                addImageThumbnail(downsample(imageAt: targetURL, to: previewSize))
             } catch {
                 print("Could not save image data: \(error.localizedDescription)")
             }
         }
 
         itemLoaded()
+    }
+
+    /// Sets the single-item preview (used when only one image/video is shared) the first time
+    /// it's called, and always records the thumbnail for the multi-item grid.
+    private func addImageThumbnail(_ image: UIImage?) {
+        if viewModel.previewImage == nil {
+            viewModel.previewImage = image
+        }
+        viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: image, videoURL: nil))
     }
 
     func getAvailableServers() {
@@ -350,8 +377,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         let albums = viewModel.selectedAlbumIDs.map(String.init).joined(separator: ",")
 
         for (index, url) in shareURLs.enumerated() {
-            let task = await api.uploadFileStreamed(url: url, albums: albums, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
-            let response = await task?.waitForComplete()
+            let response = await api.uploadFileResumable(url: url, albums: albums, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
 
             if let responseURL = response?.url {
                 lastResponseURL = responseURL
@@ -360,7 +386,7 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                     viewModel.showProgress = false
                     viewModel.uploadProgress = 0
                     viewModel.isShareEnabled = true
-                    self.showMessageAndDismiss(message: "Bad server response: \(task?.error ?? "Unknown error")")
+                    self.showMessageAndDismiss(message: "Bad server response.")
                 }
                 return
             }
@@ -476,5 +502,16 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
 
         return UIImage(cgImage: downsampledImage)
+    }
+
+    func videoThumbnail(for videoURL: URL, maxDimension: CGFloat = 600) -> UIImage? {
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
+        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 }

@@ -36,4 +36,15 @@ struct DFUploadResponse: Codable{
         name = try container.decode(String.self, forKey: .name)
         size = try container.decode(Int.self, forKey: .size)
     }
+
+    // Manual init(from:) above suppresses the synthesized memberwise init — restored here
+    // so tus uploads can build a response from the imported DFFile once processing finishes.
+    init(files: [String] = [], url: String, raw: String, r: String, name: String, size: Int) {
+        self.files = files
+        self.url = url
+        self.raw = raw
+        self.r = r
+        self.name = name
+        self.size = size
+    }
 }

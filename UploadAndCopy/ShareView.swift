@@ -7,19 +7,46 @@
 
 import SwiftUI
 import UIKit
+import AVKit
 
 struct ShareView: View {
     @ObservedObject var viewModel: ShareViewModel
     @FocusState private var isShortTextFocused: Bool
-    
+    @State private var videoPlayerTarget: VideoPlayerTarget?
+
+    /// Grid caps out at this many cells; the last one turns into a "+N" badge instead of a
+    /// thumbnail once there are more images/videos than that to show.
+    private let maxGridThumbnails = 6
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 Text(viewModel.shareLabel)
                     .font(.headline)
                     .padding(.top, 8)
-                
-                if let image = viewModel.previewImage {
+
+                if viewModel.previewThumbnails.count > 1 {
+                    thumbnailGrid
+                } else if let videoURL = viewModel.previewVideoURL {
+                    ZStack {
+                        if let image = viewModel.previewImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(8)
+                        } else {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(.systemGray5))
+                                .aspectRatio(16.0/9.0, contentMode: .fit)
+                        }
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+                    .onTapGesture { videoPlayerTarget = VideoPlayerTarget(url: videoURL) }
+                } else if let image = viewModel.previewImage {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -191,6 +218,9 @@ struct ShareView: View {
         .sheet(isPresented: $viewModel.showAlbumPicker) {
             ShareAlbumPickerSheet(server: viewModel.selectedSession, selectedAlbumIDs: $viewModel.selectedAlbumIDs)
         }
+        .fullScreenCover(item: $videoPlayerTarget) { target in
+            VideoPreviewPlayer(url: target.url)
+        }
         .toastNotification(
             message: viewModel.alertMessage,
             isPresented: $viewModel.showAlert,
@@ -206,6 +236,51 @@ struct ShareView: View {
             }
         }
     }
+
+    private var thumbnailGrid: some View {
+        let thumbnails = viewModel.previewThumbnails
+        let visibleCount = min(thumbnails.count, maxGridThumbnails)
+        let remaining = thumbnails.count - visibleCount
+
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            ForEach(Array(thumbnails.prefix(visibleCount).enumerated()), id: \.element.id) { index, thumbnail in
+                let isOverflowCell = remaining > 0 && index == visibleCount - 1
+                ZStack {
+                    if let image = thumbnail.image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color(.systemGray5)
+                    }
+                    if thumbnail.videoURL != nil {
+                        Image(systemName: "play.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                    }
+                    if isOverflowCell {
+                        Color.black.opacity(0.55)
+                        Text("+\(remaining)")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !isOverflowCell, let videoURL = thumbnail.videoURL else { return }
+                    videoPlayerTarget = VideoPlayerTarget(url: videoURL)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
+private struct VideoPlayerTarget: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 // Observable object to manage the share view state
@@ -213,7 +288,15 @@ class ShareViewModel: ObservableObject {
     @Published var availableSessions: [DjangoFilesSession] = []
     @Published var selectedSession: DjangoFilesSession?
     @Published var shareLabel: String = "Upload"
+    struct PreviewThumbnail: Identifiable {
+        let id = UUID()
+        let image: UIImage?
+        let videoURL: URL?
+    }
+
     @Published var previewImage: UIImage?
+    @Published var previewVideoURL: URL?
+    @Published var previewThumbnails: [PreviewThumbnail] = []
     @Published var previewText: String = ""
     @Published var isTextEditable: Bool = false
     @Published var showShortText: Bool = false
@@ -265,6 +348,36 @@ class ShareViewModel: ObservableObject {
                 return
             }
             vc.dismissAfterAlert(shouldComplete: wasAutoDismiss)
+        }
+    }
+}
+
+/// Full-screen tap-to-play for the shared video, using SwiftUI's built-in `VideoPlayer` —
+/// the same file the extension is about to upload, so nothing extra needs loading.
+private struct VideoPreviewPlayer: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear { player.play() }
+            }
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(.white, .black.opacity(0.6))
+                    .padding()
+            }
+        }
+        .onAppear {
+            if player == nil { player = AVPlayer(url: url) }
         }
     }
 }
