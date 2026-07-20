@@ -10,6 +10,8 @@ import Social
 import SwiftData
 import CoreHaptics
 import SwiftUI
+import AVFoundation
+import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController, URLSessionTaskDelegate {
     var sharedModelContainer: ModelContainer = {
@@ -117,6 +119,25 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
             itemProvider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { (item, error) in
                 DispatchQueue.main.async {
                     self.handleImageItem(item: item, error: error)
+                }
+            }
+        } else if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            itemProvider.loadItem(forTypeIdentifier: UTType.movie.identifier, options: nil) { (item, error) in
+                let url = item as? URL
+                // Generated off whatever thread this completion handler lands on (not
+                // guaranteed to be main) so a large video's first frame doesn't block the UI.
+                let thumbnail = url.flatMap { self.videoThumbnail(for: $0) }
+                DispatchQueue.main.async {
+                    self.viewModel.showShortText = false
+                    self.viewModel.shareLabel = "Upload Video"
+                    if let url {
+                        self.shareURLs.append(url)
+                        self.viewModel.previewVideoURL = url
+                    }
+                    if self.viewModel.previewImage == nil {
+                        self.viewModel.previewImage = thumbnail
+                    }
+                    self.itemLoaded()
                 }
             }
         } else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
@@ -475,5 +496,16 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
 
         return UIImage(cgImage: downsampledImage)
+    }
+
+    func videoThumbnail(for videoURL: URL, maxDimension: CGFloat = 600) -> UIImage? {
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
+        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 }

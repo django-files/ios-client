@@ -7,19 +7,43 @@
 
 import SwiftUI
 import UIKit
+import AVKit
 
 struct ShareView: View {
     @ObservedObject var viewModel: ShareViewModel
     @FocusState private var isShortTextFocused: Bool
-    
+    @State private var showVideoPlayer = false
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 Text(viewModel.shareLabel)
                     .font(.headline)
                     .padding(.top, 8)
-                
-                if let image = viewModel.previewImage {
+
+                if let videoURL = viewModel.previewVideoURL {
+                    ZStack {
+                        if let image = viewModel.previewImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(8)
+                        } else {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(.systemGray5))
+                                .aspectRatio(16.0/9.0, contentMode: .fit)
+                        }
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+                    .onTapGesture { showVideoPlayer = true }
+                    .fullScreenCover(isPresented: $showVideoPlayer) {
+                        VideoPreviewPlayer(url: videoURL)
+                    }
+                } else if let image = viewModel.previewImage {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -214,6 +238,7 @@ class ShareViewModel: ObservableObject {
     @Published var selectedSession: DjangoFilesSession?
     @Published var shareLabel: String = "Upload"
     @Published var previewImage: UIImage?
+    @Published var previewVideoURL: URL?
     @Published var previewText: String = ""
     @Published var isTextEditable: Bool = false
     @Published var showShortText: Bool = false
@@ -265,6 +290,36 @@ class ShareViewModel: ObservableObject {
                 return
             }
             vc.dismissAfterAlert(shouldComplete: wasAutoDismiss)
+        }
+    }
+}
+
+/// Full-screen tap-to-play for the shared video, using SwiftUI's built-in `VideoPlayer` —
+/// the same file the extension is about to upload, so nothing extra needs loading.
+private struct VideoPreviewPlayer: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear { player.play() }
+            }
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(.white, .black.opacity(0.6))
+                    .padding()
+            }
+        }
+        .onAppear {
+            if player == nil { player = AVPlayer(url: url) }
         }
     }
 }
