@@ -122,7 +122,6 @@
 				API/Users.swift,
 				API/Websocket.swift,
 				Models/DjangoFilesSession.swift,
-				Utils/UploadPauseGate.swift,
 			);
 			target = 4C82CB7E2D624E8700C0893B /* UploadAndCopy */;
 		};

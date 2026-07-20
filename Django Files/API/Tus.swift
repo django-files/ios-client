@@ -88,9 +88,7 @@ extension DFAPI {
         privateUpload: Bool = false,
         stripExif: Bool = false,
         stripGps: Bool = false,
-        taskDelegate: URLSessionTaskDelegate? = nil,
-        pauseGate: UploadPauseGate? = nil,
-        onTusActiveChange: ((Bool) -> Void)? = nil
+        taskDelegate: URLSessionTaskDelegate? = nil
     ) async -> DFUploadResponse? {
         let filename = fileName ?? (fileURL.absoluteString as NSString).lastPathComponent
 
@@ -103,16 +101,11 @@ extension DFAPI {
                     privateUpload: privateUpload,
                     stripExif: stripExif,
                     stripGps: stripGps,
-                    taskDelegate: taskDelegate,
-                    pauseGate: pauseGate,
-                    onTusActiveChange: onTusActiveChange
+                    taskDelegate: taskDelegate
                 )
             } catch TusUploadError.notSupported {
-                onTusActiveChange?(false)
                 await TusSupportCache.shared.markUnsupported(url.absoluteString)
             } catch {
-                onTusActiveChange?(false)
-                if error is CancellationError || Task.isCancelled { return nil }
                 print("DFAPI: tus upload failed (\(error)); falling back to legacy upload")
             }
         }
@@ -163,22 +156,17 @@ extension DFAPI {
         privateUpload: Bool,
         stripExif: Bool,
         stripGps: Bool,
-        taskDelegate: URLSessionTaskDelegate?,
-        pauseGate: UploadPauseGate?,
-        onTusActiveChange: ((Bool) -> Void)?
+        taskDelegate: URLSessionTaskDelegate?
     ) async throws -> DFUploadResponse {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let metadata = tusMetadata(fileName: fileName, albums: albums, privateUpload: privateUpload, stripExif: stripExif, stripGps: stripGps)
 
         let uploadURL = try await tusCreateUpload(size: size, metadata: metadata)
-        // Only from here on is this upload actually going over tus — the creation POST just
-        // succeeded, so pause is now meaningful (and won't silently no-op into a legacy retry).
-        onTusActiveChange?(true)
 
         let fileHandle = try FileHandle(forReadingFrom: fileURL)
         defer { try? fileHandle.close() }
-        try await tusPatchChunks(uploadURL: uploadURL, fileHandle: fileHandle, size: size, taskDelegate: taskDelegate, pauseGate: pauseGate)
+        try await tusPatchChunks(uploadURL: uploadURL, fileHandle: fileHandle, size: size, taskDelegate: taskDelegate)
 
         if let response = await tusAwaitProcessedFile(name: fileName, size: size) {
             return response
@@ -237,13 +225,12 @@ extension DFAPI {
         return offset
     }
 
-    private func tusPatchChunks(uploadURL: URL, fileHandle: FileHandle, size: Int64, taskDelegate: URLSessionTaskDelegate?, pauseGate: UploadPauseGate?) async throws {
+    private func tusPatchChunks(uploadURL: URL, fileHandle: FileHandle, size: Int64, taskDelegate: URLSessionTaskDelegate?) async throws {
         var offset: Int64 = 0
         var attempt = 0
         let session = URLSession(configuration: .ephemeral)
 
         while offset < size {
-            try await pauseGate?.waitWhilePaused()
             try fileHandle.seek(toOffset: UInt64(offset))
             let chunkSize = Int(min(Int64(TusUploadSettings.chunkSizeBytes), size - offset))
             guard let chunk = try fileHandle.read(upToCount: chunkSize), !chunk.isEmpty else {
@@ -258,10 +245,8 @@ extension DFAPI {
 
             do {
                 // Reports progress against the whole file (not just this chunk) by translating
-                // each chunk's own byte counts through the offset already committed. Also
-                // registers the task with pauseGate so a pause request can cancel it outright
-                // instead of waiting for a potentially large chunk to finish on its own.
-                let forwarder = TusChunkProgressForwarder(originalDelegate: taskDelegate, completedBytes: offset, totalSize: size, pauseGate: pauseGate)
+                // each chunk's own byte counts through the offset already committed.
+                let forwarder = TusChunkProgressForwarder(originalDelegate: taskDelegate, completedBytes: offset, totalSize: size)
                 let (_, response) = try await session.upload(for: request, from: chunk, delegate: forwarder)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 204,
                       let offsetHeader = http.value(forHTTPHeaderField: "Upload-Offset"),
@@ -271,16 +256,6 @@ extension DFAPI {
                 offset = newOffset
                 attempt = 0
             } catch {
-                if error is CancellationError || Task.isCancelled { throw CancellationError() }
-                if let pauseGate, await pauseGate.isPaused {
-                    // This "failure" is just pauseGate cancelling our in-flight PATCH to make
-                    // pause feel instant — not a real error, so it doesn't touch the retry
-                    // budget. Wait here until resumed, then resync the offset (the cancelled
-                    // PATCH may have partially landed) and retry this same chunk.
-                    try await pauseGate.waitWhilePaused()
-                    offset = (try? await tusCommittedOffset(uploadURL: uploadURL)) ?? offset
-                    continue
-                }
                 attempt += 1
                 guard attempt <= DFAPI.tusMaxRetries else { throw TusUploadError.interrupted }
                 // The failed PATCH may have partially landed server-side — resync to the
@@ -315,19 +290,11 @@ private class TusChunkProgressForwarder: NSObject, URLSessionTaskDelegate {
     let originalDelegate: URLSessionTaskDelegate?
     let completedBytes: Int64
     let totalSize: Int64
-    let pauseGate: UploadPauseGate?
 
-    init(originalDelegate: URLSessionTaskDelegate?, completedBytes: Int64, totalSize: Int64, pauseGate: UploadPauseGate?) {
+    init(originalDelegate: URLSessionTaskDelegate?, completedBytes: Int64, totalSize: Int64) {
         self.originalDelegate = originalDelegate
         self.completedBytes = completedBytes
         self.totalSize = totalSize
-        self.pauseGate = pauseGate
-    }
-
-    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
-        if let pauseGate {
-            Task { await pauseGate.setActiveTask(task) }
-        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {

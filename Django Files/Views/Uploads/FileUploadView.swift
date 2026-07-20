@@ -409,8 +409,6 @@ struct FileUploadView: View {
         let manager = uploadProgressManager
 
         let id = manager.start(filename: displayName, thumbnail: thumbnail)
-        let pauseGate = UploadPauseGate()
-        manager.registerPauseGate(id: id, gate: pauseGate)
         let task = Task.detached {
             let api = DFAPI(url: URL(string: serverURL)!, token: token)
             let delegate = UploadProgressDelegate { progress in
@@ -422,11 +420,7 @@ struct FileUploadView: View {
                 privateUpload: priv,
                 stripExif: exif,
                 stripGps: gps,
-                taskDelegate: delegate,
-                pauseGate: pauseGate,
-                onTusActiveChange: { active in
-                    Task { @MainActor in manager.setPausable(id: id, pausable: active) }
-                }
+                taskDelegate: delegate
             )
             if deleteAfter { try? FileManager.default.removeItem(at: tempURL) }
             await MainActor.run { manager.finish(id: id) }
@@ -482,19 +476,13 @@ struct FileUploadView: View {
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
-                let pauseGate = UploadPauseGate()
-                await MainActor.run { manager.registerPauseGate(id: id, gate: pauseGate) }
                 _ = await api.uploadFileResumable(
                     url: url,
                     albums: albums,
                     privateUpload: priv,
                     stripExif: exif,
                     stripGps: gps,
-                    taskDelegate: delegate,
-                    pauseGate: pauseGate,
-                    onTusActiveChange: { active in
-                        Task { @MainActor in manager.setPausable(id: id, pausable: active) }
-                    }
+                    taskDelegate: delegate
                 )
                 try? FileManager.default.removeItem(at: url)
                 await MainActor.run { manager.finish(id: id) }
@@ -526,19 +514,13 @@ struct FileUploadView: View {
                 let delegate = UploadProgressDelegate { progress in
                     Task { @MainActor in manager.update(id: id, progress: progress) }
                 }
-                let pauseGate = UploadPauseGate()
-                await MainActor.run { manager.registerPauseGate(id: id, gate: pauseGate) }
                 _ = await api.uploadFileResumable(
                     url: url,
                     albums: albums,
                     privateUpload: priv,
                     stripExif: exif,
                     stripGps: gps,
-                    taskDelegate: delegate,
-                    pauseGate: pauseGate,
-                    onTusActiveChange: { active in
-                        Task { @MainActor in manager.setPausable(id: id, pausable: active) }
-                    }
+                    taskDelegate: delegate
                 )
                 await MainActor.run { manager.finish(id: id) }
             }
@@ -574,19 +556,13 @@ struct FileUploadView: View {
             let delegate = UploadProgressDelegate { progress in
                 Task { @MainActor in manager.update(id: id, progress: progress) }
             }
-            let pauseGate = UploadPauseGate()
-            await MainActor.run { manager.registerPauseGate(id: id, gate: pauseGate) }
             _ = await api.uploadFileResumable(
                 url: tempURL,
                 albums: albums,
                 privateUpload: priv,
                 stripExif: exif,
                 stripGps: gps,
-                taskDelegate: delegate,
-                pauseGate: pauseGate,
-                onTusActiveChange: { active in
-                    Task { @MainActor in manager.setPausable(id: id, pausable: active) }
-                }
+                taskDelegate: delegate
             )
             try? FileManager.default.removeItem(at: tempURL)
             await MainActor.run { manager.finish(id: id) }
