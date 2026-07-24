@@ -404,13 +404,6 @@ struct FileListView: View {
         let showContextMenus = gridColumnCount <= 8
         let serverURL = resolvedServerURL
         let prefetchThreshold = max(5, gridColumnCount * 3)
-        // Reference-box binding: scroll tracking writes go to the box (no view
-        // invalidation per row scrolled); the value is only read back when the column
-        // count swaps, letting the system keep the anchor item in place (Photos-style).
-        let anchorBinding = Binding<Int?>(
-            get: { gridScrollAnchor.fileID },
-            set: { gridScrollAnchor.fileID = $0 }
-        )
         return PinchableGridContainer(gridColumnCount: $gridColumnCount) { topPad, bottomPad, width in
             let cellSize: CGFloat? = width > 0
                 ? (width - gridSpacing * CGFloat(gridColumnCount - 1)) / CGFloat(gridColumnCount)
@@ -418,83 +411,106 @@ struct FileListView: View {
             // Membership set built once per body evaluation — the previous per-cell
             // `files.suffix(n).contains` scan cost O(n) on every single cell appear.
             let prefetchIDs = Set(files.suffix(prefetchThreshold).map(\.id))
-            ScrollView {
-                LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
-                    ForEach(files) { file in
-                        let isSelected = selectedFileIDs.contains(file.id)
-                        let item = FileGridItemView(
-                            file: file,
-                            serverURL: serverURL,
-                            showDetails: showDetails,
-                            naturalAspect: naturalAspect,
-                            cornerRadius: gridCornerRadius,
-                            targetSize: cellSize
-                        )
-                        .equatable()
-                        .contentShape(Rectangle())
-                        let base = Group {
-                            if isSelectMode {
-                                item
-                                    .overlay(alignment: .topLeading) {
-                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                            .font(.system(size: 22))
-                                            .foregroundStyle(isSelected ? Color.accentColor : .white)
-                                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                                            .padding(6)
-                                    }
-                                    .opacity(isSelected ? 1.0 : 0.6)
-                            } else {
-                                item
-                            }
-                        }
-                        // Tap gesture instead of Button: press-tracking and accessibility
-                        // wrappers add up across hundreds of visible cells.
-                        let cell = base
-                            .onTapGesture {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
+                        ForEach(files) { file in
+                            let isSelected = selectedFileIDs.contains(file.id)
+                            let item = FileGridItemView(
+                                file: file,
+                                serverURL: serverURL,
+                                showDetails: showDetails,
+                                naturalAspect: naturalAspect,
+                                cornerRadius: gridCornerRadius,
+                                targetSize: cellSize
+                            )
+                            .equatable()
+                            .contentShape(Rectangle())
+                            let base = Group {
                                 if isSelectMode {
-                                    toggleSelection(file: file)
+                                    item
+                                        .overlay(alignment: .topLeading) {
+                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                                .font(.system(size: 22))
+                                                .foregroundStyle(isSelected ? Color.accentColor : .white)
+                                                .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                                .padding(6)
+                                        }
+                                        .opacity(isSelected ? 1.0 : 0.6)
                                 } else {
-                                    selectedFile = file
-                                    showingPreview = true
+                                    item
                                 }
                             }
-                            .onAppear {
-                                if hasNextPage && prefetchIDs.contains(file.id) {
-                                    loadNextPage()
+                            // Tap gesture instead of Button: press-tracking and accessibility
+                            // wrappers add up across hundreds of visible cells.
+                            let cell = base
+                                .onTapGesture {
+                                    if isSelectMode {
+                                        toggleSelection(file: file)
+                                    } else {
+                                        selectedFile = file
+                                        showingPreview = true
+                                    }
                                 }
-                            }
+                                .onAppear {
+                                    if hasNextPage && prefetchIDs.contains(file.id) {
+                                        loadNextPage()
+                                    }
+                                }
 
-                        // The modifier itself installs a UIKit interaction per cell, so
-                        // it must not be attached at all when zoomed far out (hundreds
-                        // of visible cells) — an empty menu closure isn't enough.
-                        if showContextMenus && !isSelectMode {
-                            cell.contextMenu {
-                                fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                            // The modifier itself installs a UIKit interaction per cell, so
+                            // it must not be attached at all when zoomed far out (hundreds
+                            // of visible cells) — an empty menu closure isn't enough.
+                            if showContextMenus && !isSelectMode {
+                                cell.contextMenu {
+                                    fileContextMenu(for: file, isPrivate: file.private, expirationText: $expirationText, passwordText: $passwordText, fileNameText: $fileNameText)
+                                }
+                            } else {
+                                cell
                             }
-                        } else {
-                            cell
+                        }
+                    }
+                    .scrollTargetLayout()
+                    .padding(.top, topPad + 8)
+                    .padding(.bottom, bottomPad + 8)
+
+                    if isLoading && hasNextPage {
+                        HStack {
+                            Spacer()
+                            LoadingView()
+                                .frame(width: 60, height: 60)
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+                // Passive visibility tracking instead of scrollPosition(id:): a bound
+                // scroll position makes the ScrollView re-anchor content on every data
+                // change, which cancels deceleration when a page append lands mid-scroll.
+                // Visibility reporting has no influence on scrolling, and writes go to
+                // the reference box so tracking never invalidates the grid.
+                .onScrollTargetVisibilityChange(idType: Int.self) { visibleIDs in
+                    if !visibleIDs.isEmpty {
+                        gridScrollAnchor.fileID = visibleIDs[visibleIDs.count / 2]
+                    }
+                }
+                // Photos-style reflow: only when the pinch swaps the column count do we
+                // read the anchor back, jumping (no animation) so the centered item stays
+                // centered in the new layout.
+                .onChange(of: gridColumnCount) { _, _ in
+                    if let anchorID = gridScrollAnchor.fileID {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            proxy.scrollTo(anchorID, anchor: .center)
                         }
                     }
                 }
-                .scrollTargetLayout()
-                .padding(.top, topPad + 8)
-                .padding(.bottom, bottomPad + 8)
-
-                if isLoading && hasNextPage {
-                    HStack {
-                        Spacer()
-                        LoadingView()
-                            .frame(width: 60, height: 60)
-                        Spacer()
+                .ignoresSafeArea()
+                .refreshable {
+                    Task {
+                        await refreshFiles()
                     }
-                    .padding(.vertical, 8)
-                }
-            }
-            .scrollPosition(id: anchorBinding, anchor: .center)
-            .ignoresSafeArea()
-            .refreshable {
-                Task {
-                    await refreshFiles()
                 }
             }
         }
@@ -751,7 +767,7 @@ struct FileListView: View {
                             isSelectMode = true
                             selectedFileIDs = []
                         } label: {
-                            Label("Select", systemImage: "checklist")
+                            Label("Select", systemImage: "checkmark.circle")
                         }
                         .disabled(files.isEmpty)
                     }
@@ -1205,7 +1221,7 @@ struct FileListView: View {
     
 }
 
-// Plain reference type on purpose: scrollPosition(id:) writes on every row scrolled,
+// Plain reference type on purpose: visibility tracking writes on every row scrolled,
 // and holding the value outside @State keeps those writes from re-evaluating the
 // (large) file grid body.
 private final class GridScrollAnchor {

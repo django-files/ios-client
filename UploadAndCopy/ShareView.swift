@@ -100,11 +100,25 @@ struct ShareView: View {
             }
             .padding(.bottom, 16)
             
-            ProgressView(value: viewModel.uploadProgress)
-                .progressViewStyle(.linear)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .opacity(viewModel.showProgress ? 1 : 0)
+            Group {
+                // SwiftUI's indeterminate linear ProgressView doesn't reliably animate on iOS —
+                // it just reads as the bar resetting to empty — so once bytes are fully
+                // uploaded and we're waiting on the server's async import, drop the bar
+                // entirely rather than show something that looks stuck or regressed.
+                if viewModel.isProcessing {
+                    Text("Processing upload…")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .transition(.opacity)
+                } else {
+                    ProgressView(value: viewModel.uploadProgress)
+                        .progressViewStyle(.linear)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .opacity(viewModel.showProgress ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.isProcessing)
             
             // Destination selector
             VStack(alignment: .leading, spacing: 8) {
@@ -304,6 +318,7 @@ class ShareViewModel: ObservableObject {
     @Published var shortTextPlaceholder: String = ""
     @Published var showProgress: Bool = false
     @Published var uploadProgress: Float = 0.0
+    @Published var isProcessing: Bool = false
     @Published var isShareEnabled: Bool = false
     @Published var isLoading: Bool = true
     @Published var showAlert: Bool = false

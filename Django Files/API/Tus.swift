@@ -88,7 +88,8 @@ extension DFAPI {
         privateUpload: Bool = false,
         stripExif: Bool = false,
         stripGps: Bool = false,
-        taskDelegate: URLSessionTaskDelegate? = nil
+        taskDelegate: URLSessionTaskDelegate? = nil,
+        onProcessingStarted: (() -> Void)? = nil
     ) async -> DFUploadResponse? {
         let filename = fileName ?? (fileURL.absoluteString as NSString).lastPathComponent
 
@@ -101,7 +102,8 @@ extension DFAPI {
                     privateUpload: privateUpload,
                     stripExif: stripExif,
                     stripGps: stripGps,
-                    taskDelegate: taskDelegate
+                    taskDelegate: taskDelegate,
+                    onProcessingStarted: onProcessingStarted
                 )
             } catch TusUploadError.notSupported {
                 await TusSupportCache.shared.markUnsupported(url.absoluteString)
@@ -156,7 +158,8 @@ extension DFAPI {
         privateUpload: Bool,
         stripExif: Bool,
         stripGps: Bool,
-        taskDelegate: URLSessionTaskDelegate?
+        taskDelegate: URLSessionTaskDelegate?,
+        onProcessingStarted: (() -> Void)? = nil
     ) async throws -> DFUploadResponse {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
@@ -167,6 +170,11 @@ extension DFAPI {
         let fileHandle = try FileHandle(forReadingFrom: fileURL)
         defer { try? fileHandle.close() }
         try await tusPatchChunks(uploadURL: uploadURL, fileHandle: fileHandle, size: size, taskDelegate: taskDelegate)
+
+        // All bytes are committed; the server's async import is what's left, and it's
+        // uncertain how long that takes. Let the caller switch its progress UI from a
+        // determinate upload bar to an indeterminate "processing" state here.
+        onProcessingStarted?()
 
         if let response = await tusAwaitProcessedFile(name: fileName, size: size) {
             return response
