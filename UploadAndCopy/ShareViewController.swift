@@ -124,23 +124,28 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         } else if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
             itemProvider.loadItem(forTypeIdentifier: UTType.movie.identifier, options: nil) { (item, error) in
                 let url = item as? URL
-                // Generated off whatever thread this completion handler lands on (not
-                // guaranteed to be main) so a large video's first frame doesn't block the UI.
-                let thumbnail = url.flatMap { self.videoThumbnail(for: $0) }
-                DispatchQueue.main.async {
-                    self.viewModel.showShortText = false
-                    self.viewModel.shareLabel = "Upload Video"
+                Task {
+                    // Generated off a background task so a large video's first frame doesn't
+                    // block the UI.
+                    var thumbnail: UIImage?
                     if let url {
-                        self.shareURLs.append(url)
-                        if self.viewModel.previewVideoURL == nil {
-                            self.viewModel.previewVideoURL = url
+                        thumbnail = await self.videoThumbnail(for: url)
+                    }
+                    DispatchQueue.main.async {
+                        self.viewModel.showShortText = false
+                        self.viewModel.shareLabel = "Upload Video"
+                        if let url {
+                            self.shareURLs.append(url)
+                            if self.viewModel.previewVideoURL == nil {
+                                self.viewModel.previewVideoURL = url
+                            }
+                            self.viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: thumbnail, videoURL: url))
                         }
-                        self.viewModel.previewThumbnails.append(ShareViewModel.PreviewThumbnail(image: thumbnail, videoURL: url))
+                        if self.viewModel.previewImage == nil {
+                            self.viewModel.previewImage = thumbnail
+                        }
+                        self.itemLoaded()
                     }
-                    if self.viewModel.previewImage == nil {
-                        self.viewModel.previewImage = thumbnail
-                    }
-                    self.itemLoaded()
                 }
             }
         } else if itemProvider.hasItemConformingToTypeIdentifier("public.file-url") {
@@ -377,11 +382,25 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         let albums = viewModel.selectedAlbumIDs.map(String.init).joined(separator: ",")
 
         for (index, url) in shareURLs.enumerated() {
-            let response = await api.uploadFileResumable(url: url, albums: albums, privateUpload: viewModel.privateUpload, stripExif: viewModel.stripExif, stripGps: viewModel.stripGps, taskDelegate: self)
+            // Reset here, before this file's own byte transfer starts, rather than right after
+            // the previous file finished processing — otherwise the determinate bar flashes
+            // back on for the gap between "processing done" and "next thing to show" (the
+            // completion toast, on the last file) instead of staying put.
+            DispatchQueue.main.async { viewModel.isProcessing = false }
 
-            if let responseURL = response?.url {
-                lastResponseURL = responseURL
-            } else {
+            let response = await api.uploadFileResumable(
+                url: url,
+                albums: albums,
+                privateUpload: viewModel.privateUpload,
+                stripExif: viewModel.stripExif,
+                stripGps: viewModel.stripGps,
+                taskDelegate: self,
+                onProcessingStarted: {
+                    DispatchQueue.main.async { viewModel.isProcessing = true }
+                }
+            )
+
+            guard let response else {
                 DispatchQueue.main.async {
                     viewModel.showProgress = false
                     viewModel.uploadProgress = 0
@@ -389,6 +408,13 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
                     self.showMessageAndDismiss(message: "Bad server response.")
                 }
                 return
+            }
+            // A tus upload can finish committing bytes before the server's async import has
+            // surfaced the file's URL (see Tus.swift); that reports success with an empty
+            // `url` rather than failing an upload that actually went through. Don't let that
+            // empty string clobber a URL we already have from an earlier file in this batch.
+            if !response.url.isEmpty {
+                lastResponseURL = response.url
             }
 
             DispatchQueue.main.async {
@@ -398,9 +424,14 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
 
         DispatchQueue.main.async {
             viewModel.isLoading = false
-            UIPasteboard.general.string = self.lastResponseURL
-            NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
-            self.notifyClipboard()
+            if let lastResponseURL = self.lastResponseURL {
+                UIPasteboard.general.string = lastResponseURL
+                NotificationCenter.default.addObserver(self, selector: #selector(self.clipboardChanged), name: UIPasteboard.changedNotification, object: nil)
+                self.notifyClipboard()
+            } else {
+                self.cleanupTempFiles()
+                self.showMessageAndDismiss(message: "Uploaded. Link will appear in your files shortly.", shouldComplete: true)
+            }
         }
     }
 
@@ -464,10 +495,10 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         }
     }
 
-    func showMessageAndDismiss(message: String){
+    func showMessageAndDismiss(message: String, shouldComplete: Bool = false){
         DispatchQueue.main.async {
             self.viewModel.alertMessage = message
-            self.viewModel.shouldAutoDismiss = false
+            self.viewModel.shouldAutoDismiss = shouldComplete
             self.viewModel.showAlert = true
         }
     }
@@ -504,14 +535,19 @@ class ShareViewController: UIViewController, URLSessionTaskDelegate {
         return UIImage(cgImage: downsampledImage)
     }
 
-    func videoThumbnail(for videoURL: URL, maxDimension: CGFloat = 600) -> UIImage? {
+    func videoThumbnail(for videoURL: URL, maxDimension: CGFloat = 600) async -> UIImage? {
         let asset = AVURLAsset(url: videoURL)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
-        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else {
-            return nil
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: .zero) { cgImage, _, error in
+                guard let cgImage, error == nil else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: UIImage(cgImage: cgImage))
+            }
         }
-        return UIImage(cgImage: cgImage)
     }
 }

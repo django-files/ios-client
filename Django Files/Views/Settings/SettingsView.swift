@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Binding var showLoginSheet: Bool
     @State private var needsRefresh = true
     @Query private var allSessions: [DjangoFilesSession]
+    @Environment(\.dismiss) private var dismiss
 
     private var versionInfo: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
@@ -194,6 +195,15 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                    }
+                }
+            }
             .sheet(isPresented: $showLoginSheet) {
                 if let session = sessionManager.selectedSession {
                     LoginView(selectedServer: session, onLoginSuccess: {
