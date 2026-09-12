@@ -842,23 +842,26 @@ struct FilePreviewView: View {
         }
         
         // For deep link previews without a server session, use the raw URL directly
+        // (carrying the file password so password-protected files aren't gated).
         if server.wrappedValue == nil {
-            redirectURLs[file.raw] = file.raw
+            redirectURLs[file.raw] = file.rawURLWithPassword()
             return
         }
-        
+
         guard let serverURL = URL(string: file.url)?.host else {
             return
         }
-        
+
         let baseURL = URL(string: "https://\(serverURL)")!
-        let api = DFAPI(url: baseURL, token: "")  // Token will be handled by cookies
-        
-        if let redirectURL = await api.checkRedirect(url: file.raw) {
+        // Authenticate the redirect probe with the session token so private and
+        // password-protected files resolve to their signed URL instead of 403ing.
+        let api = DFAPI(url: baseURL, token: server.wrappedValue?.token ?? "")
+
+        if let redirectURL = await api.checkRedirect(url: file.rawURLWithPassword()) {
             redirectURLs[file.raw] = redirectURL
         } else {
-            // If redirect fails, use the original URL
-            redirectURLs[file.raw] = file.raw
+            // If redirect fails, use the original URL (with password when set).
+            redirectURLs[file.raw] = file.rawURLWithPassword()
         }
     }
     

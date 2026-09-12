@@ -278,8 +278,27 @@ extension DFFile {
             url: serverURL.appendingPathComponent("/raw/\(name)"),
             resolvingAgainstBaseURL: true
         )
-        components?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
+        var items = [URLQueryItem(name: "thumb", value: "true")]
+        // Password-protected files are gated by `handle_lock` on the backend; the
+        // thumbnail loader fetches this URL unauthenticated, so pass the password
+        // explicitly or the request 403s and the image never loads.
+        if !password.isEmpty {
+            items.append(URLQueryItem(name: "password", value: password))
+        }
+        components?.queryItems = items
         return components?.url ?? serverURL
+    }
+
+    /// `raw` URL with the file password appended when this file is password-protected.
+    /// Unauthenticated preview/content loaders otherwise hit the backend password
+    /// gate and receive a 403 HTML page instead of the file bytes.
+    public func rawURLWithPassword() -> String {
+        guard !password.isEmpty,
+              var components = URLComponents(string: raw),
+              !(components.queryItems ?? []).contains(where: { $0.name == "password" })
+        else { return raw }
+        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "password", value: password)]
+        return components.url?.absoluteString ?? raw
     }
 }
 

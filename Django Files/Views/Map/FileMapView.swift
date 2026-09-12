@@ -83,10 +83,7 @@ struct FileMapView: View {
 
     private func thumbURL(for file: DFFile) -> URL? {
         guard let base = serverURL else { return nil }
-        var c = URLComponents(url: base.appendingPathComponent("/raw/\(file.name)"),
-                              resolvingAgainstBaseURL: true)
-        c?.queryItems = [URLQueryItem(name: "thumb", value: "true")]
-        return c?.url
+        return file.thumbnailURL(on: base)
     }
 
     private var filteredGeoFiles: [DFFile] {
