@@ -345,7 +345,7 @@ struct PageViewController: UIViewControllerRepresentable {
             let file = parent.files[index]
             let contentPreview = ContentPreview(
                 mimeType: file.mime,
-                fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.raw)!,
+                fileURL: URL(string: parent.redirectURLs[file.raw] ?? file.rawURLWithPassword())!,
                 file: file,
                 showFileInfo: parent.showFileInfo,
                 selectedFileDetails: parent.$selectedFileDetails,
@@ -370,14 +370,14 @@ struct PageViewController: UIViewControllerRepresentable {
                 return
             }
             
-            let urlString = parent.redirectURLs[file.raw] ?? file.raw
+            let urlString = parent.redirectURLs[file.raw] ?? file.rawURLWithPassword()
             guard let url = URL(string: urlString) else { return }
-            
+
             // Check if content is already cached
             if ImageCache.shared.getContent(for: url.absoluteString) != nil {
                 return
             }
-            
+
             // Preload the content
             do {
                 let _ = try await CachedContentLoader.loadContent(from: url)
@@ -561,8 +561,7 @@ struct FilePreviewView: View {
             return
         }
         
-        // Get the redirect URL if available, otherwise use the raw URL
-        let urlString = redirectURLs[file.raw] ?? file.raw
+        let urlString = redirectURLs[file.raw] ?? file.rawURLWithPassword()
         guard let url = URL(string: urlString) else { return }
         
         // Check if content is already cached
